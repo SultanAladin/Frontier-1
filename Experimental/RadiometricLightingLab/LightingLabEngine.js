@@ -1,7 +1,11 @@
-// Frontier Radiometric Lighting Architecture Lab — Core Photometry, Conty-Kulla Partition Builder & WebGL2 Studio Runtime
+// Frontier Radiometric Lighting Architecture Lab — Core Photometry, Threaded Conty-Kulla Partition & Deferred WebGL2 Runtime
 import {
   FullscreenVertexShader,
-  RadiometricSceneFragmentShader,
+  PrimaryGbufferFragmentShader,
+  UnifiedPartitionFragmentShader,
+  ClusteredFroxelFragmentShader,
+  RestirDiFragmentShader,
+  PureSdfVoxelFragmentShader,
   DisplayToneFragmentShader,
 } from "./LightingLabShaders.js";
 
@@ -33,7 +37,6 @@ export const PaintPresets = [
   { name: "Obsidian Pearl", hex: "#1b1d22", rgb: [0.055, 0.06, 0.075], metallic: 0.85, roughness: 0.15 },
 ];
 
-// Kelvin to linear RGB (Planckian locus approximation 1800K..12000K)
 export function KelvinToLinearRgb(kelvin) {
   const t = Math.max(18, Math.min(120, kelvin / 100));
   let r, g, b;
@@ -49,22 +52,18 @@ export function KelvinToLinearRgb(kelvin) {
   return [Math.pow(r, 2.2), Math.pow(g, 2.2), Math.pow(b, 2.2)];
 }
 
-// Evaluate normalized [0..1] 128x32 LM-63 Type-C angular candela distribution
-// polarRad in [0, PI] (0 = along forward optical axis), azimRad in [0, 2*PI)
 export function EvaluateNormalizedIesCandela(profileId, polarRad, azimRad) {
   const deg = (polarRad * 180) / Math.PI;
   const sinA = Math.sin(azimRad);
   const cosA = Math.cos(azimRad);
 
   if (profileId === 0) {
-    // Barn-Door Studio Fresnel: flat-topped lens core + smooth cosine shoulder
     if (deg > 68) return 0;
     const core = Math.exp(-Math.pow(deg / 24, 2.6));
     const lens = 0.22 * Math.exp(-Math.pow((deg - 16) / 11, 2));
     return Math.min(1, (core + lens) / 1.08);
   }
   if (profileId === 1) {
-    // ECE R112 Asymmetric Low-Beam: wide horizontal spread, tight vertical hotspot + kerb-side reach
     if (deg > 62) return 0;
     const horizSpread = 1.0 + 0.65 * Math.abs(sinA);
     const effDeg = deg / horizSpread;
@@ -74,29 +73,24 @@ export function EvaluateNormalizedIesCandela(profileId, polarRad, azimRad) {
     return Math.min(1, (hot + kerbBoost) * cut);
   }
   if (profileId === 2) {
-    // Automotive High-Beam Pencil
     if (deg > 48) return 0;
     return Math.min(1, 0.85 * Math.exp(-Math.pow(deg / 8.5, 2.0)) + 0.18 * Math.exp(-Math.pow(deg / 22.0, 2.0)));
   }
   if (profileId === 3) {
-    // Architectural Batwing Car-Park Downlight (twin peak at ~34 deg)
     if (deg > 84) return 0;
     const nadir = 0.52 * Math.cos((deg * Math.PI) / 170);
     const wing = 0.68 * Math.exp(-Math.pow((deg - 34) / 14, 2.0));
     return Math.min(1, Math.max(0, nadir + wing));
   }
   if (profileId === 4) {
-    // Automotive Red Taillamp / Wide Fog Bar
     if (deg > 78) return 0;
     const hFactor = 0.55 + 0.65 * Math.abs(sinA);
     return Math.min(1, Math.exp(-Math.pow(deg / (26 * hFactor), 2.1)));
   }
-  // Focused Studio Octa Strobe
   if (deg > 64) return 0;
   return Math.exp(-Math.pow(deg / 21.5, 2.4));
 }
 
-// Build 128 x (32 * 6) RGBA32F Photometric Atlas
 export function BuildPhotometricAtlasFloatData() {
   const W = 128;
   const H = 32 * 6;
@@ -119,7 +113,6 @@ export function BuildPhotometricAtlasFloatData() {
   return { width: W, height: H, data };
 }
 
-// Build 64 x 64 Fitted Heitz (2016) LTC Inverse-M + Norm Table
 export function BuildHeitzLtcFloatData() {
   const N = 64;
   const data = new Float32Array(N * N * 4);
@@ -130,7 +123,6 @@ export function BuildHeitzLtcFloatData() {
     for (let x = 0; x < N; ++x) {
       const rough = Math.max(0.02, x / (N - 1));
       const alpha = rough * rough;
-      // Analytic GGX-to-clamped-cosine shear & scale fit (Heitz 2016 rational approximation)
       const invScale = 1.0 / Math.max(0.035, alpha * (0.82 + 0.18 * cosTheta) + 0.015);
       const offDiag = -sinTheta * (1.0 - alpha) * 0.72 * Math.min(6.0, invScale * 0.35);
       const skewZ = -sinTheta * (1.0 - alpha) * 0.38;
@@ -166,25 +158,21 @@ function AimBasis(fromPos, targetPos) {
   return { fwd, right, up };
 }
 
-// Compose Scene Luminaires for Scene 0 (Cyclorama), Scene 1 (Forest LED Stage), Scene 2 (Pit Garage)
-// lightDensity: 0 = Standard Rig (~12-16 lights), 1 = Multi-Bay (40 lights), 2 = Stress (96 lights)
 export function ConstructSceneLuminaires(sceneId, lightDensity = 0) {
   const list = [];
   const add = (spec) => list.push({ enabled: true, castShadow: true, barnFlareDeg: 34, ...spec });
-
   const heroAim = sceneId === 1 ? [0.0, 0.78, 0.0] : [0.0, 0.56, 0.0];
 
   if (sceneId === 0 || sceneId === 1) {
     const isForest = sceneId === 1;
-    // 1. Overhead Softbox Area LTC (7.2 x 4.0 m)
     add({
       id: "light-overhead-softbox",
       name: "Overhead Silk Softbox",
       group: "Studio Rigs",
-      kind: 4, // PolygonalAreaLtc
+      kind: 4,
       pos: [0.0, 4.06, -0.25],
       rightAxis: [1, 0, 0],
-      upAxis: [0, 0, 1], // cross(right, up) = [0, -1, 0] downward!
+      upAxis: [0, 0, 1],
       halfW: 3.6,
       halfH: 2.0,
       kelvin: isForest ? 5200 : 5600,
@@ -193,26 +181,24 @@ export function ConstructSceneLuminaires(sceneId, lightDensity = 0) {
       aux: 0.0,
     });
 
-    // 2. Key Barn-Door Fresnel (LM-63 IES + 4-Leaf Barn-Door Clip!)
     const keyPos = isForest ? [-4.45, 2.68, 1.55] : [-3.55, 2.28, 1.55];
     const keyBasis = AimBasis(keyPos, heroAim);
     add({
       id: "light-key-fresnel",
       name: isForest ? "Woodland Sun Fresnel (IES)" : "Barn-Door Key Fresnel (IES)",
       group: "Studio Rigs",
-      kind: 2, // PhotometricIes
+      kind: 2,
       pos: keyPos,
       rightAxis: keyBasis.fwd,
       upAxis: keyBasis.up,
-      halfW: ((isForest ? 42 : 34) * Math.PI) / 180, // Barn-door flare half-angle
+      halfW: ((isForest ? 42 : 34) * Math.PI) / 180,
       halfH: 0.22,
       kelvin: isForest ? 3450 : 5400,
       intensity: isForest ? 26.0 : 21.0,
       range: 24.0,
-      aux: 0, // Profile 0: Barn-Door Fresnel
+      aux: 0,
     });
 
-    // 3. Parabolic Bounce Umbrella (Area LTC)
     const umbPos = isForest ? [4.45, 2.32, 2.05] : [3.35, 2.12, 1.85];
     const umbBasis = AimBasis(umbPos, heroAim);
     add({
@@ -222,7 +208,7 @@ export function ConstructSceneLuminaires(sceneId, lightDensity = 0) {
       kind: 4,
       pos: umbPos,
       rightAxis: umbBasis.right,
-      upAxis: Vec3Normalize(Vec3Cross(umbBasis.right, umbBasis.fwd)), // cross(right, up) == fwd
+      upAxis: Vec3Normalize(Vec3Cross(umbBasis.right, umbBasis.fwd)),
       halfW: 0.82,
       halfH: 0.82,
       kelvin: 5800,
@@ -232,7 +218,6 @@ export function ConstructSceneLuminaires(sceneId, lightDensity = 0) {
       aux: 0.0,
     });
 
-    // 4. Cool 6300 K Rim LED Panel (Area LTC)
     const rimPos = [-4.15, 2.52, -2.55];
     const rimBasis = AimBasis(rimPos, heroAim);
     add({
@@ -252,7 +237,6 @@ export function ConstructSceneLuminaires(sceneId, lightDensity = 0) {
       aux: 0.0,
     });
 
-    // 5. Back-Right Octa Accent Strobe (IES)
     const accPos = [4.35, 2.38, -2.35];
     const accBasis = AimBasis(accPos, heroAim);
     add({
@@ -269,11 +253,10 @@ export function ConstructSceneLuminaires(sceneId, lightDensity = 0) {
       intensity: 16.5,
       range: 20.0,
       castShadow: false,
-      aux: 5, // Profile 5: Octa Strobe
+      aux: 5,
     });
 
     if (isForest) {
-      // Curved Forest Canopy LED Volume Emissive Panels (Class 6 Stokes Contour!)
       for (let seg = -1; seg <= 1; ++seg) {
         const ang = seg * 0.44;
         const px = Math.sin(ang) * 8.45;
@@ -283,7 +266,7 @@ export function ConstructSceneLuminaires(sceneId, lightDensity = 0) {
           id: `led-volume-seg-${seg + 2}`,
           name: `Forest LED Volume Bay ${seg + 2}`,
           group: "Emissive Surfaces",
-          kind: 6, // EmissiveSurface (Stokes Contour)
+          kind: 6,
           pos: [px, 2.35, pz],
           rightAxis: panelBasis.right,
           upAxis: Vec3Normalize(Vec3Cross(panelBasis.right, panelBasis.fwd)),
@@ -299,8 +282,6 @@ export function ConstructSceneLuminaires(sceneId, lightDensity = 0) {
       }
     }
   } else {
-    // SCENE 2: Lobby 3 Racing Stadium Pit Garage
-    // 1. Open Pit-Archway Sky Portal (Class 7 Portal LTC Window!)
     add({
       id: "portal-pit-archway",
       name: "Open Pit Archway Sky Portal",
@@ -308,7 +289,7 @@ export function ConstructSceneLuminaires(sceneId, lightDensity = 0) {
       kind: 7,
       pos: [-0.6, 1.85, -5.15],
       rightAxis: [1, 0, 0],
-      upAxis: [0, 1, 0], // cross([1,0,0],[0,1,0]) = [0,0,+1] into garage!
+      upAxis: [0, 1, 0],
       halfW: 2.75,
       halfH: 1.75,
       kelvin: 6500,
@@ -319,9 +300,7 @@ export function ConstructSceneLuminaires(sceneId, lightDensity = 0) {
       aux: 0.0,
     });
 
-    // 2. Garage Ceiling Linear LED Tubes (Class 5 Picott/Karis Tube Segments!)
-    const tubeXs = [-2.6, 0.4, 3.6];
-    tubeXs.forEach((tx, idx) => {
+    [-2.6, 0.4, 3.6].forEach((tx, idx) => {
       add({
         id: `garage-tube-${idx + 1}`,
         name: `Ceiling Linear LED Bank ${idx + 1}`,
@@ -330,7 +309,7 @@ export function ConstructSceneLuminaires(sceneId, lightDensity = 0) {
         pos: [tx, 4.92, 0.15],
         rightAxis: [0, 0, 1],
         upAxis: [0, -1, 0],
-        halfW: 2.35, // 4.7 m linear LED strip!
+        halfW: 2.35,
         halfH: 0.045,
         kelvin: 5800,
         intensity: 3.2,
@@ -340,7 +319,6 @@ export function ConstructSceneLuminaires(sceneId, lightDensity = 0) {
       });
     });
 
-    // 3. Mechanic Tool-Bay Warm IES Worklamp (3400 K Batwing)
     const bayBasis = AimBasis([5.35, 4.45, 0.85], [5.8, 0.9, 0.85]);
     add({
       id: "garage-bay-ies",
@@ -350,16 +328,15 @@ export function ConstructSceneLuminaires(sceneId, lightDensity = 0) {
       pos: [5.35, 4.45, 0.85],
       rightAxis: bayBasis.fwd,
       upAxis: bayBasis.up,
-      halfW: 0.0, // Open reflector
+      halfW: 0.0,
       halfH: 0.18,
       kelvin: 3400,
       intensity: 15.0,
       range: 16.0,
       castShadow: false,
-      aux: 3, // Batwing downlight
+      aux: 3,
     });
 
-    // 4. Emissive Pit Telemetry Screen (Class 6 Stokes Contour)
     add({
       id: "emissive-telemetry",
       name: "Pit Telemetry Wall Screen",
@@ -367,7 +344,7 @@ export function ConstructSceneLuminaires(sceneId, lightDensity = 0) {
       kind: 6,
       pos: [6.48, 1.72, -0.45],
       rightAxis: [0, 0, 1],
-      upAxis: [0, 1, 0], // cross([0,0,1],[0,1,0]) = [-1,0,0] inward!
+      upAxis: [0, 1, 0],
       halfW: 0.66,
       halfH: 0.40,
       kelvin: 7500,
@@ -379,7 +356,6 @@ export function ConstructSceneLuminaires(sceneId, lightDensity = 0) {
     });
   }
 
-  // Automotive Luminaires on Hero GT Coupe (ECE R112 Low-Beams + DRL Tubes + Rear Red Taillamp Bar!)
   const carYOff = sceneId === 1 ? 0.30 : 0.0;
   for (const side of [-1, 1]) {
     const label = side < 0 ? "Left" : "Right";
@@ -389,7 +365,7 @@ export function ConstructSceneLuminaires(sceneId, lightDensity = 0) {
       id: `car-headlamp-${label.toLowerCase()}`,
       name: `Hero ECE Low-Beam (${label})`,
       group: "Automotive Lamps",
-      kind: 3, // AutomotiveEce (-1.0 deg asymmetric kink!)
+      kind: 3,
       pos: hlPos,
       rightAxis: hlFwd,
       upAxis: [0, 1, 0],
@@ -399,15 +375,14 @@ export function ConstructSceneLuminaires(sceneId, lightDensity = 0) {
       intensity: 24.0,
       range: 26.0,
       castShadow: true,
-      aux: 1, // Profile 1: ECE Low-Beam
+      aux: 1,
     });
 
-    // Shaped Front DRL Lightguide Tube
     add({
       id: `car-drl-${label.toLowerCase()}`,
       name: `Hero DRL Lightguide (${label})`,
       group: "Automotive Lamps",
-      kind: 5, // LinearTubeSegment
+      kind: 5,
       pos: [side * 0.68, 0.47 + carYOff, 2.08],
       rightAxis: Vec3Normalize([side * 0.85, 0.14, -0.45]),
       upAxis: [0, 1, 0],
@@ -421,7 +396,6 @@ export function ConstructSceneLuminaires(sceneId, lightDensity = 0) {
     });
   }
 
-  // Full-Width Rear Red Taillamp / Brake Lightbar (LinearTubeSegment + Red IES Wash)
   add({
     id: "car-taillamp-bar",
     name: "Hero Rear Red Taillamp Bar",
@@ -455,10 +429,9 @@ export function ConstructSceneLuminaires(sceneId, lightDensity = 0) {
     intensity: 7.5,
     range: 12.0,
     castShadow: false,
-    aux: 4, // Profile 4: Red Taillamp
+    aux: 4,
   });
 
-  // Under-Chassis Accent Point Light (Class 0 PointSphere)
   add({
     id: "point-inspection-orb",
     name: "Floor Inspection Point Lamp",
@@ -476,7 +449,6 @@ export function ConstructSceneLuminaires(sceneId, lightDensity = 0) {
     aux: 0.0,
   });
 
-  // Multi-Light Scale-Up: 40 Luminaires (density=1) or 96 Luminaires (density=2)
   const targetTotal = lightDensity === 2 ? 96 : lightDensity === 1 ? 40 : list.length;
   let extraIdx = 0;
   while (list.length < targetTotal) {
@@ -488,7 +460,6 @@ export function ConstructSceneLuminaires(sceneId, lightDensity = 0) {
     const pz = -4.2 + (gz % 6) * 2.15;
     const kindCycle = ringIdx % 4;
     if (kindCycle === 0) {
-      // Architectural IES Batwing Downlight grid
       add({
         id: `many-ies-${ringIdx}`,
         name: `Bay Downlight #${ringIdx + 1} (IES)`,
@@ -506,7 +477,6 @@ export function ConstructSceneLuminaires(sceneId, lightDensity = 0) {
         aux: 3,
       });
     } else if (kindCycle === 1) {
-      // Perimeter Accent Point Spheres
       const hueT = (ringIdx * 0.6180339) % 1.0;
       const tint = hueT < 0.33 ? [1.0, 0.52, 0.18] : hueT < 0.66 ? [0.25, 0.68, 1.0] : [0.95, 0.92, 0.85];
       add({
@@ -527,7 +497,6 @@ export function ConstructSceneLuminaires(sceneId, lightDensity = 0) {
         aux: 0,
       });
     } else if (kindCycle === 2) {
-      // Linear Accent LED Strips
       add({
         id: `many-tube-${ringIdx}`,
         name: `Truss LED Tube #${ringIdx + 1}`,
@@ -545,7 +514,6 @@ export function ConstructSceneLuminaires(sceneId, lightDensity = 0) {
         aux: 0,
       });
     } else {
-      // Analytic Track Spots aimed toward center lane
       const spPos = [px * 1.1, 3.4, pz];
       const spBasis = AimBasis(spPos, [px * 0.25, 0.3, pz * 0.35]);
       add({
@@ -576,21 +544,18 @@ export function ComputeLuminaireLinearRadiance(L) {
 }
 
 function LuminaireDirectionAndSpread(L) {
-  if (L.kind === 0) {
-    return { axis: [0, -1, 0], cosHalfSpread: -1.0 }; // Omnidirectional
+  if (L.kind === 0 || L.kind === 5) {
+    return { axis: [0, -1, 0], cosHalfSpread: -1.0 };
   }
   if (L.kind === 4 || L.kind === 6 || L.kind === 7) {
     const fwd = Vec3Normalize(Vec3Cross(L.rightAxis, L.upAxis));
-    return { axis: fwd, cosHalfSpread: L.aux < -0.5 ? -1.0 : 0.0 }; // Hemisphere
+    return { axis: fwd, cosHalfSpread: L.aux < -0.5 ? -1.0 : 0.0 };
   }
-  if (L.kind === 5) {
-    return { axis: [0, -1, 0], cosHalfSpread: -1.0 }; // Cylindrical tube emits 360 around axis
-  }
-  // Spot / IES / ECE
   return { axis: Vec3Normalize(L.rightAxis), cosHalfSpread: Math.cos(Math.min(Math.PI, Math.max(0.35, L.halfW || 1.05))) };
 }
 
-// Conty Estevez & Kulla (2018) Spatial-Orientation Binary Importance Partition Builder
+// Pre-order Threaded Spatial-Orientation Binary Importance Partition Builder
+// Emits exact missSkip = subtreeEndIndex so GPU traverses with ZERO stack arrays!
 export function BuildPhotometricLightPartition(activeLuminaires) {
   const count = activeLuminaires.length;
   if (count === 0) {
@@ -604,7 +569,6 @@ export function BuildPhotometricLightPartition(activeLuminaires) {
       ? Math.max(0.5, 4.0 * L.halfW * L.halfH * 0.35)
       : L.kind === 5 ? Math.max(0.35, 2.0 * L.halfW * 0.5) : 0.45;
     const power = Math.max(0.01, lumWeight * areaFactor);
-
     const pad = L.kind === 4 || L.kind === 6 || L.kind === 7
       ? Math.max(L.halfW, L.halfH)
       : L.kind === 5 ? L.halfW : 0.18;
@@ -622,7 +586,7 @@ export function BuildPhotometricLightPartition(activeLuminaires) {
 
   const nodes = [];
 
-  function buildRange(items) {
+  function buildPreOrder(items) {
     const nodeIndex = nodes.length;
     nodes.push(null);
 
@@ -659,6 +623,7 @@ export function BuildPhotometricLightPartition(activeLuminaires) {
     }
 
     if (items.length === 1) {
+      const missSkip = nodes.length; // Next sibling/uncle in pre-order
       nodes[nodeIndex] = {
         min: [minX, minY, minZ],
         max: [maxX, maxY, maxZ],
@@ -666,6 +631,8 @@ export function BuildPhotometricLightPartition(activeLuminaires) {
         axis: items[0].axis,
         cosHalfSpread: items[0].cosHalfSpread,
         repIndex: items[0].gpuIndex,
+        isLeaf: 1,
+        missSkip,
         left: -1,
         right: -1,
         leafIndex: items[0].gpuIndex,
@@ -674,7 +641,6 @@ export function BuildPhotometricLightPartition(activeLuminaires) {
       return nodeIndex;
     }
 
-    // Split along longest spatial-orientation weighted axis
     const ext = [maxX - minX, maxY - minY, maxZ - minZ];
     let splitAxis = 0;
     if (ext[1] > ext[0] && ext[1] >= ext[2]) splitAxis = 1;
@@ -682,8 +648,9 @@ export function BuildPhotometricLightPartition(activeLuminaires) {
 
     const sorted = items.slice().sort((a, b) => (a.pos[splitAxis] + 0.35 * a.axis[splitAxis]) - (b.pos[splitAxis] + 0.35 * b.axis[splitAxis]));
     const mid = sorted.length >> 1;
-    const leftIdx = buildRange(sorted.slice(0, mid));
-    const rightIdx = buildRange(sorted.slice(mid));
+    const leftIdx = buildPreOrder(sorted.slice(0, mid)); // Guaranteed == nodeIndex + 1!
+    const rightIdx = buildPreOrder(sorted.slice(mid));
+    const missSkip = nodes.length; // Index immediately after entire subtree!
 
     nodes[nodeIndex] = {
       min: [minX, minY, minZ],
@@ -692,6 +659,8 @@ export function BuildPhotometricLightPartition(activeLuminaires) {
       axis: avgAxis,
       cosHalfSpread: minCos,
       repIndex: bestRep,
+      isLeaf: 0,
+      missSkip,
       left: leftIdx,
       right: rightIdx,
       leafIndex: -1,
@@ -700,7 +669,7 @@ export function BuildPhotometricLightPartition(activeLuminaires) {
     return nodeIndex;
   }
 
-  const rootIndex = buildRange(leaves);
+  const rootIndex = buildPreOrder(leaves);
   return {
     nodes,
     rootIndex,
@@ -713,46 +682,65 @@ export function BuildPhotometricLightPartition(activeLuminaires) {
 // ---------------------------------------------------------------------------
 export function StartRadiometricLightingStudio() {
   const canvas = document.getElementById("glCanvas");
-  const gl = canvas.getContext("webgl2", { antialias: false, powerPreference: "high-performance", preserveDrawingBuffer: true });
+  canvas.addEventListener("webglcontextlost", (e) => {
+    e.preventDefault();
+    document.getElementById("diagTitle").textContent = "WebGL2 Context Paused";
+    document.getElementById("diagBody").textContent = "Waiting for browser GPU context restoration...";
+  });
+
+  const gl = canvas.getContext("webgl2", {
+    antialias: false,
+    depth: false,
+    stencil: false,
+  });
   if (!gl) {
     document.getElementById("diagBody").textContent = "WebGL2 context unavailable in this browser.";
     return;
   }
 
-  const hasColorFloat = Boolean(gl.getExtension("EXT_color_buffer_float"));
-  gl.getExtension("OES_texture_float_linear");
+  let hasColorFloat = false;
 
-  function compileShader(type, src) {
+  function compileShader(type, src, label) {
+    if (gl.isContextLost()) return null;
     const sh = gl.createShader(type);
+    if (!sh) return null;
     gl.shaderSource(sh, src);
     gl.compileShader(sh);
     if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
-      const log = gl.getShaderInfoLog(sh);
-      console.error("Shader compile error:", log);
-      throw new Error(log);
+      if (gl.isContextLost()) return null;
+      const log = gl.getShaderInfoLog(sh) || "Shader compile error";
+      console.error(`[${label}] Shader compile error:`, log);
+      throw new Error(`[${label}] Compile failed: ${log}`);
     }
     return sh;
   }
 
-  function createProgram(vsSrc, fsSrc) {
+  function createProgram(vsSrc, fsSrc, label) {
+    if (gl.isContextLost()) return null;
     const prog = gl.createProgram();
-    gl.attachShader(prog, compileShader(gl.VERTEX_SHADER, vsSrc));
-    gl.attachShader(prog, compileShader(gl.FRAGMENT_SHADER, fsSrc));
+    const vs = compileShader(gl.VERTEX_SHADER, vsSrc, `${label}:VS`);
+    const fs = compileShader(gl.FRAGMENT_SHADER, fsSrc, `${label}:FS`);
+    if (!prog || !vs || !fs) return null;
+    gl.attachShader(prog, vs);
+    gl.attachShader(prog, fs);
     gl.linkProgram(prog);
+    gl.deleteShader(vs);
+    gl.deleteShader(fs);
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
-      throw new Error(gl.getProgramInfoLog(prog));
+      if (gl.isContextLost()) return null;
+      const log = gl.getProgramInfoLog(prog) || "Program link error";
+      console.error(`[${label}] Program link error:`, log);
+      throw new Error(`[${label}] Link failed: ${log}`);
     }
     return prog;
   }
 
-  const sceneProg = createProgram(FullscreenVertexShader, RadiometricSceneFragmentShader);
-  const displayProg = createProgram(FullscreenVertexShader, DisplayToneFragmentShader);
-  const emptyVao = gl.createVertexArray();
-
-  // Static LUT DataTextures (RGBA16F guarantees linear filtering across all WebGL2 drivers!)
   function makeLutTex(width, height, floatData, linearFilter) {
+    if (gl.isContextLost()) return null;
     const tex = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_BASE_LEVEL, 0);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAX_LEVEL, 0);
     gl.texImage2D(gl.TEXTURE_2D, 0, linearFilter ? gl.RGBA16F : gl.RGBA32F, width, height, 0, gl.RGBA, gl.FLOAT, floatData);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, linearFilter ? gl.LINEAR : gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, linearFilter ? gl.LINEAR : gl.NEAREST);
@@ -761,43 +749,154 @@ export function StartRadiometricLightingStudio() {
     return tex;
   }
 
-  const iesAtlas = BuildPhotometricAtlasFloatData();
-  const iesTex = makeLutTex(iesAtlas.width, iesAtlas.height, iesAtlas.data, true);
-  const ltcAtlas = BuildHeitzLtcFloatData();
-  const ltcTex = makeLutTex(ltcAtlas.width, ltcAtlas.height, ltcAtlas.data, true);
+  const solverSpecs = [
+    ["UnifiedPartition", UnifiedPartitionFragmentShader],
+    ["ClusteredFroxels", ClusteredFroxelFragmentShader],
+    ["RestirDi1Spp", RestirDiFragmentShader],
+    ["PureSdfVoxel", PureSdfVoxelFragmentShader],
+  ];
+  const solverProgs = [null, null, null, null];
+  let gbufferProg = null;
+  let displayProg = null;
+  let emptyVao = null;
 
+  const iesAtlas = BuildPhotometricAtlasFloatData();
+  const ltcAtlas = BuildHeitzLtcFloatData();
   const MAX_LUM = 128;
   const MAX_NODES = 256;
   const lumBuffer = new Float32Array(4 * MAX_LUM * 4);
   const partBuffer = new Float32Array(4 * MAX_NODES * 4);
-  const lumTex = makeLutTex(4, MAX_LUM, lumBuffer, false);
-  const partTex = makeLutTex(4, MAX_NODES, partBuffer, false);
+  let iesTex = null, ltcTex = null, lumTex = null, partTex = null;
 
-  // Ping-pong HDR accumulation / ReSTIR temporal reprojection FBOs
+  // Deferred G-Buffer + Ping-Pong HDR Targets
   let fboW = 0, fboH = 0;
+  let gbufFbo = null, gPosMatTex = null, gNormDepthTex = null;
+  let refSplitFbo = null, refSplitTex = null;
   const pingPong = [null, null];
   let ppIdx = 0;
+  let useLdrShadeTarget = false;
 
-  function ensurePingPong(w, h) {
-    if (w === fboW && h === fboH && pingPong[0]) return;
+  function getSolverProg(idx) {
+    if (!solverProgs[idx] && !gl.isContextLost()) {
+      const [label, fsSrc] = solverSpecs[idx];
+      solverProgs[idx] = createProgram(FullscreenVertexShader, fsSrc, label);
+    }
+    return solverProgs[idx];
+  }
+
+  function rebuildGpuResources() {
+    if (gl.isContextLost()) return false;
+    hasColorFloat = Boolean(
+      gl.getExtension("EXT_color_buffer_float") || gl.getExtension("EXT_color_buffer_half_float")
+    );
+    gl.getExtension("OES_texture_float_linear");
+    useLdrShadeTarget = !hasColorFloat;
+
+    solverProgs.fill(null);
+    fboW = 0;
+    fboH = 0;
+    gbufFbo = null;
+    refSplitFbo = null;
+    pingPong[0] = null;
+    pingPong[1] = null;
+
+    gbufferProg = createProgram(FullscreenVertexShader, PrimaryGbufferFragmentShader, "PrimaryGbuffer");
+    solverProgs[0] = getSolverProg(0);
+    displayProg = createProgram(FullscreenVertexShader, DisplayToneFragmentShader, "DisplayTone");
+    emptyVao = gl.createVertexArray();
+    iesTex = makeLutTex(iesAtlas.width, iesAtlas.height, iesAtlas.data, true);
+    ltcTex = makeLutTex(ltcAtlas.width, ltcAtlas.height, ltcAtlas.data, true);
+    lumTex = makeLutTex(4, MAX_LUM, lumBuffer, false);
+    partTex = makeLutTex(4, MAX_NODES, partBuffer, false);
+    return Boolean(gbufferProg && solverProgs[0] && displayProg);
+  }
+
+  try {
+    rebuildGpuResources();
+  } catch (err) {
+    document.getElementById("diagTitle").textContent = "Shader Pipeline Diagnostic";
+    document.getElementById("diagBody").textContent = String(err.message || err);
+    return;
+  }
+
+  canvas.addEventListener("webglcontextrestored", () => {
+    try {
+      if (rebuildGpuResources()) {
+        uploadRadiometricRegister();
+        updateTelemetryHud();
+        requestAnimationFrame(renderTick);
+      }
+    } catch (err) {
+      console.error("Context restore failed:", err);
+    }
+  });
+
+  function allocRenderTex(w, h, internalFmt, fmt, type, linear) {
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_BASE_LEVEL, 0);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAX_LEVEL, 0);
+    gl.texImage2D(gl.TEXTURE_2D, 0, internalFmt, w, h, 0, fmt, type, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, linear ? gl.LINEAR : gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, linear ? gl.LINEAR : gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    return tex;
+  }
+
+  function ensureRenderTargets(w, h) {
+    if (w === fboW && h === fboH && gbufFbo && pingPong[0]) return;
     fboW = w;
     fboH = h;
+
+    if (gbufFbo) {
+      gl.deleteFramebuffer(gbufFbo);
+      gl.deleteTexture(gPosMatTex);
+      gl.deleteTexture(gNormDepthTex);
+    }
+    if (refSplitFbo) {
+      gl.deleteFramebuffer(refSplitFbo);
+      gl.deleteTexture(refSplitTex);
+    }
+
+    // G-Buffer MRT (RGBA16F world pos/normal; RGBA8 fallback when float color buffers are unavailable)
+    const gIntFmt = hasColorFloat ? gl.RGBA16F : gl.RGBA8;
+    const gType = hasColorFloat ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE;
+    gPosMatTex = allocRenderTex(w, h, gIntFmt, gl.RGBA, gType, false);
+    gNormDepthTex = allocRenderTex(w, h, gIntFmt, gl.RGBA, gType, false);
+    gbufFbo = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, gbufFbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, gPosMatTex, 0);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, gNormDepthTex, 0);
+    gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
+      console.error("[RadiometricLab] G-Buffer MRT incomplete; falling back to single-attachment RGBA8.");
+      gl.deleteTexture(gNormDepthTex);
+      gNormDepthTex = null;
+      gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
+      if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
+        document.getElementById("diagTitle").textContent = "Framebuffer Diagnostic";
+        document.getElementById("diagBody").textContent = "G-Buffer framebuffer incomplete on this GPU. Try a different browser or enable hardware acceleration.";
+        gbufFbo = null;
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        return;
+      }
+    }
+
+    const sIntFmt = useLdrShadeTarget ? gl.RGBA8 : gl.RGBA16F;
+    const sType = useLdrShadeTarget ? gl.UNSIGNED_BYTE : gl.HALF_FLOAT;
+
+    refSplitTex = allocRenderTex(w, h, sIntFmt, gl.RGBA, sType, true);
+    refSplitFbo = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, refSplitFbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, refSplitTex, 0);
+
     for (let i = 0; i < 2; ++i) {
       if (pingPong[i]) {
         gl.deleteFramebuffer(pingPong[i].fbo);
         gl.deleteTexture(pingPong[i].tex);
       }
-      const tex = gl.createTexture();
-      gl.bindTexture(gl.TEXTURE_2D, tex);
-      if (hasColorFloat) {
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null);
-      } else {
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-      }
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      const tex = allocRenderTex(w, h, sIntFmt, gl.RGBA, sType, true);
       const fbo = gl.createFramebuffer();
       gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
       gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
@@ -806,12 +905,11 @@ export function StartRadiometricLightingStudio() {
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 
-  // Application State
   const state = {
-    sceneId: 0,           // 0=Cyclorama, 1=Forest LED Stage, 2=Pit Garage
-    engineMode: 2,        // 0=MatCap, 1=OpenPbrDirect, 2=HybridGiSdfVis, 3=PathTraceSobol
-    solverMode: 0,        // 0=UnifiedPartition, 1=ClusteredFroxels, 2=RestirDi1Spp, 3=PureSdfVoxel
-    lightDensity: 0,      // 0=Standard, 1=40 Lights, 2=96 Lights
+    sceneId: 0,
+    engineMode: 2,
+    solverMode: 0,
+    lightDensity: 0,
     cutBudget: 8,
     compareSplit: 0,
     splitX: 0.50,
@@ -830,7 +928,6 @@ export function StartRadiometricLightingStudio() {
     luminaires: [],
     selectedId: "light-key-fresnel",
     activeGpuCount: 0,
-    partitionRoot: -1,
     partitionNodeCount: 0,
     totalFluxPower: 0,
     frameIndex: 0,
@@ -871,8 +968,10 @@ export function StartRadiometricLightingStudio() {
       lumBuffer[o + 15] = L.aux;
     });
 
-    gl.bindTexture(gl.TEXTURE_2D, lumTex);
-    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 4, MAX_LUM, gl.RGBA, gl.FLOAT, lumBuffer);
+    if (!gl.isContextLost() && lumTex) {
+      gl.bindTexture(gl.TEXTURE_2D, lumTex);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 4, MAX_LUM, gl.RGBA, gl.FLOAT, lumBuffer);
+    }
 
     const tree = BuildPhotometricLightPartition(active.slice(0, MAX_LUM));
     partBuffer.fill(0);
@@ -894,17 +993,19 @@ export function StartRadiometricLightingStudio() {
       partBuffer[o + 10] = nd.axis[2];
       partBuffer[o + 11] = nd.repIndex;
 
-      partBuffer[o + 12] = nd.left;
-      partBuffer[o + 13] = nd.right;
-      partBuffer[o + 14] = nd.leafIndex;
+      // Threaded pre-order skip-links: x=isLeaf, y=missSkip, z=repIndex, w=count
+      partBuffer[o + 12] = nd.isLeaf;
+      partBuffer[o + 13] = nd.missSkip;
+      partBuffer[o + 14] = nd.repIndex;
       partBuffer[o + 15] = nd.count;
     });
 
-    gl.bindTexture(gl.TEXTURE_2D, partTex);
-    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 4, MAX_NODES, gl.RGBA, gl.FLOAT, partBuffer);
+    if (!gl.isContextLost() && partTex) {
+      gl.bindTexture(gl.TEXTURE_2D, partTex);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 4, MAX_NODES, gl.RGBA, gl.FLOAT, partBuffer);
+    }
 
     state.activeGpuCount = Math.min(active.length, MAX_LUM);
-    state.partitionRoot = tree.rootIndex;
     state.partitionNodeCount = tree.nodes.length;
     state.totalFluxPower = tree.totalPower;
     state.frameIndex = 0;
@@ -915,7 +1016,7 @@ export function StartRadiometricLightingStudio() {
 
   function loadScenePreset(sceneId) {
     state.sceneId = sceneId;
-    state.paintIdx = sceneId === 2 ? 1 : sceneId === 1 ? 2 : 0; // Silver / Sage / Signal Orange!
+    state.paintIdx = sceneId === 2 ? 1 : sceneId === 1 ? 2 : 0;
     state.camYaw = sceneId === 2 ? 0.56 : sceneId === 1 ? 0.62 : 0.66;
     state.camPitch = sceneId === 2 ? 0.20 : 0.24;
     state.camDist = sceneId === 2 ? 6.85 : 6.45;
@@ -928,9 +1029,6 @@ export function StartRadiometricLightingStudio() {
     uploadRadiometricRegister();
   }
 
-  // -------------------------------------------------------------------------
-  // UI Construction & Live Binding
-  // -------------------------------------------------------------------------
   function swatchColorForLuminaire(L) {
     const rgb = L.tintRgb || KelvinToLinearRgb(L.kelvin || 5600);
     const m = Math.max(0.01, rgb[0], rgb[1], rgb[2]);
@@ -1014,7 +1112,6 @@ export function StartRadiometricLightingStudio() {
     document.getElementById("inspName").textContent = L.name;
     document.getElementById("inspClassBadge").textContent = LuminaireClassNames[L.kind];
 
-    // Two-tone Giant Metric (1:1 LightInspectorShared.h)
     const displayVal = L.kind === 2 || L.kind === 3
       ? L.intensity * 850
       : L.kind === 4 || L.kind === 6 || L.kind === 7
@@ -1035,23 +1132,16 @@ export function StartRadiometricLightingStudio() {
       L.kind === 2 ? `LM-63 Type-C 128×32 Grid · Analytic 4-Leaf Barn-Door Clip` :
       `Non-Singular Karis Sphere Radiator`;
 
-    const intSlider = document.getElementById("ctlIntensity");
-    intSlider.value = L.intensity;
+    document.getElementById("ctlIntensity").value = L.intensity;
     document.getElementById("valIntensity").textContent = L.intensity.toFixed(1);
-
-    const kelSlider = document.getElementById("ctlKelvin");
-    kelSlider.value = L.kelvin || 5600;
+    document.getElementById("ctlKelvin").value = L.kelvin || 5600;
     document.getElementById("valKelvin").textContent = `${Math.round(L.kelvin || 5600)} K`;
-
-    const rngSlider = document.getElementById("ctlRange");
-    rngSlider.value = L.range;
+    document.getElementById("ctlRange").value = L.range;
     document.getElementById("valRange").textContent = `${L.range.toFixed(1)} m`;
 
-    const sizeRow = document.getElementById("rowAperture");
     const sizeLabel = document.getElementById("lblAperture");
     const sizeSlider = document.getElementById("ctlAperture");
     const sizeVal = document.getElementById("valAperture");
-    sizeRow.style.display = "grid";
     if (L.kind === 2) {
       sizeLabel.textContent = "Barn-Door Flare";
       sizeSlider.min = "10";
@@ -1083,7 +1173,6 @@ export function StartRadiometricLightingStudio() {
     document.getElementById("tileHeight").textContent = `${Math.max(1, Math.ceil(Math.log2(Math.max(1, state.activeGpuCount))) + 1)}`;
   }
 
-  // Live 2D C0/C90 Polar Candela Web + LTC / Partition Visualizer Canvas
   function renderInspectorDiagram() {
     const cvs = document.getElementById("polarCanvas");
     const rect = cvs.parentElement.getBoundingClientRect();
@@ -1105,10 +1194,9 @@ export function StartRadiometricLightingStudio() {
     const cy = (L.kind === 2 || L.kind === 3 || L.kind === 1) ? 30 : h * 0.52;
     const maxR = (L.kind === 2 || L.kind === 3 || L.kind === 1) ? h - 44 : Math.min(w, h) * 0.36;
 
-    // Subtle polar / coordinate rings
     ctx.strokeStyle = "rgba(255,255,255,0.08)";
     ctx.lineWidth = 1;
-    for (let rFrac of [0.33, 0.66, 1.0]) {
+    for (const rFrac of [0.33, 0.66, 1.0]) {
       ctx.beginPath();
       ctx.arc(cx, cy, maxR * rFrac, 0, Math.PI * 2);
       ctx.stroke();
@@ -1122,19 +1210,16 @@ export function StartRadiometricLightingStudio() {
 
     if (L.kind === 2 || L.kind === 3 || L.kind === 1) {
       const profId = (L.kind === 1) ? 5 : Math.max(0, Math.min(5, Math.round(L.aux)));
-      // Draw C0 (Vertical plane, Amber) and C90 (Horizontal plane, Blue)
       const planes = [
-        { az: Math.PI * 0.5, stroke: "#4c8dff", fill: "rgba(76,141,255,0.16)", label: "C90° Horiz" },
-        { az: 0.0, stroke: "#f5a524", fill: "rgba(245,165,36,0.16)", label: "C0° Vert" },
+        { az: Math.PI * 0.5, stroke: "#4c8dff", fill: "rgba(76,141,255,0.16)" },
+        { az: 0.0, stroke: "#f5a524", fill: "rgba(245,165,36,0.16)" },
       ];
       for (const pl of planes) {
         ctx.beginPath();
         for (let s = -90; s <= 90; s += 2) {
           const pol = (Math.abs(s) * Math.PI) / 180;
           const az = s < 0 ? pl.az + Math.PI : pl.az;
-          let cand = L.kind === 1
-            ? Math.pow(Math.max(0, Math.cos(pol)), 8)
-            : EvaluateNormalizedIesCandela(profId, pol, az);
+          let cand = L.kind === 1 ? Math.pow(Math.max(0, Math.cos(pol)), 8) : EvaluateNormalizedIesCandela(profId, pol, az);
           if (L.kind === 2 && L.halfW > 0.02 && pol > L.halfW) cand *= 0.05;
           const rr = cand * maxR;
           const px = cx + Math.sin((s * Math.PI) / 180) * rr;
@@ -1155,7 +1240,6 @@ export function StartRadiometricLightingStudio() {
       ctx.fillStyle = "#f5a524";
       ctx.fillText(L.kind === 3 ? "ECE -1.0° Kink" : "C0° Axial", w - 92, h - 10);
     } else {
-      // Draw LTC Polygonal / Tube Aperture & Cosine Hemisphere Footprint
       const aspect = Math.max(0.2, Math.min(3.2, L.halfW / Math.max(0.03, L.halfH)));
       const rw = Math.min(w * 0.62, 48 * aspect);
       const rh = L.kind === 5 ? 8 : Math.min(h * 0.54, 48 / Math.max(0.5, aspect));
@@ -1166,7 +1250,6 @@ export function StartRadiometricLightingStudio() {
       ctx.strokeStyle = swatchColorForLuminaire(L);
       ctx.lineWidth = 2;
       ctx.strokeRect(cx - rw * 0.5, cy - rh * 0.5, rw, rh);
-
       ctx.fillStyle = "#a8a8b2";
       ctx.font = "10.5px Inter, sans-serif";
       ctx.fillText(
@@ -1181,7 +1264,7 @@ export function StartRadiometricLightingStudio() {
   const solverDescriptions = [
     {
       title: "Rank #1 · Unified Analytic Radiometry + Spatial-Orientation Partition Cut",
-      body: "100% analytical BRDFs (Dual-Lobe Clipped LTC + 128×32 LM-63 IES + Picott/Karis Tube + Stokes Emissive Contour) indexed by one world-space cone BVH. Zero temporal ghosting on spinning rims/lifts, crisp clearcoat reflections, and O(log N + K) scaling across all 6 render engines.",
+      body: "100% analytical BRDFs (Dual-Lobe Clipped LTC + 128×32 LM-63 IES + Picott/Karis Tube + Stokes Emissive Contour) indexed by one threaded world-space cone BVH. Zero temporal ghosting on spinning rims/lifts, crisp clearcoat reflections, and O(log N + K) scaling across all 6 render engines.",
       warn: false,
     },
     {
@@ -1216,7 +1299,6 @@ export function StartRadiometricLightingStudio() {
       state.solverMode === 2 ? "1-spp ReSTIR DI" : "Pure SDF Voxel Lighting";
   }
 
-  // Wire Top Bar & Inspector Controls
   function bindSegmentedGroup(containerId, stateKey, onChange) {
     const wrap = document.getElementById(containerId);
     wrap.querySelectorAll(".seg-btn").forEach((btn) => {
@@ -1253,7 +1335,6 @@ export function StartRadiometricLightingStudio() {
     updateTelemetryHud();
   });
 
-  // Paint swatches
   const swatchWrap = document.getElementById("paintSwatches");
   PaintPresets.forEach((p, idx) => {
     const b = document.createElement("button");
@@ -1269,7 +1350,6 @@ export function StartRadiometricLightingStudio() {
     swatchWrap.appendChild(b);
   });
 
-  // Inspector sliders
   document.getElementById("ctlIntensity").addEventListener("input", (e) => {
     const L = getSelectedLuminaire();
     if (!L) return;
@@ -1356,30 +1436,20 @@ export function StartRadiometricLightingStudio() {
     state.resetHistory = 1;
   });
 
-  bindPillToggle("btnWheelSpin", () => state.wheelSpin, () => {
-    state.wheelSpin = !state.wheelSpin;
-  });
-
-  bindPillToggle("btnLiftAnim", () => state.animateLift, () => {
-    state.animateLift = !state.animateLift;
-  });
-
+  bindPillToggle("btnWheelSpin", () => state.wheelSpin, () => { state.wheelSpin = !state.wheelSpin; });
+  bindPillToggle("btnLiftAnim", () => state.animateLift, () => { state.animateLift = !state.animateLift; });
   bindPillToggle("btnHeatmap", () => state.froxelHeatmap === 1, () => {
     state.froxelHeatmap = state.froxelHeatmap ? 0 : 1;
     state.resetHistory = 1;
   });
-
   bindPillToggle("btnFalseLux", () => state.falseColorLux === 1, () => {
     state.falseColorLux = state.falseColorLux ? 0 : 1;
   });
-
   bindPillToggle("btnGizmos", () => state.showGizmos === 1, () => {
     state.showGizmos = state.showGizmos ? 0 : 1;
     state.resetHistory = 1;
   });
 
-  // Split-Screen Drag Handle
-  const splitOverlay = document.getElementById("splitOverlay");
   const splitLine = document.getElementById("splitLine");
   const splitKnob = document.getElementById("splitKnob");
   let draggingSplit = false;
@@ -1404,7 +1474,6 @@ export function StartRadiometricLightingStudio() {
   });
   window.addEventListener("pointerup", () => { draggingSplit = false; });
 
-  // Orbit / Pan / Zoom Camera Interaction
   let camDrag = null;
   canvas.addEventListener("pointerdown", (e) => {
     camDrag = { x: e.clientX, y: e.clientY, pan: e.button === 2 || e.shiftKey };
@@ -1439,16 +1508,9 @@ export function StartRadiometricLightingStudio() {
 
   window.addEventListener("resize", () => renderInspectorDiagram());
 
-  // Initialize Scene 0 (Cyclorama)
   loadScenePreset(0);
 
-  // Camera Basis Helper
-  let prevCam = {
-    pos: [0, 2, 6],
-    fwd: [0, 0, -1],
-    right: [1, 0, 0],
-    up: [0, 1, 0],
-  };
+  let prevCam = { pos: [0, 2, 6], fwd: [0, 0, -1], right: [1, 0, 0], up: [0, 1, 0] };
 
   function computeCameraBasis() {
     const cp = Math.cos(state.camPitch), sp = Math.sin(state.camPitch);
@@ -1464,18 +1526,75 @@ export function StartRadiometricLightingStudio() {
     return { pos, fwd, right, up };
   }
 
-  // Uniform location cache
-  const locCache = new Map();
+  const progCache = new WeakMap();
   function uLoc(prog, name) {
-    const k = `${prog === sceneProg ? "S" : "D"}:${name}`;
-    if (!locCache.has(k)) locCache.set(k, gl.getUniformLocation(prog, name));
-    return locCache.get(k);
+    let map = progCache.get(prog);
+    if (!map) {
+      map = new Map();
+      progCache.set(prog, map);
+    }
+    if (!map.has(name)) map.set(name, gl.getUniformLocation(prog, name));
+    return map.get(name);
+  }
+
+  function dispatchShadePass(prog, targetFbo, w, h, now, cam, paint, prevTex, overrideEngineMode) {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, targetFbo);
+    gl.viewport(0, 0, w, h);
+    gl.useProgram(prog);
+
+    gl.uniform2f(uLoc(prog, "uResolution"), w, h);
+    gl.uniform1f(uLoc(prog, "uTime"), now * 0.001);
+    gl.uniform1i(uLoc(prog, "uFrameIndex"), state.frameIndex);
+    gl.uniform3fv(uLoc(prog, "uCamPos"), cam.pos);
+    gl.uniform3fv(uLoc(prog, "uCamFwd"), cam.fwd);
+    gl.uniform3fv(uLoc(prog, "uCamRight"), cam.right);
+    gl.uniform3fv(uLoc(prog, "uCamUp"), cam.up);
+    gl.uniform1f(uLoc(prog, "uTanHalfFov"), Math.tan((40 * Math.PI) / 360));
+
+    gl.uniform1i(uLoc(prog, "uSceneId"), state.sceneId);
+    gl.uniform1i(uLoc(prog, "uEngineMode"), overrideEngineMode);
+    gl.uniform1i(uLoc(prog, "uFroxelHeatmap"), state.froxelHeatmap);
+    gl.uniform1i(uLoc(prog, "uCutBudget"), state.cutBudget);
+    gl.uniform1i(uLoc(prog, "uLuminaireCount"), state.activeGpuCount);
+    gl.uniform1i(uLoc(prog, "uPartitionNodeCount"), state.partitionNodeCount);
+
+    gl.uniform3fv(uLoc(prog, "uCarAlbedo"), paint.rgb);
+    gl.uniform1f(uLoc(prog, "uCarMetallic"), paint.metallic);
+    gl.uniform1f(uLoc(prog, "uCarRoughness"), paint.roughness);
+    gl.uniform1f(uLoc(prog, "uCoatRoughness"), state.coatRoughness);
+    gl.uniform1f(uLoc(prog, "uLiftHeight"), state.liftHeight);
+    gl.uniform1f(uLoc(prog, "uSunElevation"), state.sunElevation);
+    gl.uniform1i(uLoc(prog, "uMatCapKeyLock"), state.matCapKeyLock);
+    gl.uniform1i(uLoc(prog, "uShowGizmos"), state.showGizmos);
+
+    gl.uniform3fv(uLoc(prog, "uPrevCamPos"), prevCam.pos);
+    gl.uniform3fv(uLoc(prog, "uPrevCamFwd"), prevCam.fwd);
+    gl.uniform3fv(uLoc(prog, "uPrevCamRight"), prevCam.right);
+    gl.uniform3fv(uLoc(prog, "uPrevCamUp"), prevCam.up);
+    gl.uniform1i(uLoc(prog, "uResetHistory"), state.resetHistory);
+    gl.uniform1i(uLoc(prog, "uLdrFallback"), useLdrShadeTarget ? 1 : 0);
+
+    const bindTex = (unit, tex, name) => {
+      gl.activeTexture(gl.TEXTURE0 + unit);
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.uniform1i(uLoc(prog, name), unit);
+    };
+    bindTex(0, gPosMatTex, "uGPosMat");
+    bindTex(1, gNormDepthTex, "uGNormDepth");
+    bindTex(2, lumTex, "uLuminaireTex");
+    bindTex(3, partTex, "uPartitionTex");
+    bindTex(4, iesTex, "uIesAtlasTex");
+    bindTex(5, ltcTex, "uLtcTex");
+    bindTex(6, prevTex, "uPrevAccumTex");
+
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
   let lastTime = performance.now();
   let fpsAccum = 0, fpsCount = 0;
 
   function renderTick(now) {
+    if (gl.isContextLost()) return;
     const dt = Math.min(0.1, (now - lastTime) * 0.001);
     lastTime = now;
     fpsAccum += dt;
@@ -1497,7 +1616,7 @@ export function StartRadiometricLightingStudio() {
     }
 
     const rect = canvas.getBoundingClientRect();
-    const scale = Math.min(1.25, window.devicePixelRatio || 1) * 0.88;
+    const scale = Math.min(1.25, window.devicePixelRatio || 1) * 0.92;
     const w = Math.max(320, Math.floor(rect.width * scale));
     const h = Math.max(200, Math.floor(rect.height * scale));
     if (canvas.width !== w || canvas.height !== h) {
@@ -1506,79 +1625,71 @@ export function StartRadiometricLightingStudio() {
       state.resetHistory = 1;
       state.frameIndex = 0;
     }
-    ensurePingPong(w, h);
+    ensureRenderTargets(w, h);
+    if (!gbufFbo || !pingPong[0] || !pingPong[1] || !gbufferProg || !displayProg) {
+      requestAnimationFrame(renderTick);
+      return;
+    }
 
     const cam = computeCameraBasis();
     const paint = PaintPresets[state.paintIdx];
     const srcIdx = ppIdx;
     const dstIdx = 1 - ppIdx;
 
-    // Pass 1: Radiometric Scene Compute/Fragment into dst Ping-Pong FBO
-    gl.bindFramebuffer(gl.FRAMEBUFFER, pingPong[dstIdx].fbo);
+    const activeProgIdx = state.engineMode === 0 ? 0 : state.solverMode;
+    const activeProg = getSolverProg(activeProgIdx);
+    if (!activeProg) {
+      requestAnimationFrame(renderTick);
+      return;
+    }
+
+    // Pass 1: Deferred Primary Raymarch into G-Buffer (Zero light loops!)
+    gl.bindFramebuffer(gl.FRAMEBUFFER, gbufFbo);
     gl.viewport(0, 0, w, h);
-    gl.useProgram(sceneProg);
+    gl.useProgram(gbufferProg);
     gl.bindVertexArray(emptyVao);
-
-    gl.uniform2f(uLoc(sceneProg, "uResolution"), w, h);
-    gl.uniform1f(uLoc(sceneProg, "uTime"), now * 0.001);
-    gl.uniform1i(uLoc(sceneProg, "uFrameIndex"), state.frameIndex);
-    gl.uniform3fv(uLoc(sceneProg, "uCamPos"), cam.pos);
-    gl.uniform3fv(uLoc(sceneProg, "uCamFwd"), cam.fwd);
-    gl.uniform3fv(uLoc(sceneProg, "uCamRight"), cam.right);
-    gl.uniform3fv(uLoc(sceneProg, "uCamUp"), cam.up);
-    gl.uniform1f(uLoc(sceneProg, "uTanHalfFov"), Math.tan((40 * Math.PI) / 360));
-
-    gl.uniform1i(uLoc(sceneProg, "uSceneId"), state.sceneId);
-    gl.uniform1i(uLoc(sceneProg, "uEngineMode"), state.engineMode);
-    gl.uniform1i(uLoc(sceneProg, "uSolverMode"), state.solverMode);
-    gl.uniform1i(uLoc(sceneProg, "uCompareSplit"), state.compareSplit);
-    gl.uniform1f(uLoc(sceneProg, "uSplitX"), state.splitX);
-    gl.uniform1i(uLoc(sceneProg, "uFroxelHeatmap"), state.froxelHeatmap);
-    gl.uniform1i(uLoc(sceneProg, "uCutBudget"), state.cutBudget);
-    gl.uniform1i(uLoc(sceneProg, "uLuminaireCount"), state.activeGpuCount);
-    gl.uniform1i(uLoc(sceneProg, "uPartitionRoot"), state.partitionRoot);
-
-    gl.uniform3fv(uLoc(sceneProg, "uCarAlbedo"), paint.rgb);
-    gl.uniform1f(uLoc(sceneProg, "uCarMetallic"), paint.metallic);
-    gl.uniform1f(uLoc(sceneProg, "uCarRoughness"), paint.roughness);
-    gl.uniform1f(uLoc(sceneProg, "uCoatRoughness"), state.coatRoughness);
-    gl.uniform1f(uLoc(sceneProg, "uWheelAngle"), state.wheelAngle);
-    gl.uniform1f(uLoc(sceneProg, "uLiftHeight"), state.liftHeight);
-    gl.uniform1f(uLoc(sceneProg, "uSunElevation"), state.sunElevation);
-    gl.uniform1f(uLoc(sceneProg, "uExposure"), state.exposure);
-    gl.uniform1i(uLoc(sceneProg, "uMatCapKeyLock"), state.matCapKeyLock);
-    gl.uniform1i(uLoc(sceneProg, "uShowGizmos"), state.showGizmos);
-
-    gl.uniform3fv(uLoc(sceneProg, "uPrevCamPos"), prevCam.pos);
-    gl.uniform3fv(uLoc(sceneProg, "uPrevCamFwd"), prevCam.fwd);
-    gl.uniform3fv(uLoc(sceneProg, "uPrevCamRight"), prevCam.right);
-    gl.uniform3fv(uLoc(sceneProg, "uPrevCamUp"), prevCam.up);
-    gl.uniform1i(uLoc(sceneProg, "uResetHistory"), state.resetHistory);
-    gl.uniform1i(uLoc(sceneProg, "uLdrFallback"), hasColorFloat ? 0 : 1);
-
-    const bindTex = (unit, tex, name) => {
-      gl.activeTexture(gl.TEXTURE0 + unit);
-      gl.bindTexture(gl.TEXTURE_2D, tex);
-      gl.uniform1i(uLoc(sceneProg, name), unit);
-    };
-    bindTex(0, lumTex, "uLuminaireTex");
-    bindTex(1, partTex, "uPartitionTex");
-    bindTex(2, iesTex, "uIesAtlasTex");
-    bindTex(3, ltcTex, "uLtcTex");
-    bindTex(4, pingPong[srcIdx].tex, "uPrevAccumTex");
-
+    gl.uniform2f(uLoc(gbufferProg, "uResolution"), w, h);
+    gl.uniform3fv(uLoc(gbufferProg, "uCamPos"), cam.pos);
+    gl.uniform3fv(uLoc(gbufferProg, "uCamFwd"), cam.fwd);
+    gl.uniform3fv(uLoc(gbufferProg, "uCamRight"), cam.right);
+    gl.uniform3fv(uLoc(gbufferProg, "uCamUp"), cam.up);
+    gl.uniform1f(uLoc(gbufferProg, "uTanHalfFov"), Math.tan((40 * Math.PI) / 360));
+    gl.uniform1i(uLoc(gbufferProg, "uSceneId"), state.sceneId);
+    gl.uniform1f(uLoc(gbufferProg, "uWheelAngle"), state.wheelAngle);
+    gl.uniform1f(uLoc(gbufferProg, "uLiftHeight"), state.liftHeight);
+    const jx = state.engineMode === 3 ? (((state.frameIndex * 0.75487766) % 1) - 0.5) / w : 0;
+    const jy = state.engineMode === 3 ? (((state.frameIndex * 0.56984029) % 1) - 0.5) / h : 0;
+    gl.uniform2f(uLoc(gbufferProg, "uJitter"), jx, jy);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 
-    // Pass 2: ACES Filmic / False-Colour Isolux Display Output
+    // Pass 2: Active Solver Shade Pass (and Reference Partition Pass when A/B Split Wipe is enabled)
+    dispatchShadePass(activeProg, pingPong[dstIdx].fbo, w, h, now, cam, paint, pingPong[srcIdx].tex, state.engineMode);
+
+    let leftSplitTex = pingPong[dstIdx].tex;
+    if (state.compareSplit === 1) {
+      const refProg = getSolverProg(0);
+      if (refProg) {
+        const refEngine = state.engineMode === 0 ? 2 : state.engineMode;
+        dispatchShadePass(refProg, refSplitFbo, w, h, now, cam, paint, pingPong[srcIdx].tex, refEngine);
+        leftSplitTex = refSplitTex;
+      }
+    }
+
+    // Pass 3: ACES Filmic / False-Colour Isolux + Split-Wipe Display Composite
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, w, h);
     gl.useProgram(displayProg);
     gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, leftSplitTex);
+    gl.uniform1i(uLoc(displayProg, "uHdrTexA"), 0);
+    gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, pingPong[dstIdx].tex);
-    gl.uniform1i(uLoc(displayProg, "uHdrTex"), 0);
+    gl.uniform1i(uLoc(displayProg, "uHdrTexB"), 1);
+    gl.uniform1i(uLoc(displayProg, "uCompareSplit"), state.compareSplit);
+    gl.uniform1f(uLoc(displayProg, "uSplitX"), state.splitX);
     gl.uniform1f(uLoc(displayProg, "uExposure"), state.exposure);
     gl.uniform1i(uLoc(displayProg, "uFalseColorLux"), state.falseColorLux);
-    gl.uniform1i(uLoc(displayProg, "uLdrFallback"), hasColorFloat ? 0 : 1);
+    gl.uniform1i(uLoc(displayProg, "uLdrFallback"), useLdrShadeTarget ? 1 : 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 
     ppIdx = dstIdx;
@@ -1589,24 +1700,13 @@ export function StartRadiometricLightingStudio() {
     requestAnimationFrame(renderTick);
   }
 
-  // Expose deterministic automation handle for validation & visual proofs
   window.__RadiometricLab = {
     state,
-    setScene: (id) => {
-      document.querySelectorAll("#segScenes .seg-btn")[id]?.click();
-    },
-    setSolver: (id) => {
-      document.querySelectorAll("#segSolvers .seg-btn")[id]?.click();
-    },
-    setEngine: (id) => {
-      document.querySelectorAll("#segEngines .seg-btn")[id]?.click();
-    },
-    setDensity: (id) => {
-      document.querySelectorAll("#segDensity .seg-btn")[id]?.click();
-    },
-    toggleSplit: () => {
-      document.getElementById("btnSplit").click();
-    },
+    setScene: (id) => document.querySelectorAll("#segScenes .seg-btn")[id]?.click(),
+    setSolver: (id) => document.querySelectorAll("#segSolvers .seg-btn")[id]?.click(),
+    setEngine: (id) => document.querySelectorAll("#segEngines .seg-btn")[id]?.click(),
+    setDensity: (id) => document.querySelectorAll("#segDensity .seg-btn")[id]?.click(),
+    toggleSplit: () => document.getElementById("btnSplit").click(),
   };
 
   requestAnimationFrame(renderTick);
