@@ -6,11 +6,15 @@
 //      ① 32x32x32 3D Voxel SDF volumes (exposing Standard Signed Zero-Crossing Erasure vs. Dilated Two-Sided Blob Bloat), and
 //      ② The Two-Level 16x16x16 Canopy Brick + 2.5D Signed-Sheet Extrusion SDF with automatic Cone-Width Beer-Lambert Optical-Depth LOD.
 
-export const LeafArchetypeCount = 5;
-export const LeafSdf2dRes       = 64;   // [px] - 64x64 2D Signed Distance Grid per leaf archetype (20 KB total for all 5!)
-export const MacroVoxelRes      = 32;   // [cells] - 32^3 3D Voxel SDF resolution for trunk + comparison voxel modes
-export const CanopyBrickRes     = 16;   // [bricks] - 16^3 macro brick accelerator for leaf instance lists & 3-axis optical depth
-export const LeafHalfThicknessM = 0.0006; // [m] - 0.6 mm half-thickness (1.2 mm total physical leaf blade thickness!)
+export const LeafArchetypeCount   = 5;
+export const LeafSdf2dRes         = 64;     // [px] - 64x64 2D Signed Distance Grid per leaf archetype (20 KB total for all 5!)
+export const MacroVoxelRes        = 32;     // [cells] - 32^3 3D Voxel SDF resolution for canopy hull + leaf voxel comparison modes
+export const CanopyBrickRes       = 16;     // [bricks] - 16^3 macro brick accelerator for leaf instance lists & 3-axis optical depth
+export const LeafHalfThicknessM   = 0.0006; // [m] - 0.6 mm half-thickness (1.2 mm total physical leaf blade thickness!)
+export const DefaultBarkNoiseAmp  = 0.65;   // [0..1] - 3D procedural bark furrow & woody burl radial displacement strength
+export const DefaultBarkNoiseFreq = 9.5;    // [1/m]  - Spatial frequency of 3D procedural bark ridges & burls
+export const DefaultBranchGnarl   = 0.55;   // [0..1] - Organic 3D centerline gnarl curvature along articulated capsule limbs
+export const BarkDispMaxFrac      = 0.18;   // Max fraction of local capsule radius displaced by 3D bark FBM (radius stays >= 0.82*R!)
 
 export const SdfEvaluationMode = Object.freeze({
     StandardVoxel3d:    0, // 🔴 Standard 32^3 Signed Voxel SDF -> thin leaves vanish (all 8 voxel corners > 0!)
@@ -336,8 +340,64 @@ export function SampleLeaf2dSdfBilinear(Grid64, LocalX, LocalZ)
 }
 
 //============================================================================================================================================
-//                                  2. PROCEDURAL ARBOR BRANCH CAPSULES & INSTANCED CURVED LEAVES
+//                     2. 3D PROCEDURAL BARK & GNARL FBM NOISE + ARTICULATED WATERTIGHT CAPSULE ARBOR BUILDER
 //============================================================================================================================================
+
+function FractScalar(X)
+{
+    return X - Math.floor(X);
+}
+
+// Sin-free modulo-289 3D lattice hash (matches WGSL & GLSL float32 evaluation bit-for-bit across GPU vendors!)
+export function HashLattice3d(Ix, Iy, Iz)
+{
+    const Wx = Ix - Math.floor(Ix * (1.0 / 289.0)) * 289.0;
+    const Wy = Iy - Math.floor(Iy * (1.0 / 289.0)) * 289.0;
+    const Wz = Iz - Math.floor(Iz * (1.0 / 289.0)) * 289.0;
+    let Px = FractScalar(Wx * 0.1031);
+    let Py = FractScalar(Wy * 0.1030);
+    let Pz = FractScalar(Wz * 0.0973);
+    const D = Px * (Py + 19.19) + Py * (Pz + 19.19) + Pz * (Px + 19.19);
+    Px += D;
+    Py += D;
+    Pz += D;
+    return FractScalar((Px + Py) * Pz);
+}
+
+export function EvalSmoothNoise3d(Qx, Qy, Qz)
+{
+    const Ix = Math.floor(Qx), Iy = Math.floor(Qy), Iz = Math.floor(Qz);
+    const Fx = Qx - Ix,        Fy = Qy - Iy,        Fz = Qz - Iz;
+    const Ux = Fx * Fx * (3.0 - 2.0 * Fx);
+    const Uy = Fy * Fy * (3.0 - 2.0 * Fy);
+    const Uz = Fz * Fz * (3.0 - 2.0 * Fz);
+
+    const N000 = HashLattice3d(Ix,       Iy,       Iz);
+    const N100 = HashLattice3d(Ix + 1.0, Iy,       Iz);
+    const N010 = HashLattice3d(Ix,       Iy + 1.0, Iz);
+    const N110 = HashLattice3d(Ix + 1.0, Iy + 1.0, Iz);
+    const N001 = HashLattice3d(Ix,       Iy,       Iz + 1.0);
+    const N101 = HashLattice3d(Ix + 1.0, Iy,       Iz + 1.0);
+    const N011 = HashLattice3d(Ix,       Iy + 1.0, Iz + 1.0);
+    const N111 = HashLattice3d(Ix + 1.0, Iy + 1.0, Iz + 1.0);
+
+    const Nx00 = N000 + (N100 - N000) * Ux;
+    const Nx10 = N010 + (N110 - N010) * Ux;
+    const Nx01 = N001 + (N101 - N001) * Ux;
+    const Nx11 = N011 + (N111 - N011) * Ux;
+    const Nxy0 = Nx00 + (Nx10 - Nx00) * Uy;
+    const Nxy1 = Nx01 + (Nx11 - Nx01) * Uy;
+    return Nxy0 + (Nxy1 - Nxy0) * Uz;
+}
+
+// Anisotropic 2-octave 3D Bark Ridge + Woody Burl FBM in [-1, +1] (elongated along limb grain + finer burl knots)
+export function EvalBarkFbm3d(Px, Py, Pz, Freq = DefaultBarkNoiseFreq)
+{
+    const Oct1 = EvalSmoothNoise3d(Px * Freq, Py * Freq * 0.46, Pz * Freq) * 2.0 - 1.0;
+    const F2   = Freq * 2.13;
+    const Oct2 = EvalSmoothNoise3d(Pz * F2 + 11.3, Px * 0.62 * F2 + 7.1, Py * F2 + 5.7) * 2.0 - 1.0;
+    return Oct1 * 0.68 + Oct2 * 0.32;
+}
 
 function MakeSeededPrng(SeedInt)
 {
@@ -372,35 +432,123 @@ function BuildLeafOrthonormalAxes(ForwardDir, RollAngle)
     return { XAxis, YAxis, ZAxis };
 }
 
-// 📝 Constructs one of 3 Scene Presets:
-//    - "bough-closeup":  Isolated forked wooden bough + 38 large crisp instanced leaves across all 5 archetypes (1.5 m above floor!)
-//    - "full-arbor":     Complete botanical arbor (trunk + 15 limbs + 280 instanced leaves across 5 archetypes)
-//    - "avenue-lod":     3 arbors arrayed from near (z = +1.5 m) to mid/far (z = -14 m) demonstrating Cone-Width Optical-Depth LOD
-export function ConstructFoliagePreset(PresetId)
+function EvalCatmullPoint(A, B, C, D, T)
 {
+    const T2 = T * T;
+    const T3 = T2 * T;
+    const Out = [0.0, 0.0, 0.0];
+    for (let K = 0; K < 3; ++K)
+    {
+        Out[K] = 0.5 * (
+            (2.0 * B[K]) +
+            (-A[K] + C[K]) * T +
+            (2.0 * A[K] - 5.0 * B[K] + 4.0 * C[K] - D[K]) * T2 +
+            (-A[K] + 3.0 * B[K] - 3.0 * C[K] + D[K]) * T3
+        );
+    }
+    return Out;
+}
+
+// 📝 Constructs one of 3 Scene Presets using continuous ball-jointed Tapered Capsule Chains + 3D Procedural Gnarl & Bark Noise:
+//    - "bough-closeup":  Organic cantilevered bough + 5 welded lateral sub-twigs + 36 curved leaves across all 5 archetypes
+//    - "full-arbor":     Complete botanical arbor (sculpted trunk + 9 curved limbs + 18 lateral fork twigs + 235 curved leaves)
+//    - "avenue-lod":     3 full arbors arrayed from near (z = +1.2 m) to far (z = -9.8 m) demonstrating Cone-Width Optical-Depth LOD
+export function ConstructFoliagePreset(PresetId, BarkOpts = {})
+{
+    const BarkNoiseAmp  = BarkOpts.BarkNoiseAmp  !== undefined ? BarkOpts.BarkNoiseAmp  : DefaultBarkNoiseAmp;
+    const BarkNoiseFreq = BarkOpts.BarkNoiseFreq !== undefined ? BarkOpts.BarkNoiseFreq : DefaultBarkNoiseFreq;
+    const BranchGnarl   = BarkOpts.BranchGnarl   !== undefined ? BarkOpts.BranchGnarl   : DefaultBranchGnarl;
+
     const Rand = MakeSeededPrng(PresetId === "bough-closeup" ? 1337 : (PresetId === "full-arbor" ? 4209 : 9001));
-    const Capsules = [];     // { P0:[3], R0, P1:[3], R1 }
+    const Capsules = [];      // { P0:[3], R0, P1:[3], R1 }
     const LeafInstances = []; // { Center:[3], XAxis:[3], YAxis:[3], ZAxis:[3], Scale, ArchetypeId, CamberX, CamberZ }
 
-    function AddTaperedCapsule(P0, R0, P1, R1)
+    // Builds an unbroken chain of ball-jointed Tapered Capsules along smooth waypoints + 3D procedural gnarl noise.
+    // Pinned exact-on Waypoints[0] at U = 0 so every limb collar stays 100% welded inside its host limb's centerline!
+    function AppendOrganicCapsuleChain(Waypoints, Radii, TotalSegments, GnarlDisplacementM)
     {
-        Capsules.push({ P0, R0, P1, R1 });
+        const SpanCount = Waypoints.length - 1;
+        const SamplesPos = [];
+        const SamplesRad = [];
+
+        for (let Step = 0; Step <= TotalSegments; ++Step)
+        {
+            const U = Step / TotalSegments;
+            const Scaled = U * SpanCount;
+            const Seg = Math.min(SpanCount - 1, Math.floor(Scaled));
+            const LocalT = Scaled - Seg;
+
+            const W0 = Waypoints[Math.max(0, Seg - 1)];
+            const W1 = Waypoints[Seg];
+            const W2 = Waypoints[Seg + 1];
+            const W3 = Waypoints[Math.min(SpanCount, Seg + 2)];
+
+            const SmoothPt = SpanCount === 1
+                ? [W1[0] + (W2[0] - W1[0]) * LocalT, W1[1] + (W2[1] - W1[1]) * LocalT, W1[2] + (W2[2] - W1[2]) * LocalT]
+                : EvalCatmullPoint(W0, W1, W2, W3, LocalT);
+
+            const Rad = Radii[Seg] + (Radii[Seg + 1] - Radii[Seg]) * LocalT;
+
+            // Zero gnarl at U = 0 so attachment joint never detaches from host limb!
+            const Env = Math.sin(Math.PI * Math.min(1.0, U * 0.92)) * BranchGnarl * GnarlDisplacementM;
+            let Pos = SmoothPt;
+            if (Step > 0 && Env > 1e-5)
+            {
+                const Tang = Normalize3([W2[0] - W1[0], W2[1] - W1[1], W2[2] - W1[2]]);
+                const RefUp = Math.abs(Tang[1]) > 0.90 ? [1.0, 0.0, 0.0] : [0.0, 1.0, 0.0];
+                const PerpA = Normalize3(Cross3(RefUp, Tang));
+                const PerpB = Normalize3(Cross3(Tang, PerpA));
+                const N1 = EvalBarkFbm3d(SmoothPt[0] + 3.1, SmoothPt[1] + 1.7, SmoothPt[2] - 2.3, 1.85);
+                const N2 = EvalBarkFbm3d(SmoothPt[2] - 4.7, SmoothPt[0] + 2.9, SmoothPt[1] + 5.1, 1.85);
+                Pos = [
+                    SmoothPt[0] + (PerpA[0] * N1 + PerpB[0] * N2) * Env,
+                    SmoothPt[1] + (PerpA[1] * N1 + PerpB[1] * N2) * Env,
+                    SmoothPt[2] + (PerpA[2] * N1 + PerpB[2] * N2) * Env
+                ];
+            }
+
+            SamplesPos.push(Pos);
+            SamplesRad.push(Rad);
+        }
+
+        for (let Step = 0; Step < TotalSegments; ++Step)
+        {
+            Capsules.push({
+                P0: SamplesPos[Step],
+                R0: SamplesRad[Step],
+                P1: SamplesPos[Step + 1],
+                R1: SamplesRad[Step + 1]
+            });
+        }
+
+        return { SamplesPos, SamplesRad };
     }
 
-    function AddLeafSprayAlongTwig(TwigStart, TwigEnd, Count, LeafScaleRange, ArchBias = -1)
+    function SampleCapsuleChain(Chain, Frac)
     {
-        const TwigVec = [TwigEnd[0] - TwigStart[0], TwigEnd[1] - TwigStart[1], TwigEnd[2] - TwigStart[2]];
-        const TwigDir = Normalize3(TwigVec);
+        const Last = Chain.SamplesPos.length - 1;
+        const F = Clamp(Frac, 0.0, 1.0) * Last;
+        const I0 = Math.min(Last - 1, Math.floor(F));
+        const T  = F - I0;
+        const A  = Chain.SamplesPos[I0];
+        const B  = Chain.SamplesPos[I0 + 1];
+        return {
+            Pos: [A[0] + (B[0] - A[0]) * T, A[1] + (B[1] - A[1]) * T, A[2] + (B[2] - A[2]) * T],
+            Rad: Chain.SamplesRad[I0] + (Chain.SamplesRad[I0 + 1] - Chain.SamplesRad[I0]) * T,
+            Tangent: Normalize3([B[0] - A[0], B[1] - A[1], B[2] - A[2]])
+        };
+    }
 
+    function AddLeafSprayAlongChain(TwigChain, FracStart, FracEnd, Count, LeafScaleRange, ArchBias = -1)
+    {
         for (let K = 0; K < Count; ++K)
         {
-            const Frac = Count === 1 ? 1.0 : (0.18 + 0.82 * (K / (Count - 1)));
+            const Alpha = Count === 1 ? 1.0 : (K / (Count - 1));
+            const Frac  = FracStart + (FracEnd - FracStart) * Alpha;
             const SideSign = (K % 2 === 0) ? 1.0 : -1.0;
-            const MountPt = [
-                TwigStart[0] + TwigVec[0] * Frac,
-                TwigStart[1] + TwigVec[1] * Frac,
-                TwigStart[2] + TwigVec[2] * Frac
-            ];
+            const Sample = SampleCapsuleChain(TwigChain, Frac);
+            const MountPt = Sample.Pos;
+            const TwigDir = Sample.Tangent;
 
             const SideLat = Normalize3(Cross3([0.0, 1.0, 0.0], TwigDir));
             const Splay = K === Count - 1 ? 0.0 : SideSign * (0.68 + 0.35 * Rand());
@@ -412,7 +560,7 @@ export function ConstructFoliagePreset(PresetId)
             ]);
 
             const Scale = LeafScaleRange[0] + (LeafScaleRange[1] - LeafScaleRange[0]) * Rand();
-            // Position leaf blade center so petiole (-0.85 * Scale along ZAxis) meets the twig!
+            // Position leaf blade center so petiole (-0.85 * Scale along ZAxis) meets the twig capsule cleanly!
             const Center = [
                 MountPt[0] + OutDir[0] * Scale * 0.82,
                 MountPt[1] + OutDir[1] * Scale * 0.82,
@@ -438,30 +586,53 @@ export function ConstructFoliagePreset(PresetId)
 
     if (PresetId === "bough-closeup")
     {
-        // Sculpted low cantilevered bough at y = 1.25..1.95 m so individual Oak, Maple, Linden, Beech & Willow shadows
-        // project large and razor-sharp onto the sunlit ground & vertical garden wall!
-        AddTaperedCapsule([-1.55, 0.0, -0.45], 0.15, [-1.15, 1.28, -0.25], 0.10);
-        AddTaperedCapsule([-1.15, 1.28, -0.25], 0.10, [-0.15, 1.56,  0.05], 0.065);
-        AddTaperedCapsule([-0.15, 1.56,  0.05], 0.065,[ 0.92, 1.48,  0.22], 0.032);
+        // Continuous curved cantilevered wooden bough (8 ball-jointed tapered capsules — zero sharp elbow kinks!)
+        const MainBough = AppendOrganicCapsuleChain(
+            [
+                [-1.55, 0.00, -0.45],
+                [-1.30, 0.86, -0.32],
+                [-0.86, 1.37, -0.15],
+                [-0.12, 1.56,  0.05],
+                [ 0.92, 1.47,  0.22]
+            ],
+            [0.155, 0.122, 0.094, 0.064, 0.030],
+            8,
+            0.065
+        );
 
-        const SubTwigs = [
-            { A: [-0.82, 1.38, -0.15], B: [-0.45, 1.52,  0.78], Arch: 3, N: 7 }, // 5-Point Maple spray!
-            { A: [-0.48, 1.48, -0.05], B: [-0.08, 1.66, -0.78], Arch: 2, N: 7 }, // Lobed Oak spray!
-            { A: [-0.05, 1.56,  0.06], B: [ 0.42, 1.62,  0.86], Arch: 1, N: 7 }, // Heart Linden spray!
-            { A: [ 0.32, 1.52,  0.12], B: [ 0.78, 1.58, -0.64], Arch: 0, N: 7 }, // Serrated Beech spray!
-            { A: [ 0.65, 1.49,  0.18], B: [ 1.32, 1.36,  0.42], Arch: 4, N: 8 }  // Slender Willow tip spray!
+        const SubTwigSpecs = [
+            { HostFrac: 0.48, Tip: [-0.45, 1.52,  0.78], Arch: 3, N: 7 }, // 5-Point Maple spray!
+            { HostFrac: 0.60, Tip: [-0.08, 1.66, -0.78], Arch: 2, N: 7 }, // Lobed Oak spray!
+            { HostFrac: 0.73, Tip: [ 0.42, 1.62,  0.86], Arch: 1, N: 7 }, // Heart Linden spray!
+            { HostFrac: 0.84, Tip: [ 0.78, 1.58, -0.64], Arch: 0, N: 7 }, // Serrated Beech spray!
+            { HostFrac: 0.93, Tip: [ 1.32, 1.36,  0.42], Arch: 4, N: 8 }  // Slender Willow tip spray!
         ];
-        for (const Tw of SubTwigs)
+        for (const Tw of SubTwigSpecs)
         {
-            AddTaperedCapsule(Tw.A, 0.034, Tw.B, 0.014);
-            AddLeafSprayAlongTwig(Tw.A, Tw.B, Tw.N, [0.145, 0.185], Tw.Arch);
+            const Anchor = SampleCapsuleChain(MainBough, Tw.HostFrac);
+            const MidPt = [
+                0.5 * (Anchor.Pos[0] + Tw.Tip[0]),
+                0.5 * (Anchor.Pos[1] + Tw.Tip[1]) + 0.045,
+                0.5 * (Anchor.Pos[2] + Tw.Tip[2])
+            ];
+            const CollarR = Math.min(0.038, Anchor.Rad * 0.78);
+            const TwigChain = AppendOrganicCapsuleChain(
+                [Anchor.Pos, MidPt, Tw.Tip],
+                [CollarR, 0.024, 0.014],
+                2,
+                0.040
+            );
+            AddLeafSprayAlongChain(TwigChain, 0.18, 1.0, Tw.N, [0.145, 0.185], Tw.Arch);
         }
 
         return {
             PresetId,
-            Label: "Isolated 5-Template Bough (36 Thin Curved Leaves · 1.2 mm Blade)",
+            Label: "Isolated 5-Template Bough (36 Thin Curved Leaves · 18 Bark Capsules)",
             BoundsMin: [-1.85, -0.05, -1.55],
             BoundsMax: [ 1.85,  2.35,  1.55],
+            BarkNoiseAmp,
+            BarkNoiseFreq,
+            BranchGnarl,
             Capsules,
             LeafInstances
         };
@@ -471,48 +642,88 @@ export function ConstructFoliagePreset(PresetId)
     {
         const [Ox, Oy, Oz] = RootOrigin;
         const S = HeightScale;
-        const TrunkMid = [Ox + 0.06 * S, Oy + 1.35 * S, Oz - 0.04 * S];
-        const TrunkTop = [Ox - 0.03 * S, Oy + 2.25 * S, Oz + 0.03 * S];
-        AddTaperedCapsule([Ox, Oy, Oz], 0.21 * S, TrunkMid, 0.15 * S);
-        AddTaperedCapsule(TrunkMid, 0.15 * S, TrunkTop, 0.10 * S);
+
+        // Continuous organic S-curved trunk all the way from root flare to crown apex (zero radius step-downs or detached limbs!)
+        const TrunkChain = AppendOrganicCapsuleChain(
+            [
+                [Ox,            Oy,            Oz],
+                [Ox + 0.05 * S, Oy + 1.15 * S, Oz - 0.04 * S],
+                [Ox - 0.03 * S, Oy + 2.22 * S, Oz + 0.03 * S],
+                [Ox + 0.01 * S, Oy + 3.35 * S, Oz - 0.01 * S]
+            ],
+            [0.22 * S, 0.155 * S, 0.102 * S, 0.020 * S],
+            7,
+            0.075 * S
+        );
 
         const LimbCount = 9;
         for (let L = 0; L < LimbCount; ++L)
         {
             const Az = (L / LimbCount) * Math.PI * 2.0 + 0.35;
             const Tier = L % 3;
-            const StartY = Oy + (1.48 + Tier * 0.38) * S;
-            const Reach  = (1.32 - Tier * 0.18) * S;
-            const EndY   = StartY + (0.48 + Tier * 0.24) * S;
+            const TrunkFrac = 0.43 + Tier * 0.115 + (L * 0.008);
+            const TrunkJoint = SampleCapsuleChain(TrunkChain, TrunkFrac);
 
-            const LStart = [Ox, StartY, Oz];
-            const LMid   = [Ox + Math.cos(Az) * Reach * 0.55, StartY + 0.32 * S, Oz + Math.sin(Az) * Reach * 0.55];
-            const LEnd   = [Ox + Math.cos(Az) * Reach, EndY, Oz + Math.sin(Az) * Reach];
+            const Reach = (1.34 - Tier * 0.17) * S;
+            const Rise  = (0.50 + Tier * 0.23) * S;
+            const LStart = TrunkJoint.Pos;
+            const LMid = [
+                LStart[0] + Math.cos(Az) * Reach * 0.54,
+                LStart[1] + Rise * 0.62,
+                LStart[2] + Math.sin(Az) * Reach * 0.54
+            ];
+            const LEnd = [
+                LStart[0] + Math.cos(Az) * Reach,
+                LStart[1] + Rise,
+                LStart[2] + Math.sin(Az) * Reach
+            ];
 
-            AddTaperedCapsule(LStart, 0.082 * S, LMid, 0.048 * S);
-            AddTaperedCapsule(LMid,   0.048 * S, LEnd, 0.022 * S);
+            const LimbR0 = Math.min(0.084 * S, TrunkJoint.Rad * 0.78);
+            const LimbChain = AppendOrganicCapsuleChain(
+                [LStart, LMid, LEnd],
+                [LimbR0, 0.048 * S, 0.020 * S],
+                3,
+                0.055 * S
+            );
 
             const ArchChoice = MixedArchetypes ? (L % LeafArchetypeCount) : ((L + 2) % LeafArchetypeCount);
-            AddLeafSprayAlongTwig(LMid, LEnd, 9, [0.115 * S, 0.155 * S], ArchChoice);
+            AddLeafSprayAlongChain(LimbChain, 0.50, 1.0, 9, [0.115 * S, 0.155 * S], ArchChoice);
 
-            // Two lateral fork twigs per main limb
+            // Two lateral fork twigs per main limb, welded directly onto LimbChain's curved centerline!
             for (const ForkSign of [-1.0, 1.0])
             {
-                const ForkAz = Az + ForkSign * 0.52;
+                const ForkAnchor = SampleCapsuleChain(LimbChain, 0.52);
+                const ForkAz = Az + ForkSign * 0.54;
                 const FEnd = [
-                    LMid[0] + Math.cos(ForkAz) * Reach * 0.58,
-                    LMid[1] + (0.24 + 0.15 * Rand()) * S,
-                    LMid[2] + Math.sin(ForkAz) * Reach * 0.58
+                    ForkAnchor.Pos[0] + Math.cos(ForkAz) * Reach * 0.58,
+                    ForkAnchor.Pos[1] + (0.24 + 0.15 * Rand()) * S,
+                    ForkAnchor.Pos[2] + Math.sin(ForkAz) * Reach * 0.58
                 ];
-                AddTaperedCapsule(LMid, 0.034 * S, FEnd, 0.014 * S);
-                AddLeafSprayAlongTwig(LMid, FEnd, 8, [0.105 * S, 0.145 * S], (ArchChoice + (ForkSign > 0 ? 1 : 2)) % LeafArchetypeCount);
+                const FMid = [
+                    0.5 * (ForkAnchor.Pos[0] + FEnd[0]),
+                    0.5 * (ForkAnchor.Pos[1] + FEnd[1]) + 0.035 * S,
+                    0.5 * (ForkAnchor.Pos[2] + FEnd[2])
+                ];
+                const ForkCollarR = Math.min(0.036 * S, ForkAnchor.Rad * 0.78);
+                const ForkChain = AppendOrganicCapsuleChain(
+                    [ForkAnchor.Pos, FMid, FEnd],
+                    [ForkCollarR, 0.023 * S, 0.014 * S],
+                    2,
+                    0.038 * S
+                );
+                AddLeafSprayAlongChain(
+                    ForkChain,
+                    0.18,
+                    1.0,
+                    8,
+                    [0.105 * S, 0.145 * S],
+                    (ArchChoice + (ForkSign > 0 ? 1 : 2)) % LeafArchetypeCount
+                );
             }
         }
 
-        // Crown apex spray
-        const ApexTip = [Ox, Oy + 3.35 * S, Oz];
-        AddTaperedCapsule(TrunkTop, 0.075 * S, ApexTip, 0.018 * S);
-        AddLeafSprayAlongTwig(TrunkTop, ApexTip, 10, [0.11 * S, 0.145 * S], 3);
+        // Crown apex leaf spray along the upper 32% of the trunk leader
+        AddLeafSprayAlongChain(TrunkChain, 0.68, 1.0, 10, [0.11 * S, 0.145 * S], 3);
     }
 
     if (PresetId === "full-arbor")
@@ -520,9 +731,12 @@ export function ConstructFoliagePreset(PresetId)
         AppendFullArborAt([0.0, 0.0, 0.0], 1.0, true);
         return {
             PresetId,
-            Label: `Full Botanical Arbor (${LeafInstances.length} Instanced Leaves · 5 Templates)`,
+            Label: `Full Botanical Arbor (${LeafInstances.length} Instanced Leaves · ${Capsules.length} Bark Capsules)`,
             BoundsMin: [-2.35, -0.05, -2.35],
             BoundsMax: [ 2.35,  3.85,  2.35],
+            BarkNoiseAmp,
+            BarkNoiseFreq,
+            BranchGnarl,
             Capsules,
             LeafInstances
         };
@@ -535,9 +749,12 @@ export function ConstructFoliagePreset(PresetId)
 
     return {
         PresetId,
-        Label: `Multi-Arbor Avenue (${LeafInstances.length} Thin Leaves · Cone-LOD Near → Far)`,
+        Label: `Multi-Arbor Avenue (${LeafInstances.length} Thin Leaves · ${Capsules.length} Bark Capsules)`,
         BoundsMin: [-4.9, -0.05, -12.2],
         BoundsMax: [ 4.7,  3.75,   3.6],
+        BarkNoiseAmp,
+        BarkNoiseFreq,
+        BranchGnarl,
         Capsules,
         LeafInstances
     };
@@ -547,15 +764,25 @@ export function ConstructFoliagePreset(PresetId)
 //                                  3. EXACT ANALYTIC CAPSULE + THIN-LEAF SDF & RAY EVALUATORS
 //============================================================================================================================================
 
-export function EvalTaperedCapsuleSdf(P, Cap)
+export function EvalTaperedCapsuleSdf(P, Cap, BarkNoiseAmp = 0.0, BarkNoiseFreq = DefaultBarkNoiseFreq)
 {
     const Bax = Cap.P1[0] - Cap.P0[0], Bay = Cap.P1[1] - Cap.P0[1], Baz = Cap.P1[2] - Cap.P0[2];
     const Pax = P[0] - Cap.P0[0],      Pay = P[1] - Cap.P0[1],      Paz = P[2] - Cap.P0[2];
     const BaDot = Bax * Bax + Bay * Bay + Baz * Baz;
     const H = Clamp((Pax * Bax + Pay * Bay + Paz * Baz) / Math.max(BaDot, 1e-6), 0.0, 1.0);
     const Dx = Pax - Bax * H, Dy = Pay - Bay * H, Dz = Paz - Baz * H;
-    const Radius = Cap.R0 + (Cap.R1 - Cap.R0) * H;
-    return Math.hypot(Dx, Dy, Dz) - Radius;
+    const Len = Math.hypot(Dx, Dy, Dz);
+    const SmoothRad = Cap.R0 + (Cap.R1 - Cap.R0) * H;
+    if (BarkNoiseAmp <= 1e-4)
+    {
+        return Len - SmoothRad;
+    }
+    const InvL = 1.0 / Math.max(Len, 1e-6);
+    const SkinX = Cap.P0[0] + Bax * H + SmoothRad * Dx * InvL;
+    const SkinY = Cap.P0[1] + Bay * H + SmoothRad * Dy * InvL;
+    const SkinZ = Cap.P0[2] + Baz * H + SmoothRad * Dz * InvL;
+    const BarkDisp = 1.0 + BarkDispMaxFrac * BarkNoiseAmp * EvalBarkFbm3d(SkinX, SkinY, SkinZ, BarkNoiseFreq);
+    return Len - SmoothRad * BarkDisp;
 }
 
 export function WorldToLeafLocal(P, Leaf)
@@ -781,11 +1008,11 @@ export function CompileFoliageSdfVolumes(SceneSpec, CompiledArchetypes)
                 const BxNear = Math.min(CanopyBrickRes - 1, Math.floor((Vx / VRes) * CanopyBrickRes));
                 const P = [Px, Py, Pz];
 
-                // 1. Exact Wood Capsule SDF
+                // 1. Exact Wood Capsule SDF (with 3D procedural bark ridge & burl FBM displacement)
                 let DWood = 1e6;
                 for (let C = 0; C < Capsules.length; ++C)
                 {
-                    const Dc = EvalTaperedCapsuleSdf(P, Capsules[C]);
+                    const Dc = EvalTaperedCapsuleSdf(P, Capsules[C], SceneSpec.BarkNoiseAmp, SceneSpec.BarkNoiseFreq);
                     if (Dc < DWood) DWood = Dc;
                 }
 
@@ -826,9 +1053,10 @@ export function CompileFoliageSdfVolumes(SceneSpec, CompiledArchetypes)
                 }
                 if (DLeafSigned > 9e5) DLeafSigned = DBrickHull + 0.25;
 
-                const DStandardSigned = Math.min(DWood, DLeafSigned);
-                const DDilated        = Math.min(DWood, Math.abs(DLeafSigned) - 0.54 * VoxelDiag);
-                const DUnsigned       = Math.min(Math.max(DWood, -0.05), Math.abs(DLeafSigned));
+                // Leaf-only 32^3 comparison channels (wooden limbs are evaluated analytically via Tapered Capsules so branches NEVER break into pieces!)
+                const DStandardSigned = DLeafSigned;
+                const DDilated        = Math.abs(DLeafSigned) - 0.54 * VoxelDiag;
+                const DUnsigned       = Math.abs(DLeafSigned);
 
                 const HostBrick = (BzNear * CanopyBrickRes + ByNear) * CanopyBrickRes + BxNear;
                 const MeanSigma = (BrickSigma[HostBrick * 3] + BrickSigma[HostBrick * 3 + 1] + BrickSigma[HostBrick * 3 + 2]) / 3.0;
@@ -999,36 +1227,110 @@ export function EvalThinLeafRaySegmentShadow(Ro, Rd, T0, T1, TanCone, Leaf, Grid
     return Clamp(MissDist / ConeRad, 0.0, 1.0);
 }
 
-// Exact closed-form visibility of a ray Ro + t*Rd against a tapered wooden branch capsule [P0, R0] -> [P1, R1]
-export function EvalRayCapsuleShadow(Ro, Rd, TStart, TEnd, TanCone, Cap)
+// Exact closed-form visibility of a ray Ro + t*Rd against a noisy tapered wooden branch capsule [P0, R0] -> [P1, R1]
+// Handles interior & endpoint sphere joints (including 0-deg parallel rays!) + 3-tap 3D procedural bark FBM refinement!
+export function EvalRayCapsuleShadow(
+    Ro,
+    Rd,
+    TStart,
+    TEnd,
+    TanCone,
+    Cap,
+    BarkNoiseAmp = 0.0,
+    BarkNoiseFreq = DefaultBarkNoiseFreq
+)
 {
     const Ux = Cap.P1[0] - Cap.P0[0], Uy = Cap.P1[1] - Cap.P0[1], Uz = Cap.P1[2] - Cap.P0[2];
     const Wx = Ro[0] - Cap.P0[0],     Wy = Ro[1] - Cap.P0[1],     Wz = Ro[2] - Cap.P0[2];
 
-    const A = Dot3(Rd, Rd); // 1.0
     const B = Rd[0] * Ux + Rd[1] * Uy + Rd[2] * Uz;
     const C = Ux * Ux + Uy * Uy + Uz * Uz;
     const D = Rd[0] * Wx + Rd[1] * Wy + Rd[2] * Wz;
     const E = Ux * Wx + Uy * Wy + Uz * Wz;
-    const Denom = A * C - B * B;
+    const Denom = Math.max(0.0, C - B * B);
 
-    let S = Denom > 1e-6 ? Clamp((A * E - B * D) / Denom, 0.0, 1.0) : 0.0;
+    let S = Denom > 1e-7 ? Clamp((E - B * D) / Denom, 0.0, 1.0) : 0.0;
     let T = Clamp(B * S - D, TStart, TEnd);
-    S = C > 1e-6 ? Clamp((E + T * B) / C, 0.0, 1.0) : 0.0;
+    S = C > 1e-7 ? Clamp((E + T * B) / C, 0.0, 1.0) : 0.0;
     T = Clamp(B * S - D, TStart, TEnd);
 
-    const Px = Ro[0] + Rd[0] * T - (Cap.P0[0] + Ux * S);
-    const Py = Ro[1] + Rd[1] * T - (Cap.P0[1] + Uy * S);
-    const Pz = Ro[2] + Rd[2] * T - (Cap.P0[2] + Uz * S);
-    const Rad = Cap.R0 + (Cap.R1 - Cap.R0) * S;
-    const SignedDist = Math.hypot(Px, Py, Pz) - Rad;
-    if (SignedDist <= 0.0) return 0.0;
+    // Also verify both spherical capsule caps (S=0 and S=1) so steep/parallel rays never miss ball-joints!
+    let BestS = S, BestT = T;
+    let Dx = Wx + Rd[0] * T - Ux * S;
+    let Dy = Wy + Rd[1] * T - Uy * S;
+    let Dz = Wz + Rd[2] * T - Uz * S;
+    let BestSmooth = Math.hypot(Dx, Dy, Dz) - (Cap.R0 + (Cap.R1 - Cap.R0) * S);
 
-    const ConeR = Math.max(T * TanCone, 0.0015);
-    return Clamp(SignedDist / ConeR, 0.0, 1.0);
+    const TCap0 = Clamp(-D, TStart, TEnd);
+    const D0 = Math.hypot(Wx + Rd[0] * TCap0, Wy + Rd[1] * TCap0, Wz + Rd[2] * TCap0) - Cap.R0;
+    if (D0 < BestSmooth) { BestSmooth = D0; BestS = 0.0; BestT = TCap0; }
+
+    const TCap1 = Clamp(B - D, TStart, TEnd);
+    const D1 = Math.hypot(Wx + Rd[0] * TCap1 - Ux, Wy + Rd[1] * TCap1 - Uy, Wz + Rd[2] * TCap1 - Uz) - Cap.R1;
+    if (D1 < BestSmooth) { BestSmooth = D1; BestS = 1.0; BestT = TCap1; }
+
+    const SmoothRad = Cap.R0 + (Cap.R1 - Cap.R0) * BestS;
+    const ConeR = Math.max(BestT * TanCone, 0.0015);
+    const MaxBarkBulge = SmoothRad * BarkDispMaxFrac * BarkNoiseAmp;
+
+    // Fast conservative early-out outside the capsule's outer 3D bark envelope!
+    if (BestSmooth > MaxBarkBulge + ConeR)
+    {
+        return 1.0;
+    }
+
+    if (BarkNoiseAmp <= 1e-4)
+    {
+        return BestSmooth <= 0.0 ? 0.0 : Clamp(BestSmooth / ConeR, 0.0, 1.0);
+    }
+
+    // Deep inside solid wood interior (< R*(1 - BarkDispMaxFrac)) -> guaranteed 0.0 occlusion without evaluating 3D FBM!
+    if (BestSmooth < -MaxBarkBulge)
+    {
+        return 0.0;
+    }
+
+    // Refine 3D procedural bark ridges & burls across 3 micro-samples [-dt, 0, +dt] around BestT!
+    const StepT = SmoothRad * 0.42;
+    let MinVis = 1.0;
+    for (let Tap = -1; Tap <= 1; ++Tap)
+    {
+        const TSample = Clamp(BestT + Tap * StepT, TStart, TEnd);
+        const SSample = C > 1e-7 ? Clamp((E + TSample * B) / C, 0.0, 1.0) : 0.0;
+        const Rx = Wx + Rd[0] * TSample - Ux * SSample;
+        const Ry = Wy + Rd[1] * TSample - Uy * SSample;
+        const Rz = Wz + Rd[2] * TSample - Uz * SSample;
+        const DistAxis = Math.hypot(Rx, Ry, Rz);
+        const LocRad   = Cap.R0 + (Cap.R1 - Cap.R0) * SSample;
+        const InvDist  = 1.0 / Math.max(DistAxis, 1e-6);
+        const SkinX = Cap.P0[0] + Ux * SSample + LocRad * Rx * InvDist;
+        const SkinY = Cap.P0[1] + Uy * SSample + LocRad * Ry * InvDist;
+        const SkinZ = Cap.P0[2] + Uz * SSample + LocRad * Rz * InvDist;
+        const NoisyRad  = LocRad * (1.0 + BarkDispMaxFrac * BarkNoiseAmp * EvalBarkFbm3d(SkinX, SkinY, SkinZ, BarkNoiseFreq));
+        const NoisyDist = DistAxis - NoisyRad;
+        if (NoisyDist <= 0.0) return 0.0;
+        const TapCone = Math.max(TSample * TanCone, 0.0015);
+        const TapVis  = Clamp(NoisyDist / TapCone, 0.0, 1.0);
+        if (TapVis < MinVis) MinVis = TapVis;
+    }
+    return MinVis;
 }
 
-// Exact Ground-Truth Ray-Traced Shadow (tests every capsule & every thin leaf instance directly without any voxel grid!)
+function EvalAllWoodCapsulesVisibility(Ro, Rd, TStart, TEnd, TanCone, SceneSpec)
+{
+    const Caps = SceneSpec.Capsules;
+    const BarkAmp  = SceneSpec.BarkNoiseAmp  !== undefined ? SceneSpec.BarkNoiseAmp  : DefaultBarkNoiseAmp;
+    const BarkFreq = SceneSpec.BarkNoiseFreq !== undefined ? SceneSpec.BarkNoiseFreq : DefaultBarkNoiseFreq;
+    let WoodVis = 1.0;
+    for (let C = 0; C < Caps.length; ++C)
+    {
+        WoodVis = Math.min(WoodVis, EvalRayCapsuleShadow(Ro, Rd, TStart, TEnd, TanCone, Caps[C], BarkAmp, BarkFreq));
+        if (WoodVis <= 0.0) return 0.0;
+    }
+    return WoodVis;
+}
+
+// Exact Ground-Truth Ray-Traced Shadow (tests every noisy bark capsule & every thin leaf instance directly without any voxel grid!)
 export function EvaluateExactGroundTruthShadow(Ro, Rd, TanCone, CompiledVol, CompiledArchetypes)
 {
     const Hit = IntersectRayAabb(Ro, Rd, CompiledVol.BoundsMin, CompiledVol.BoundsMax);
@@ -1036,13 +1338,8 @@ export function EvaluateExactGroundTruthShadow(Ro, Rd, TanCone, CompiledVol, Com
     const TStart = Math.max(0.015, Hit[0]);
     const TEnd = Hit[1];
 
-    let Vis = 1.0;
-    const Caps = CompiledVol.SceneSpec.Capsules;
-    for (let C = 0; C < Caps.length; ++C)
-    {
-        Vis = Math.min(Vis, EvalRayCapsuleShadow(Ro, Rd, TStart, TEnd, TanCone, Caps[C]));
-        if (Vis <= 0.0) return 0.0;
-    }
+    let Vis = EvalAllWoodCapsulesVisibility(Ro, Rd, TStart, TEnd, TanCone, CompiledVol.SceneSpec);
+    if (Vis <= 0.0) return 0.0;
 
     const Leaves = CompiledVol.SceneSpec.LeafInstances;
     const Grids2d = CompiledArchetypes.FloatGrids;
@@ -1054,7 +1351,7 @@ export function EvaluateExactGroundTruthShadow(Ro, Rd, TanCone, CompiledVol, Com
     return Vis;
 }
 
-// Evaluates any of the 4 SDF Shadow Modes on CPU (matching WGSL shader logic bit-for-bit!)
+// Evaluates any of the 4 SDF Shadow Modes on CPU (matching WGSL & GLSL shader logic bit-for-bit!)
 export function EvaluateSdfShadowMode(Ro, Rd, TanCone, Mode, CompiledVol, CompiledArchetypes)
 {
     const BMin = CompiledVol.BoundsMin;
@@ -1062,15 +1359,23 @@ export function EvaluateSdfShadowMode(Ro, Rd, TanCone, Mode, CompiledVol, Compil
     const Hit = IntersectRayAabb(Ro, Rd, BMin, BMax);
     if (!Hit) return { Visibility: 1.0, Steps: 0 };
 
-    let T = Math.max(0.015, Hit[0]);
+    const TStart = Math.max(0.015, Hit[0]);
+    let T = TStart;
     const TEnd = Hit[1];
     const VRes = MacroVoxelRes;
 
-    // Modes 0 & 1: Sphere/Cone-tracing the 32^3 Signed or Dilated Voxel SDF
+    // Evaluate continuous Tapered-Capsule + 3D Bark-Noise Skeleton upfront so wooden limbs NEVER break into missing pieces!
+    const WoodVis = EvalAllWoodCapsulesVisibility(Ro, Rd, TStart, TEnd, TanCone, CompiledVol.SceneSpec);
+    if (WoodVis <= 0.0)
+    {
+        return { Visibility: 0.0, Steps: 1 };
+    }
+
+    // Modes 0 & 1: Sphere/Cone-tracing the 32^3 Signed or Dilated Leaf Voxel SDF (+ exact Capsule Branches)
     if (Mode === SdfEvaluationMode.StandardVoxel3d || Mode === SdfEvaluationMode.DilatedVoxel3d)
     {
         const Chan = Mode === SdfEvaluationMode.StandardVoxel3d ? 0 : 1;
-        let Vis = 1.0;
+        let LeafVis = 1.0;
         let Steps = 0;
         for (let Iter = 0; Iter < 56 && T < TEnd; ++Iter)
         {
@@ -1079,33 +1384,28 @@ export function EvaluateSdfShadowMode(Ro, Rd, TanCone, Mode, CompiledVol, Compil
             const D = Sample3dVolumeTrilinear(CompiledVol.ComparisonFloat3d, VRes, BMin, BMax, P, Chan);
             if (D <= 0.0005) return { Visibility: 0.0, Steps };
             const ConeR = Math.max(T * TanCone, 0.002);
-            Vis = Math.min(Vis, Clamp(D / ConeR, 0.0, 1.0));
+            LeafVis = Math.min(LeafVis, Clamp(D / ConeR, 0.0, 1.0));
             T += Math.max(D * 0.85, 0.028);
         }
-        return { Visibility: Vis, Steps };
+        return { Visibility: Math.min(WoodVis, LeafVis), Steps };
     }
 
-    // Mode 2: Non-Instanced 32^3 Unsigned Distance + Sub-Voxel Opacity
+    // Mode 2: Non-Instanced 32^3 Unsigned Leaf Distance + Sub-Voxel Opacity (+ exact Capsule Branches)
     if (Mode === SdfEvaluationMode.OpacityUdf3d)
     {
-        let Vis = 1.0;
+        let LeafVis = 1.0;
         let Steps = 0;
         const StepMin = CompiledVol.VoxelDiag * 0.35;
         for (let Iter = 0; Iter < 56 && T < TEnd; ++Iter)
         {
             ++Steps;
             const P = [Ro[0] + Rd[0] * T, Ro[1] + Rd[1] * T, Ro[2] + Rd[2] * T];
-            const DWood = Sample3dVolumeTrilinear(CompiledVol.MacroFloat3d, VRes, BMin, BMax, P, 0);
-            if (DWood <= 0.0) return { Visibility: 0.0, Steps };
-            const ConeR = Math.max(T * TanCone, 0.002);
-            Vis = Math.min(Vis, Clamp(DWood / ConeR, 0.0, 1.0));
-
             const UDist = Sample3dVolumeTrilinear(CompiledVol.ComparisonFloat3d, VRes, BMin, BMax, P, 2);
             const Cov   = Sample3dVolumeTrilinear(CompiledVol.ComparisonFloat3d, VRes, BMin, BMax, P, 3);
             if (UDist < CompiledVol.VoxelDiag * 0.72 && Cov > 0.005)
             {
-                Vis *= Math.exp(-Cov * 3.2 * (StepMin / CompiledVol.VoxelDiag));
-                if (Vis < 0.01) return { Visibility: 0.0, Steps };
+                LeafVis *= Math.exp(-Cov * 3.2 * (StepMin / CompiledVol.VoxelDiag));
+                if (WoodVis * LeafVis < 0.01) return { Visibility: 0.0, Steps };
                 T += StepMin;
             }
             else
@@ -1113,18 +1413,15 @@ export function EvaluateSdfShadowMode(Ro, Rd, TanCone, Mode, CompiledVol, Compil
                 T += Math.max((UDist - CompiledVol.VoxelDiag * 0.5) * 0.8, StepMin);
             }
         }
-        return { Visibility: Vis, Steps };
+        return { Visibility: Math.min(WoodVis, LeafVis), Steps };
     }
 
-    // 🟢 Mode 3: Two-Level 16^3 Canopy Brick + 5 x 2D Thin-Sheet Extrusion SDF + Continuous Cone-Width LOD!
-    let WoodVis = 1.0;
+    // 🟢 Mode 3: Two-Level 16^3 Canopy Brick + 5 x 2D Thin-Sheet Extrusion SDF + Continuous Cone-Width LOD (+ Noisy Capsule Limbs)!
     let LeafVis = 1.0;
     let Steps = 0;
-    let EvaluatedWoodExact = false;
     const Span = [BMax[0] - BMin[0], BMax[1] - BMin[1], BMax[2] - BMin[2]];
     const BrickSz = CompiledVol.BrickSize;
     const Leaves = CompiledVol.SceneSpec.LeafInstances;
-    const Caps = CompiledVol.SceneSpec.Capsules;
     const Grids2d = CompiledArchetypes.FloatGrids;
 
     for (let Iter = 0; Iter < 48 && T < TEnd; ++Iter)
@@ -1132,17 +1429,6 @@ export function EvaluateSdfShadowMode(Ro, Rd, TanCone, Mode, CompiledVol, Compil
         ++Steps;
         const P = [Ro[0] + Rd[0] * T, Ro[1] + Rd[1] * T, Ro[2] + Rd[2] * T];
         const ConeR = Math.max(T * TanCone, 0.0015);
-
-        const DWoodMacro = Sample3dVolumeTrilinear(CompiledVol.MacroFloat3d, VRes, BMin, BMax, P, 0);
-        if (!EvaluatedWoodExact && DWoodMacro < CompiledVol.VoxelDiag * 0.95 + ConeR)
-        {
-            EvaluatedWoodExact = true;
-            for (let C = 0; C < Caps.length; ++C)
-            {
-                WoodVis = Math.min(WoodVis, EvalRayCapsuleShadow(Ro, Rd, Math.max(0.015, Hit[0]), TEnd, TanCone, Caps[C]));
-                if (WoodVis <= 0.0) return { Visibility: 0.0, Steps };
-            }
-        }
 
         const DHull = Sample3dVolumeTrilinear(CompiledVol.MacroFloat3d, VRes, BMin, BMax, P, 1);
         if (DHull > ConeR + 0.01)
@@ -1199,7 +1485,7 @@ export function EvaluateSdfShadowMode(Ro, Rd, TanCone, Mode, CompiledVol, Compil
             }
 
             LeafVis = FineBrickVis * (1.0 - LodBlend) + FarBeerVis * LodBlend;
-            if (WoodVis * LeafVis <= 1e-4) return { Visibility: 0.0, Steps };
+            if (Math.min(WoodVis, LeafVis) <= 1e-4) return { Visibility: 0.0, Steps };
         }
 
         T = TBrickOut + 0.0015;
@@ -1226,7 +1512,6 @@ export function BenchmarkFoliageShadowAccuracy(CompiledVol, CompiledArchetypes, 
 
     const ExactSamples = new Float32Array(GridN * GridN);
     const WoodOnlyMask = new Uint8Array(GridN * GridN);
-    const Caps = CompiledVol.SceneSpec.Capsules;
 
     for (let Z = 0; Z < GridN; ++Z)
     {
@@ -1240,12 +1525,8 @@ export function BenchmarkFoliageShadowAccuracy(CompiledVol, CompiledArchetypes, 
             const Idx = Z * GridN + X;
             ExactSamples[Idx] = EvaluateExactGroundTruthShadow(Ro, SunDir, TanCone, CompiledVol, CompiledArchetypes);
 
-            // Identify rays occluded purely by thick wood vs. rays occluded strictly by thin leaves!
-            let WoodVisOnly = 1.0;
-            for (let C = 0; C < Caps.length; ++C)
-            {
-                WoodVisOnly = Math.min(WoodVisOnly, EvalRayCapsuleShadow(Ro, SunDir, 0.015, 30.0, TanCone, Caps[C]));
-            }
+            // Identify rays occluded purely by wooden capsules vs. rays occluded strictly by thin leaves!
+            const WoodVisOnly = EvalAllWoodCapsulesVisibility(Ro, SunDir, 0.015, 30.0, TanCone, CompiledVol.SceneSpec);
             WoodOnlyMask[Idx] = WoodVisOnly < 0.5 ? 1 : 0;
         }
     }

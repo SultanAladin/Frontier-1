@@ -9,6 +9,9 @@ import {
     MacroVoxelRes,
     CanopyBrickRes,
     LeafHalfThicknessM,
+    DefaultBarkNoiseAmp,
+    DefaultBarkNoiseFreq,
+    DefaultBranchGnarl,
     SdfEvaluationMode,
     CompileFiveLeafArchetypeSdfs,
     ConstructFoliagePreset,
@@ -776,6 +779,7 @@ function InitializeWebGl2FallbackRenderer(CanvasEl, CompiledArchetypes)
         Gl.uniform4fv(Gl.getUniformLocation(SurfaceProg, "uBoundsMaxDiag"),   UniformFloats.subarray(28, 32));
         Gl.uniform4fv(Gl.getUniformLocation(SurfaceProg, "uViewportVis"),     UniformFloats.subarray(32, 36));
         Gl.uniform4fv(Gl.getUniformLocation(SurfaceProg, "uSceneCountsMask"), UniformFloats.subarray(36, 40));
+        Gl.uniform4fv(Gl.getUniformLocation(SurfaceProg, "uBarkParams"),      UniformFloats.subarray(40, 44));
         Gl.uniform4iv(Gl.getUniformLocation(SurfaceProg, "uPackedOffsets"),   PackedOffsets);
 
         Gl.activeTexture(Gl.TEXTURE0);
@@ -858,6 +862,10 @@ async function LaunchThinLeafSdfWorkbench()
         SunElevationDeg: 55.0,
         SunConeDeg: 0.46,
         LodScale: 1.00,
+        BarkNoiseAmp: DefaultBarkNoiseAmp,
+        BarkNoiseFreq: DefaultBarkNoiseFreq,
+        BranchGnarl: DefaultBranchGnarl,
+        DebugCapsules: false,
         DebugBricks: false,
         DebugLeaves: false,
         DebugRays: true,
@@ -873,6 +881,7 @@ async function LaunchThinLeafSdfWorkbench()
     let ActiveVol = null;
     let LatestBenchmark = null;
     let BenchDebounceTimer = null;
+    let BarkRebuildTimer = null;
 
     function GetCameraEye()
     {
@@ -939,31 +948,42 @@ async function LaunchThinLeafSdfWorkbench()
         RefreshHudMetrics();
     }
 
-    function RebuildActivePreset(PresetId, FirstBoot = false)
+    function RebuildActivePreset(PresetId, FirstBoot = false, KeepCamera = false)
     {
         Settings.PresetId = PresetId;
         const T0 = performance.now();
-        const Spec = ConstructFoliagePreset(PresetId);
+        const Spec = ConstructFoliagePreset(PresetId, {
+            BarkNoiseAmp: Settings.BarkNoiseAmp,
+            BarkNoiseFreq: Settings.BarkNoiseFreq,
+            BranchGnarl: Settings.BranchGnarl
+        });
         ActiveVol  = CompileFoliageSdfVolumes(Spec, CompiledArchetypes);
         const Geom = BuildFoliageSceneGeometry(Spec);
         Renderer.UploadSceneResources(ActiveVol, Geom);
         const TotalMs = performance.now() - T0 + (FirstBoot ? ArchMs : 0.0);
 
-        // Position default ground diagnostic ray right inside the arbor's cast shadow
-        const SunDir = ComputeSolarDirection(Settings.SunAzimuthDeg, Settings.SunElevationDeg);
-        const MidY = 0.55 * (ActiveVol.BoundsMin[1] + ActiveVol.BoundsMax[1]);
-        Settings.RayOriginGround = [
-            -SunDir[0] * (MidY / Math.max(SunDir[1], 0.3)),
-            0.015,
-            -SunDir[2] * (MidY / Math.max(SunDir[1], 0.3))
-        ];
+        if (!KeepCamera)
+        {
+            // Position default ground diagnostic ray right inside the arbor's cast shadow
+            const SunDir = ComputeSolarDirection(Settings.SunAzimuthDeg, Settings.SunElevationDeg);
+            const MidY = 0.55 * (ActiveVol.BoundsMin[1] + ActiveVol.BoundsMax[1]);
+            Settings.RayOriginGround = [
+                -SunDir[0] * (MidY / Math.max(SunDir[1], 0.3)),
+                0.015,
+                -SunDir[2] * (MidY / Math.max(SunDir[1], 0.3))
+            ];
+        }
 
         document.getElementById("CompileTimingLabel").textContent = `${TotalMs.toFixed(0)} ms`;
-        document.getElementById("HudLeafCount").textContent  = `${Spec.LeafInstances.length}`;
-        document.getElementById("HudBrickCount").textContent = `${ActiveVol.OccupiedBrickBounds.length} / 4096`;
-        document.getElementById("HudBladeThick").textContent = `${(LeafHalfThicknessM * 2000.0).toFixed(1)} mm`;
+        document.getElementById("HudCapsuleCount").textContent = `${Spec.Capsules.length}`;
+        document.getElementById("HudLeafCount").textContent    = `${Spec.LeafInstances.length}`;
+        document.getElementById("HudBrickCount").textContent   = `${ActiveVol.OccupiedBrickBounds.length} / 4096`;
+        document.getElementById("HudBladeThick").textContent   = `${(LeafHalfThicknessM * 2000.0).toFixed(1)} mm`;
 
-        ApplyCameraBookmark(PresetId === "avenue-lod" ? "Avenue" : "Canopy");
+        if (!KeepCamera)
+        {
+            ApplyCameraBookmark(PresetId === "avenue-lod" ? "Avenue" : "Canopy");
+        }
         RefreshDebugRaysWithStats();
     }
 
@@ -1007,9 +1027,36 @@ async function LaunchThinLeafSdfWorkbench()
         document.getElementById("SplitColumnBanner").classList.toggle("Visible", Settings.DisplayMode === 2);
     });
 
-    document.getElementById("DebugBricksCheck").addEventListener("change", (Ev) => { Settings.DebugBricks = Ev.target.checked; });
-    document.getElementById("DebugLeavesCheck").addEventListener("change", (Ev) => { Settings.DebugLeaves = Ev.target.checked; });
-    document.getElementById("DebugRaysCheck").addEventListener("change",   (Ev) => { Settings.DebugRays   = Ev.target.checked; });
+    document.getElementById("DebugCapsulesCheck").addEventListener("change", (Ev) => { Settings.DebugCapsules = Ev.target.checked; });
+    document.getElementById("DebugBricksCheck").addEventListener("change",   (Ev) => { Settings.DebugBricks   = Ev.target.checked; });
+    document.getElementById("DebugLeavesCheck").addEventListener("change",   (Ev) => { Settings.DebugLeaves   = Ev.target.checked; });
+    document.getElementById("DebugRaysCheck").addEventListener("change",     (Ev) => { Settings.DebugRays     = Ev.target.checked; });
+
+    function ScheduleBarkGeometryRebuild()
+    {
+        if (BarkRebuildTimer) clearTimeout(BarkRebuildTimer);
+        BarkRebuildTimer = setTimeout(() => {
+            RebuildActivePreset(Settings.PresetId, false, true);
+        }, 90);
+    }
+
+    document.getElementById("BarkAmpSlider").addEventListener("input", (Ev) => {
+        Settings.BarkNoiseAmp = Number(Ev.target.value);
+        document.getElementById("BarkAmpReadout").textContent = Settings.BarkNoiseAmp.toFixed(2);
+        ScheduleBarkGeometryRebuild();
+    });
+
+    document.getElementById("BarkFreqSlider").addEventListener("input", (Ev) => {
+        Settings.BarkNoiseFreq = Number(Ev.target.value);
+        document.getElementById("BarkFreqReadout").textContent = `${Settings.BarkNoiseFreq.toFixed(1)} m⁻¹`;
+        ScheduleBarkGeometryRebuild();
+    });
+
+    document.getElementById("BranchGnarlSlider").addEventListener("input", (Ev) => {
+        Settings.BranchGnarl = Number(Ev.target.value);
+        document.getElementById("BranchGnarlReadout").textContent = Settings.BranchGnarl.toFixed(2);
+        ScheduleBarkGeometryRebuild();
+    });
 
     function ScheduleSolarBenchmarkRefresh()
     {
@@ -1180,7 +1227,11 @@ async function LaunchThinLeafSdfWorkbench()
 
             const SunDir  = ComputeSolarDirection(Settings.SunAzimuthDeg, Settings.SunElevationDeg);
             const TanCone = Math.tan((Settings.SunConeDeg * Math.PI) / 180.0);
-            const DebugMask = (Settings.DebugBricks ? 1 : 0) | (Settings.DebugLeaves ? 2 : 0) | (Settings.DebugRays ? 4 : 0);
+            const DebugMask =
+                (Settings.DebugBricks   ? 1 : 0) |
+                (Settings.DebugLeaves   ? 2 : 0) |
+                (Settings.DebugRays     ? 4 : 0) |
+                (Settings.DebugCapsules ? 8 : 0);
 
             UniformFloats.set(ViewProj, 0);
             UniformFloats[16] = Eye[0];
@@ -1212,6 +1263,11 @@ async function LaunchThinLeafSdfWorkbench()
             UniformFloats[37] = ActiveVol.SceneSpec.LeafInstances.length;
             UniformFloats[38] = Settings.LodScale;
             UniformFloats[39] = DebugMask;
+
+            UniformFloats[40] = Settings.BarkNoiseAmp;
+            UniformFloats[41] = Settings.BarkNoiseFreq;
+            UniformFloats[42] = Settings.BranchGnarl;
+            UniformFloats[43] = 0.0;
 
             Renderer.RenderViewport(UniformFloats, DebugMask);
         }

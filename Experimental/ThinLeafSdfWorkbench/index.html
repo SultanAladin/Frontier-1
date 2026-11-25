@@ -384,6 +384,7 @@
             <div class="TopTelemetryBar">
                 <div class="TelemetryCluster">
                     <span id="GpuRuntimeTag" class="RuntimeTag">🟢 Initializing WebGPU...</span>
+                    <span class="MetricChip">Capsules <strong id="HudCapsuleCount">70</strong></span>
                     <span class="MetricChip">Leaves <strong id="HudLeafCount">235</strong></span>
                     <span class="MetricChip">Bricks <strong id="HudBrickCount">383 / 4096</strong></span>
                     <span class="MetricChip">Blade <strong id="HudBladeThick">1.2 mm</strong></span>
@@ -422,9 +423,9 @@
                     <span id="CompileTimingLabel">0 ms</span>
                 </div>
                 <select id="ScenePresetSelect">
-                    <option value="bough-closeup">0 · Bough Close-Up (36 Thin Leaves · 5 Templates)</option>
-                    <option value="full-arbor" selected>1 · Full Botanical Arbor (235 Thin Leaves · 28 Limbs)</option>
-                    <option value="avenue-lod">2 · Three-Arbor Avenue (705 Leaves · Cone-Width LOD)</option>
+                    <option value="bough-closeup">0 · Bough Close-Up (18 Capsules · 36 Thin Leaves)</option>
+                    <option value="full-arbor" selected>1 · Full Botanical Arbor (70 Capsules · 235 Thin Leaves)</option>
+                    <option value="avenue-lod">2 · Three-Arbor Avenue (210 Capsules · 705 Leaves)</option>
                 </select>
                 <div class="CompactBtnRow">
                     <button class="CompactBtn" id="CamShadowBtn" type="button">Shadow</button>
@@ -470,6 +471,10 @@
                     <option value="4">4 · Pure Botanical Shadow Lithograph V(x)</option>
                 </select>
                 <label class="ToggleCheckRow">
+                    <input type="checkbox" id="DebugCapsulesCheck" />
+                    <span>Show Watertight Tapered-Capsule Skeleton</span>
+                </label>
+                <label class="ToggleCheckRow">
                     <input type="checkbox" id="DebugBricksCheck" />
                     <span>Show Occupied 16³ Canopy Bricks (Macro Hull)</span>
                 </label>
@@ -485,7 +490,25 @@
 
             <section class="SectionBox">
                 <div class="SectionTitle">
-                    <span>4 · Solar Direction &amp; Cone-Width LOD</span>
+                    <span>4 · Capsule Limbs &amp; 3D Bark Noise</span>
+                </div>
+                <div class="SliderRow">
+                    <div class="SliderHeader"><span>3D Bark Ridge &amp; Burl Amp</span><span id="BarkAmpReadout">0.65</span></div>
+                    <input type="range" id="BarkAmpSlider" min="0.00" max="1.00" step="0.05" value="0.65" />
+                </div>
+                <div class="SliderRow">
+                    <div class="SliderHeader"><span>Bark Furrow Frequency</span><span id="BarkFreqReadout">9.5 m⁻¹</span></div>
+                    <input type="range" id="BarkFreqSlider" min="4.0" max="18.0" step="0.5" value="9.5" />
+                </div>
+                <div class="SliderRow">
+                    <div class="SliderHeader"><span>Organic Limb Gnarl</span><span id="BranchGnarlReadout">0.55</span></div>
+                    <input type="range" id="BranchGnarlSlider" min="0.00" max="1.00" step="0.05" value="0.55" />
+                </div>
+            </section>
+
+            <section class="SectionBox">
+                <div class="SectionTitle">
+                    <span>5 · Solar Direction &amp; Cone-Width LOD</span>
                     <button class="CompactBtn" id="AnimateSunBtn" type="button" style="padding:2px 8px;">Orbit Sun</button>
                 </div>
                 <div class="SliderRow">
@@ -508,7 +531,7 @@
 
             <section class="SectionBox">
                 <div class="SectionTitle">
-                    <span>5 · 64×64 2D Leaf Template SDFs (20 KB)</span>
+                    <span>6 · 64×64 2D Leaf Template SDFs (20 KB)</span>
                 </div>
                 <div class="CompactBtnRow" style="grid-template-columns: repeat(5, 1fr);">
                     <button class="CompactBtn Active" id="ArchTabBtn0" type="button">Beech</button>
@@ -531,7 +554,7 @@
 
             <section class="SectionBox">
                 <div class="SectionTitle">
-                    <span>6 · Measured Accuracy vs. Ground Truth</span>
+                    <span>7 · Measured Accuracy vs. Ground Truth</span>
                 </div>
                 <div class="BenchmarkGrid">
                     <div class="BenchmarkHead">Method</div>

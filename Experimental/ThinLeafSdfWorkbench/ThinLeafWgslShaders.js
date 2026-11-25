@@ -15,6 +15,7 @@ struct SceneUniforms
     BoundsMaxDiag     : vec4<f32>, // .xyz = VolumeBoundsMax, .w = VoxelDiag
     ViewportVis       : vec4<f32>, // .xy = ViewportPx, .z = f32(DisplayMode: 0..4), .w = SplitNormX
     SceneCountsMask   : vec4<f32>, // .x = f32(CapsuleCount), .y = f32(LeafCount), .z = LodBiasScale, .w = DebugLayerMask
+    BarkParams        : vec4<f32>, // .x = BarkNoiseAmp, .y = BarkNoiseFreq, .z = BranchGnarl, .w = Reserved
 };
 
 @group(0) @binding(0) var<uniform> Params               : SceneUniforms;
@@ -94,6 +95,49 @@ fn IntersectRayVolumeAabb(Ro : vec3<f32>, Rd : vec3<f32>) -> vec2<f32>
     return vec2<f32>(TEnter, TExit);
 }
 
+fn HashLattice3d(Ix : f32, Iy : f32, Iz : f32) -> f32
+{
+    let Wx = Ix - floor(Ix * (1.0 / 289.0)) * 289.0;
+    let Wy = Iy - floor(Iy * (1.0 / 289.0)) * 289.0;
+    let Wz = Iz - floor(Iz * (1.0 / 289.0)) * 289.0;
+    var P3 = fract(vec3<f32>(Wx, Wy, Wz) * vec3<f32>(0.1031, 0.1030, 0.0973));
+    let D  = dot(P3, P3.yzx + vec3<f32>(19.19));
+    P3     = P3 + vec3<f32>(D);
+    return fract((P3.x + P3.y) * P3.z);
+}
+
+fn EvalSmoothNoise3d(Q : vec3<f32>) -> f32
+{
+    let I = floor(Q);
+    let F = Q - I;
+    let U = F * F * (vec3<f32>(3.0) - 2.0 * F);
+
+    let N000 = HashLattice3d(I.x,       I.y,       I.z);
+    let N100 = HashLattice3d(I.x + 1.0, I.y,       I.z);
+    let N010 = HashLattice3d(I.x,       I.y + 1.0, I.z);
+    let N110 = HashLattice3d(I.x + 1.0, I.y + 1.0, I.z);
+    let N001 = HashLattice3d(I.x,       I.y,       I.z + 1.0);
+    let N101 = HashLattice3d(I.x + 1.0, I.y,       I.z + 1.0);
+    let N011 = HashLattice3d(I.x,       I.y + 1.0, I.z + 1.0);
+    let N111 = HashLattice3d(I.x + 1.0, I.y + 1.0, I.z + 1.0);
+
+    let Nx00 = mix(N000, N100, U.x);
+    let Nx10 = mix(N010, N110, U.x);
+    let Nx01 = mix(N001, N101, U.x);
+    let Nx11 = mix(N011, N111, U.x);
+    let Nxy0 = mix(Nx00, Nx10, U.y);
+    let Nxy1 = mix(Nx01, Nx11, U.y);
+    return mix(Nxy0, Nxy1, U.z);
+}
+
+fn EvalBarkFbm3d(P : vec3<f32>, Freq : f32) -> f32
+{
+    let Oct1 = EvalSmoothNoise3d(vec3<f32>(P.x * Freq, P.y * Freq * 0.46, P.z * Freq)) * 2.0 - 1.0;
+    let F2   = Freq * 2.13;
+    let Oct2 = EvalSmoothNoise3d(vec3<f32>(P.z * F2 + 11.3, P.x * 0.62 * F2 + 7.1, P.y * F2 + 5.7)) * 2.0 - 1.0;
+    return Oct1 * 0.68 + Oct2 * 0.32;
+}
+
 fn EvalRayWoodCapsuleShadow(Ro : vec3<f32>, Rd : vec3<f32>, TStart : f32, TEnd : f32, TanCone : f32, CapIdx : u32) -> f32
 {
     let C0 = WoodCapsules[CapIdx * 2u + 0u];
@@ -108,22 +152,89 @@ fn EvalRayWoodCapsuleShadow(Ro : vec3<f32>, Rd : vec3<f32>, TStart : f32, TEnd :
     let C = dot(U, U);
     let D = dot(Rd, W);
     let E = dot(U, W);
-    let Denom = 1.0 - B * B;
+    let Denom = max(0.0, C - B * B);
 
-    var S = select(0.0, clamp((E - B * D) / max(Denom, 1e-6), 0.0, 1.0), Denom > 1e-6);
+    var S = select(0.0, clamp((E - B * D) / max(Denom, 1e-7), 0.0, 1.0), Denom > 1e-7);
     var T = clamp(B * S - D, TStart, TEnd);
-    S = select(0.0, clamp((E + T * B) / max(C, 1e-6), 0.0, 1.0), C > 1e-6);
+    S = select(0.0, clamp((E + T * B) / max(C, 1e-7), 0.0, 1.0), C > 1e-7);
     T = clamp(B * S - D, TStart, TEnd);
 
-    let Delta = (Ro + Rd * T) - (P0 + U * S);
-    let Rad = R0 + (R1 - R0) * S;
-    let SignedDist = length(Delta) - Rad;
-    if (SignedDist <= 0.0)
+    var BestS = S;
+    var BestT = T;
+    var BestSmooth = length(W + Rd * T - U * S) - (R0 + (R1 - R0) * S);
+
+    let TCap0 = clamp(-D, TStart, TEnd);
+    let D0    = length(W + Rd * TCap0) - R0;
+    if (D0 < BestSmooth)
+    {
+        BestSmooth = D0;
+        BestS      = 0.0;
+        BestT      = TCap0;
+    }
+
+    let TCap1 = clamp(B - D, TStart, TEnd);
+    let D1    = length(W + Rd * TCap1 - U) - R1;
+    if (D1 < BestSmooth)
+    {
+        BestSmooth = D1;
+        BestS      = 1.0;
+        BestT      = TCap1;
+    }
+
+    let SmoothRad    = R0 + (R1 - R0) * BestS;
+    let ConeR        = max(BestT * TanCone, 0.0015);
+    let BarkNoiseAmp = Params.BarkParams.x;
+    let BarkFreq     = Params.BarkParams.y;
+    let MaxBarkBulge = SmoothRad * 0.18 * BarkNoiseAmp;
+
+    if (BestSmooth > MaxBarkBulge + ConeR)
+    {
+        return 1.0;
+    }
+    if (BarkNoiseAmp <= 1e-4)
+    {
+        return select(clamp(BestSmooth / ConeR, 0.0, 1.0), 0.0, BestSmooth <= 0.0);
+    }
+    if (BestSmooth < -MaxBarkBulge)
     {
         return 0.0;
     }
-    let ConeR = max(T * TanCone, 0.0015);
-    return clamp(SignedDist / ConeR, 0.0, 1.0);
+
+    let StepT = SmoothRad * 0.42;
+    var MinVis = 1.0;
+    for (var Tap = -1; Tap <= 1; Tap = Tap + 1)
+    {
+        let TSample = clamp(BestT + f32(Tap) * StepT, TStart, TEnd);
+        let SSample = select(0.0, clamp((E + TSample * B) / max(C, 1e-7), 0.0, 1.0), C > 1e-7);
+        let Rel     = W + Rd * TSample - U * SSample;
+        let DistAx  = length(Rel);
+        let LocRad  = R0 + (R1 - R0) * SSample;
+        let SkinPt  = P0 + U * SSample + Rel * (LocRad / max(DistAx, 1e-6));
+        let NoisyR  = LocRad * (1.0 + 0.18 * BarkNoiseAmp * EvalBarkFbm3d(SkinPt, BarkFreq));
+        let NoisyD  = DistAx - NoisyR;
+        if (NoisyD <= 0.0)
+        {
+            return 0.0;
+        }
+        let TapCone = max(TSample * TanCone, 0.0015);
+        MinVis = min(MinVis, clamp(NoisyD / TapCone, 0.0, 1.0));
+    }
+    return MinVis;
+}
+
+fn EvalAllWoodCapsules(Ro : vec3<f32>, Rd : vec3<f32>, TStart : f32, TEnd : f32, TanCone : f32) -> f32
+{
+    var WoodVis = 1.0;
+    let CapCount = u32(Params.SceneCountsMask.x + 0.5);
+    for (var C = 0u; C < CapCount; C = C + 1u)
+    {
+        WoodVis = min(WoodVis, EvalRayWoodCapsuleShadow(Ro, Rd, TStart, TEnd, TanCone, C));
+        if (WoodVis <= 0.0)
+        {
+            return 0.0;
+        }
+    }
+    return WoodVis;
 }
 
 // 🟢 2.5D Thin-Sheet Extrusion Intersection:
@@ -231,15 +342,10 @@ fn EvaluateExactGroundTruth(Ro : vec3<f32>, Rd : vec3<f32>, TanCone : f32) -> f3
     let TStart = max(0.015, Hit.x);
     let TEnd   = Hit.y;
 
-    var Vis = 1.0;
-    let CapCount = u32(Params.SceneCountsMask.x + 0.5);
-    for (var C = 0u; C < CapCount; C = C + 1u)
+    var Vis = EvalAllWoodCapsules(Ro, Rd, TStart, TEnd, TanCone);
+    if (Vis <= 0.0)
     {
-        Vis = min(Vis, EvalRayWoodCapsuleShadow(Ro, Rd, TStart, TEnd, TanCone, C));
-        if (Vis <= 0.0)
-        {
-            return 0.0;
-        }
+        return 0.0;
     }
 
     let LeafCount = u32(Params.SceneCountsMask.y + 0.5);
@@ -274,12 +380,23 @@ fn EvaluateSdfShadow(Ro : vec3<f32>, Rd : vec3<f32>, TanCone : f32, Mode : i32) 
         return Res;
     }
 
-    var T = max(0.015, Hit.x);
+    let TStart0 = max(0.015, Hit.x);
+    var T = TStart0;
     let TEnd = Hit.y;
     let VoxelDiag = Params.BoundsMaxDiag.w;
 
+    // Evaluate continuous Tapered-Capsule + 3D Bark-Noise Skeleton upfront so wooden limbs NEVER show missing pieces!
+    let WoodVis = EvalAllWoodCapsules(Ro, Rd, TStart0, TEnd, TanCone);
+    if (WoodVis <= 0.0)
+    {
+        Res.Visibility = 0.0;
+        Res.Steps      = 1.0;
+        return Res;
+    }
+
     if (Mode == 0 || Mode == 1)
     {
+        var LeafVis = 1.0;
         for (var Iter = 0; Iter < 56; Iter = Iter + 1)
         {
             if (T >= TEnd) { break; }
@@ -294,37 +411,30 @@ fn EvaluateSdfShadow(Ro : vec3<f32>, Rd : vec3<f32>, TanCone : f32, Mode : i32) 
                 return Res;
             }
             let ConeR = max(T * TanCone, 0.002);
-            Res.Visibility = min(Res.Visibility, clamp(D / ConeR, 0.0, 1.0));
+            LeafVis = min(LeafVis, clamp(D / ConeR, 0.0, 1.0));
             T = T + max(D * 0.85, 0.028);
         }
+        Res.Visibility = min(WoodVis, LeafVis);
         return Res;
     }
 
     if (Mode == 2)
     {
+        var LeafVis = 1.0;
         let StepMin = VoxelDiag * 0.35;
         for (var Iter = 0; Iter < 56; Iter = Iter + 1)
         {
             if (T >= TEnd) { break; }
             Res.Steps = Res.Steps + 1.0;
-            let P   = Ro + Rd * T;
-            let Uvw = WorldToVolumeUvw(P);
-            let DWood = textureSampleLevel(MacroSdf3dTex, LinearClampSampler, Uvw, 0.0).r;
-            if (DWood <= 0.0)
-            {
-                Res.Visibility = 0.0;
-                return Res;
-            }
-            let ConeR = max(T * TanCone, 0.002);
-            Res.Visibility = min(Res.Visibility, clamp(DWood / ConeR, 0.0, 1.0));
-
+            let P     = Ro + Rd * T;
+            let Uvw   = WorldToVolumeUvw(P);
             let Vox   = textureSampleLevel(ComparisonVoxel3dTex, LinearClampSampler, Uvw, 0.0);
             let UDist = Vox.b;
             let Opac  = Vox.a;
             if (UDist < VoxelDiag * 0.72 && Opac > 0.005)
             {
-                Res.Visibility = Res.Visibility * exp(-Opac * 3.2 * (StepMin / VoxelDiag));
-                if (Res.Visibility < 0.01)
+                LeafVis = LeafVis * exp(-Opac * 3.2 * (StepMin / VoxelDiag));
+                if (min(WoodVis, LeafVis) < 0.01)
                 {
                     Res.Visibility = 0.0;
                     return Res;
@@ -336,18 +446,16 @@ fn EvaluateSdfShadow(Ro : vec3<f32>, Rd : vec3<f32>, TanCone : f32, Mode : i32) 
                 T = T + max((UDist - VoxelDiag * 0.5) * 0.8, StepMin);
             }
         }
+        Res.Visibility = min(WoodVis, LeafVis);
         return Res;
     }
 
-    // 🟢 Mode 3: Two-Level 16^3 Canopy Brick + 5 x 2D Thin-Sheet Extrusion SDF + Continuous Cone-Width LOD!
-    var WoodVis = 1.0;
+    // 🟢 Mode 3: Two-Level 16^3 Canopy Brick + 5 x 2D Thin-Sheet Extrusion SDF + Continuous Cone-Width LOD (+ Noisy Capsule Limbs)!
     var LeafVis = 1.0;
-    var EvaluatedWood = false;
     let BMin = Params.BoundsMinThick.xyz;
     let BMax = Params.BoundsMaxDiag.xyz;
     let Span = max(BMax - BMin, vec3<f32>(1e-4));
     let BrickSz = Span / 16.0;
-    let CapCount = u32(Params.SceneCountsMask.x + 0.5);
     let LodScale = max(Params.SceneCountsMask.z, 0.25);
 
     for (var Iter = 0; Iter < 48; Iter = Iter + 1)
@@ -359,21 +467,6 @@ fn EvaluateSdfShadow(Ro : vec3<f32>, Rd : vec3<f32>, TanCone : f32, Mode : i32) 
         let Uvw   = WorldToVolumeUvw(P);
         let Macro = textureSampleLevel(MacroSdf3dTex, LinearClampSampler, Uvw, 0.0);
         let ConeR = max(T * TanCone, 0.0015);
-
-        if (!EvaluatedWood && Macro.r < VoxelDiag * 0.95 + ConeR)
-        {
-            EvaluatedWood = true;
-            let TStart0 = max(0.015, Hit.x);
-            for (var C = 0u; C < CapCount; C = C + 1u)
-            {
-                WoodVis = min(WoodVis, EvalRayWoodCapsuleShadow(Ro, Rd, TStart0, TEnd, TanCone, C));
-                if (WoodVis <= 0.0)
-                {
-                    Res.Visibility = 0.0;
-                    return Res;
-                }
-            }
-        }
 
         let DHull = Macro.g;
         if (DHull > ConeR + 0.01)
@@ -470,6 +563,11 @@ fn ShadeSunlitBotanicalSurface(
         let Seam = smoothstep(0.0, 0.018, min(Grid.x, Grid.y));
         Albedo = Albedo * (0.91 + 0.09 * Seam);
     }
+    if (MatTag > 0.5 && MatTag < 1.5 && Params.BarkParams.x > 0.01)
+    {
+        let MicroGrain = EvalBarkFbm3d(WorldPos * 1.15, Params.BarkParams.y * 2.2);
+        Albedo = Albedo * (0.94 + 0.16 * Params.BarkParams.x * MicroGrain);
+    }
     if (MatTag > 1.5)
     {
         let MarginRim = smoothstep(-0.08, 0.0, LeafD2d);
@@ -522,8 +620,9 @@ fn FsMain(In : SurfaceVertexOut) -> @location(0) vec4<f32>
 
     let SurfN = normalize(In.Normal);
     let FaceN = select(SurfN, -SurfN, dot(SurfN, SunDir) < 0.0 && In.MatTag > 1.5);
-    let Bias  = select(0.014, 0.024, In.MatTag > 1.5);
-    let RayOrigin = In.WorldPos + FaceN * Bias + SunDir * 0.008;
+    let Bias  = select(select(0.014, 0.028, In.MatTag > 0.5), 0.024, In.MatTag > 1.5);
+    let SunShift = select(0.008, 0.016, In.MatTag > 0.5 && In.MatTag < 1.5);
+    let RayOrigin = In.WorldPos + FaceN * Bias + SunDir * SunShift;
 
     let ScreenU = In.ClipPos.x / max(Params.ViewportVis.x, 1.0);
 
@@ -605,7 +704,8 @@ struct SceneUniforms
     BoundsMinThick    : vec4<f32>,
     BoundsMaxDiag     : vec4<f32>,
     ViewportVis       : vec4<f32>,
-    SceneCountsMask   : vec4<f32>, // .w = bitmask (1 = CanopyBricks, 2 = LeafSheetOutlines, 4 = RayMarchSteps)
+    SceneCountsMask   : vec4<f32>, // .w = bitmask (1 = CanopyBricks, 2 = LeafSheetOutlines, 4 = RayMarchSteps, 8 = CapsuleSkeleton)
+    BarkParams        : vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> Params : SceneUniforms;
@@ -696,6 +796,7 @@ uniform vec4 uBoundsMinThick;
 uniform vec4 uBoundsMaxDiag;
 uniform vec4 uViewportVis;
 uniform vec4 uSceneCountsMask;
+uniform vec4 uBarkParams;
 uniform ivec4 uPackedOffsets; // .x = RefStartVec4, .y = LeafStartVec4, .z = CapStartVec4, .w = TexWidth (256)
 
 uniform sampler2DArray uLeafArchetype2dTex;
@@ -755,28 +856,119 @@ vec2 IntersectRayVolumeAabb(vec3 Ro, vec3 Rd)
     return vec2(TEnter, TExit);
 }
 
+float HashLattice3d(float Ix, float Iy, float Iz)
+{
+    float Wx = Ix - floor(Ix * (1.0 / 289.0)) * 289.0;
+    float Wy = Iy - floor(Iy * (1.0 / 289.0)) * 289.0;
+    float Wz = Iz - floor(Iz * (1.0 / 289.0)) * 289.0;
+    vec3 P3 = fract(vec3(Wx, Wy, Wz) * vec3(0.1031, 0.1030, 0.0973));
+    P3 += dot(P3, P3.yzx + 19.19);
+    return fract((P3.x + P3.y) * P3.z);
+}
+
+float EvalSmoothNoise3d(vec3 Q)
+{
+    vec3 I = floor(Q);
+    vec3 F = Q - I;
+    vec3 U = F * F * (3.0 - 2.0 * F);
+
+    float N000 = HashLattice3d(I.x,       I.y,       I.z);
+    float N100 = HashLattice3d(I.x + 1.0, I.y,       I.z);
+    float N010 = HashLattice3d(I.x,       I.y + 1.0, I.z);
+    float N110 = HashLattice3d(I.x + 1.0, I.y + 1.0, I.z);
+    float N001 = HashLattice3d(I.x,       I.y,       I.z + 1.0);
+    float N101 = HashLattice3d(I.x + 1.0, I.y,       I.z + 1.0);
+    float N011 = HashLattice3d(I.x,       I.y + 1.0, I.z + 1.0);
+    float N111 = HashLattice3d(I.x + 1.0, I.y + 1.0, I.z + 1.0);
+
+    float Nx00 = mix(N000, N100, U.x);
+    float Nx10 = mix(N010, N110, U.x);
+    float Nx01 = mix(N001, N101, U.x);
+    float Nx11 = mix(N011, N111, U.x);
+    float Nxy0 = mix(Nx00, Nx10, U.y);
+    float Nxy1 = mix(Nx01, Nx11, U.y);
+    return mix(Nxy0, Nxy1, U.z);
+}
+
+float EvalBarkFbm3d(vec3 P, float Freq)
+{
+    float Oct1 = EvalSmoothNoise3d(vec3(P.x * Freq, P.y * Freq * 0.46, P.z * Freq)) * 2.0 - 1.0;
+    float F2   = Freq * 2.13;
+    float Oct2 = EvalSmoothNoise3d(vec3(P.z * F2 + 11.3, P.x * 0.62 * F2 + 7.1, P.y * F2 + 5.7)) * 2.0 - 1.0;
+    return Oct1 * 0.68 + Oct2 * 0.32;
+}
+
 float EvalRayWoodCapsuleShadow(vec3 Ro, vec3 Rd, float TStart, float TEnd, float TanCone, int CapIdx)
 {
     vec4 C0 = FetchVec4(uPackedOffsets.z + CapIdx * 2 + 0);
     vec4 C1 = FetchVec4(uPackedOffsets.z + CapIdx * 2 + 1);
     vec3 P0 = C0.xyz;
+    float R0 = C0.w;
     vec3 U  = C1.xyz - P0;
+    float R1 = C1.w;
     vec3 W  = Ro - P0;
     float B = dot(Rd, U);
     float C = dot(U, U);
     float D = dot(Rd, W);
     float E = dot(U, W);
-    float Denom = 1.0 - B * B;
+    float Denom = max(0.0, C - B * B);
 
-    float S = Denom > 1e-6 ? clamp((E - B * D) / Denom, 0.0, 1.0) : 0.0;
+    float S = Denom > 1e-7 ? clamp((E - B * D) / Denom, 0.0, 1.0) : 0.0;
     float T = clamp(B * S - D, TStart, TEnd);
-    S = C > 1e-6 ? clamp((E + T * B) / C, 0.0, 1.0) : 0.0;
+    S = C > 1e-7 ? clamp((E + T * B) / C, 0.0, 1.0) : 0.0;
     T = clamp(B * S - D, TStart, TEnd);
 
-    float Rad = C0.w + (C1.w - C0.w) * S;
-    float SignedDist = length((Ro + Rd * T) - (P0 + U * S)) - Rad;
-    if (SignedDist <= 0.0) return 0.0;
-    return clamp(SignedDist / max(T * TanCone, 0.0015), 0.0, 1.0);
+    float BestS = S;
+    float BestT = T;
+    float BestSmooth = length(W + Rd * T - U * S) - (R0 + (R1 - R0) * S);
+
+    float TCap0 = clamp(-D, TStart, TEnd);
+    float D0    = length(W + Rd * TCap0) - R0;
+    if (D0 < BestSmooth) { BestSmooth = D0; BestS = 0.0; BestT = TCap0; }
+
+    float TCap1 = clamp(B - D, TStart, TEnd);
+    float D1    = length(W + Rd * TCap1 - U) - R1;
+    if (D1 < BestSmooth) { BestSmooth = D1; BestS = 1.0; BestT = TCap1; }
+
+    float SmoothRad    = R0 + (R1 - R0) * BestS;
+    float ConeR        = max(BestT * TanCone, 0.0015);
+    float BarkNoiseAmp = uBarkParams.x;
+    float BarkFreq     = uBarkParams.y;
+    float MaxBarkBulge = SmoothRad * 0.18 * BarkNoiseAmp;
+
+    if (BestSmooth > MaxBarkBulge + ConeR) return 1.0;
+    if (BarkNoiseAmp <= 1e-4) return BestSmooth <= 0.0 ? 0.0 : clamp(BestSmooth / ConeR, 0.0, 1.0);
+    if (BestSmooth < -MaxBarkBulge) return 0.0;
+
+    float StepT  = SmoothRad * 0.42;
+    float MinVis = 1.0;
+    for (int Tap = -1; Tap <= 1; ++Tap)
+    {
+        float TSample = clamp(BestT + float(Tap) * StepT, TStart, TEnd);
+        float SSample = C > 1e-7 ? clamp((E + TSample * B) / C, 0.0, 1.0) : 0.0;
+        vec3 Rel      = W + Rd * TSample - U * SSample;
+        float DistAx  = length(Rel);
+        float LocRad  = R0 + (R1 - R0) * SSample;
+        vec3 SkinPt   = P0 + U * SSample + Rel * (LocRad / max(DistAx, 1e-6));
+        float NoisyR  = LocRad * (1.0 + 0.18 * BarkNoiseAmp * EvalBarkFbm3d(SkinPt, BarkFreq));
+        float NoisyD  = DistAx - NoisyR;
+        if (NoisyD <= 0.0) return 0.0;
+        MinVis = min(MinVis, clamp(NoisyD / max(TSample * TanCone, 0.0015), 0.0, 1.0));
+    }
+    return MinVis;
+}
+
+float EvalAllWoodCapsules(vec3 Ro, vec3 Rd, float TStart, float TEnd, float TanCone)
+{
+    float WoodVis = 1.0;
+    int CapCount = int(uSceneCountsMask.x + 0.5);
+    for (int C = 0; C < 512; ++C)
+    {
+        if (C >= CapCount) break;
+        WoodVis = min(WoodVis, EvalRayWoodCapsuleShadow(Ro, Rd, TStart, TEnd, TanCone, C));
+        if (WoodVis <= 0.0) return 0.0;
+    }
+    return WoodVis;
 }
 
 float EvalThinLeafInstanceSegment(vec3 Ro, vec3 Rd, float T0, float T1, float TanCone, int LeafIdx)
@@ -858,14 +1050,8 @@ float EvaluateExactGroundTruth(vec3 Ro, vec3 Rd, float TanCone)
     if (Hit.x > Hit.y) return 1.0;
     float TStart = max(0.015, Hit.x);
     float TEnd   = Hit.y;
-    float Vis    = 1.0;
-    int CapCount = int(uSceneCountsMask.x + 0.5);
-    for (int C = 0; C < 128; ++C)
-    {
-        if (C >= CapCount) break;
-        Vis = min(Vis, EvalRayWoodCapsuleShadow(Ro, Rd, TStart, TEnd, TanCone, C));
-        if (Vis <= 0.0) return 0.0;
-    }
+    float Vis    = EvalAllWoodCapsules(Ro, Rd, TStart, TEnd, TanCone);
+    if (Vis <= 0.0) return 0.0;
     int LeafCount = int(uSceneCountsMask.y + 0.5);
     for (int L = 0; L < 1024; ++L)
     {
@@ -881,15 +1067,19 @@ vec3 EvaluateSdfShadow(vec3 Ro, vec3 Rd, float TanCone, int Mode)
     vec2 Hit = IntersectRayVolumeAabb(Ro, Rd);
     if (Hit.x > Hit.y) return vec3(1.0, 0.0, 0.0);
 
-    float T = max(0.015, Hit.x);
+    float TStart0 = max(0.015, Hit.x);
+    float T = TStart0;
     float TEnd = Hit.y;
     float VoxelDiag = uBoundsMaxDiag.w;
     float Steps = 0.0;
     float MaxLod = 0.0;
 
+    float WoodVis = EvalAllWoodCapsules(Ro, Rd, TStart0, TEnd, TanCone);
+    if (WoodVis <= 0.0) return vec3(0.0, 1.0, 0.0);
+
     if (Mode == 0 || Mode == 1)
     {
-        float Vis = 1.0;
+        float LeafVis = 1.0;
         for (int Iter = 0; Iter < 56; ++Iter)
         {
             if (T >= TEnd) break;
@@ -897,29 +1087,26 @@ vec3 EvaluateSdfShadow(vec3 Ro, vec3 Rd, float TanCone, int Mode)
             vec4 Vox = textureLod(uComparisonVoxel3dTex, WorldToVolumeUvw(Ro + Rd * T), 0.0);
             float D = (Mode == 0) ? Vox.r : Vox.g;
             if (D <= 0.0005) return vec3(0.0, Steps, 0.0);
-            Vis = min(Vis, clamp(D / max(T * TanCone, 0.002), 0.0, 1.0));
+            LeafVis = min(LeafVis, clamp(D / max(T * TanCone, 0.002), 0.0, 1.0));
             T += max(D * 0.85, 0.028);
         }
-        return vec3(Vis, Steps, 0.0);
+        return vec3(min(WoodVis, LeafVis), Steps, 0.0);
     }
 
     if (Mode == 2)
     {
-        float Vis = 1.0;
+        float LeafVis = 1.0;
         float StepMin = VoxelDiag * 0.35;
         for (int Iter = 0; Iter < 56; ++Iter)
         {
             if (T >= TEnd) break;
             Steps += 1.0;
             vec3 Uvw = WorldToVolumeUvw(Ro + Rd * T);
-            float DWood = textureLod(uMacroSdf3dTex, Uvw, 0.0).r;
-            if (DWood <= 0.0) return vec3(0.0, Steps, 0.0);
-            Vis = min(Vis, clamp(DWood / max(T * TanCone, 0.002), 0.0, 1.0));
             vec4 Vox = textureLod(uComparisonVoxel3dTex, Uvw, 0.0);
             if (Vox.b < VoxelDiag * 0.72 && Vox.a > 0.005)
             {
-                Vis *= exp(-Vox.a * 3.2 * (StepMin / VoxelDiag));
-                if (Vis < 0.01) return vec3(0.0, Steps, 0.0);
+                LeafVis *= exp(-Vox.a * 3.2 * (StepMin / VoxelDiag));
+                if (min(WoodVis, LeafVis) < 0.01) return vec3(0.0, Steps, 0.0);
                 T += StepMin;
             }
             else
@@ -927,16 +1114,13 @@ vec3 EvaluateSdfShadow(vec3 Ro, vec3 Rd, float TanCone, int Mode)
                 T += max((Vox.b - VoxelDiag * 0.5) * 0.8, StepMin);
             }
         }
-        return vec3(Vis, Steps, 0.0);
+        return vec3(min(WoodVis, LeafVis), Steps, 0.0);
     }
 
-    float WoodVis = 1.0;
     float LeafVis = 1.0;
-    bool EvaluatedWood = false;
     vec3 BMin = uBoundsMinThick.xyz;
     vec3 Span = max(uBoundsMaxDiag.xyz - BMin, vec3(1e-4));
     vec3 BrickSz = Span / 16.0;
-    int CapCount = int(uSceneCountsMask.x + 0.5);
     float LodScale = max(uSceneCountsMask.z, 0.25);
 
     for (int Iter = 0; Iter < 48; ++Iter)
@@ -946,18 +1130,6 @@ vec3 EvaluateSdfShadow(vec3 Ro, vec3 Rd, float TanCone, int Mode)
         vec3 P = Ro + Rd * T;
         vec4 Macro = textureLod(uMacroSdf3dTex, WorldToVolumeUvw(P), 0.0);
         float ConeR = max(T * TanCone, 0.0015);
-
-        if (!EvaluatedWood && Macro.r < VoxelDiag * 0.95 + ConeR)
-        {
-            EvaluatedWood = true;
-            float TStart0 = max(0.015, Hit.x);
-            for (int C = 0; C < 128; ++C)
-            {
-                if (C >= CapCount) break;
-                WoodVis = min(WoodVis, EvalRayWoodCapsuleShadow(Ro, Rd, TStart0, TEnd, TanCone, C));
-                if (WoodVis <= 0.0) return vec3(0.0, Steps, MaxLod);
-            }
-        }
 
         if (Macro.g > ConeR + 0.01)
         {
@@ -1034,6 +1206,11 @@ vec3 ShadeSunlitBotanicalSurface(vec3 WorldPos, vec3 NormalIn, float MatTag, vec
         vec2 Grid = abs(fract(WorldPos.xz + 0.5) - 0.5);
         Albedo *= (0.91 + 0.09 * smoothstep(0.0, 0.018, min(Grid.x, Grid.y)));
     }
+    if (MatTag > 0.5 && MatTag < 1.5 && uBarkParams.x > 0.01)
+    {
+        float MicroGrain = EvalBarkFbm3d(WorldPos * 1.15, uBarkParams.y * 2.2);
+        Albedo *= (0.94 + 0.16 * uBarkParams.x * MicroGrain);
+    }
     if (MatTag > 1.5)
     {
         float MarginRim = smoothstep(-0.08, 0.0, LeafD2d);
@@ -1075,7 +1252,9 @@ void main()
 
     vec3 SurfN = normalize(vNormal);
     vec3 FaceN = (dot(SurfN, SunDir) < 0.0 && vMatTag > 1.5) ? -SurfN : SurfN;
-    vec3 RayOrigin = vWorldPos + FaceN * (vMatTag > 1.5 ? 0.024 : 0.014) + SunDir * 0.008;
+    float Bias = (vMatTag > 1.5) ? 0.024 : ((vMatTag > 0.5) ? 0.028 : 0.014);
+    float SunShift = (vMatTag > 0.5 && vMatTag < 1.5) ? 0.016 : 0.008;
+    vec3 RayOrigin = vWorldPos + FaceN * Bias + SunDir * SunShift;
     float ScreenU = gl_FragCoord.x / max(uViewportVis.x, 1.0);
 
     if (DispMode == 1)

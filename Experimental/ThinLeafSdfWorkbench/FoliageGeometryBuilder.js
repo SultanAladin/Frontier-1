@@ -9,6 +9,11 @@ import {
     CanopyBrickRes,
     Sample3dVolumeTrilinear,
     MacroVoxelRes,
+    DefaultBarkNoiseAmp,
+    DefaultBarkNoiseFreq,
+    BarkDispMaxFrac,
+    EvalBarkFbm3d,
+    EvalRayCapsuleShadow,
     EvalThinLeafRaySegmentShadow
 } from "./ThinLeafSdfCompiler.js";
 
@@ -179,69 +184,152 @@ function AppendReceiverSphere(Acc, Center, Radius, Albedo, Rings = 14, Sectors =
     }
 }
 
-function AppendTaperedWoodCapsule(Acc, Cap, RadialSides = 12)
+// Builds a 100% closed, watertight Tapered Capsule (Start Hemisphere Cap + Tangential Tapered Mantle + End Hemisphere Cap)
+// displaced radially by 3D Procedural Bark & Burl FBM Noise so adjacent capsule ball-joints weld seamlessly with ZERO gaps!
+function AppendWatertightWoodCapsule(Acc, Cap, BarkNoiseAmp, BarkNoiseFreq, RadialSides = 16)
 {
     const { P0, R0, P1, R1 } = Cap;
     const Axis = [P1[0] - P0[0], P1[1] - P0[1], P1[2] - P0[2]];
-    const Dir  = Normalize3(Axis);
+    const SegLen = Math.hypot(Axis[0], Axis[1], Axis[2]) || 1e-4;
+    const Dir = [Axis[0] / SegLen, Axis[1] / SegLen, Axis[2] / SegLen];
     const UpRef = Math.abs(Dir[1]) > 0.92 ? [1.0, 0.0, 0.0] : [0.0, 1.0, 0.0];
     const Right = Normalize3(Cross3(UpRef, Dir));
     const Fwd   = Normalize3(Cross3(Dir, Right));
 
-    const BarkDark  = [0.33, 0.23, 0.15];
-    const BarkLight = [0.43, 0.31, 0.21];
+    // Exact cone taper slope sin(alpha) = (R0 - R1) / SegLen for smooth mantle normals
+    const SinCone = Math.max(-0.82, Math.min(0.82, (R0 - R1) / SegLen));
+    const CosCone = Math.sqrt(Math.max(0.05, 1.0 - SinCone * SinCone));
 
-    const Rings = 5;
-    const StartVert = Acc.VertexCount;
-    for (let K = 0; K <= Rings; ++K)
+    const BarkCrevice = [0.24, 0.16, 0.10];
+    const BarkRidge   = [0.46, 0.33, 0.22];
+
+    // Profile stations: 4 start-hemisphere rings + 6 axial mantle rings + 4 end-hemisphere rings = 15 closed rings
+    const CapRings    = 4;
+    const MantleRings = 6;
+    const Stations    = [];
+
+    for (let H = 0; H < CapRings; ++H)
     {
-        const T = K / Rings;
-        const Cx = P0[0] + Axis[0] * T;
-        const Cy = P0[1] + Axis[1] * T;
-        const Cz = P0[2] + Axis[2] * T;
-        const Rad = R0 + (R1 - R0) * T;
+        const Phi = -0.5 * Math.PI * (1.0 - H / CapRings); // -pi/2 (pole) -> < 0
+        Stations.push({
+            Center: P0,
+            RingScale: Math.cos(Phi),
+            AxialShift: Math.sin(Phi),
+            SphereRadius: R0,
+            NormalAxial: Math.sin(Phi),
+            NormalRadial: Math.cos(Phi),
+            UseHemisphere: true
+        });
+    }
+
+    for (let K = 0; K <= MantleRings; ++K)
+    {
+        const T = K / MantleRings;
+        Stations.push({
+            Center: [P0[0] + Axis[0] * T, P0[1] + Axis[1] * T, P0[2] + Axis[2] * T],
+            RingScale: 1.0,
+            AxialShift: 0.0,
+            SphereRadius: R0 + (R1 - R0) * T,
+            NormalAxial: SinCone,
+            NormalRadial: CosCone,
+            UseHemisphere: false
+        });
+    }
+
+    for (let H = 1; H <= CapRings; ++H)
+    {
+        const Phi = 0.5 * Math.PI * (H / CapRings); // > 0 -> +pi/2 (pole)
+        Stations.push({
+            Center: P1,
+            RingScale: Math.cos(Phi),
+            AxialShift: Math.sin(Phi),
+            SphereRadius: R1,
+            NormalAxial: Math.sin(Phi),
+            NormalRadial: Math.cos(Phi),
+            UseHemisphere: true
+        });
+    }
+
+    const StartVert = Acc.VertexCount;
+    const RingCount = Stations.length;
+
+    for (let RIdx = 0; RIdx < RingCount; ++RIdx)
+    {
+        const St = Stations[RIdx];
+        const SmoothRad = St.SphereRadius;
 
         for (let S = 0; S <= RadialSides; ++S)
         {
             const Ang = (S / RadialSides) * Math.PI * 2.0;
             const CosA = Math.cos(Ang), SinA = Math.sin(Ang);
-            const Nx = Right[0] * CosA + Fwd[0] * SinA;
-            const Ny = Right[1] * CosA + Fwd[1] * SinA;
-            const Nz = Right[2] * CosA + Fwd[2] * SinA;
-            const Fluting = 0.5 + 0.5 * Math.sin(Ang * 5.0 + T * 4.0);
-            const Cr = BarkDark[0] + (BarkLight[0] - BarkDark[0]) * Fluting;
-            const Cg = BarkDark[1] + (BarkLight[1] - BarkDark[1]) * Fluting;
-            const Cb = BarkDark[2] + (BarkLight[2] - BarkDark[2]) * Fluting;
+            const RadDirX = Right[0] * CosA + Fwd[0] * SinA;
+            const RadDirY = Right[1] * CosA + Fwd[1] * SinA;
+            const RadDirZ = Right[2] * CosA + Fwd[2] * SinA;
+
+            // Outward unit direction on the smooth sphere cap or mantle cross-section
+            const UnitX = St.RingScale * RadDirX + St.AxialShift * Dir[0];
+            const UnitY = St.RingScale * RadDirY + St.AxialShift * Dir[1];
+            const UnitZ = St.RingScale * RadDirZ + St.AxialShift * Dir[2];
+
+            const SkinX = St.Center[0] + SmoothRad * UnitX;
+            const SkinY = St.Center[1] + SmoothRad * UnitY;
+            const SkinZ = St.Center[2] + SmoothRad * UnitZ;
+
+            let BarkFbm = 0.0;
+            let NoisyRad = SmoothRad;
+            let OutNorm = Normalize3([
+                St.NormalRadial * RadDirX + St.NormalAxial * Dir[0],
+                St.NormalRadial * RadDirY + St.NormalAxial * Dir[1],
+                St.NormalRadial * RadDirZ + St.NormalAxial * Dir[2]
+            ]);
+
+            if (BarkNoiseAmp > 1e-4)
+            {
+                BarkFbm  = EvalBarkFbm3d(SkinX, SkinY, SkinZ, BarkNoiseFreq);
+                NoisyRad = SmoothRad * (1.0 + BarkDispMaxFrac * BarkNoiseAmp * BarkFbm);
+
+                // Tangent-plane finite difference of 3D bark noise so lighting catches every bark furrow & woody burl!
+                const TangCircum = [-Right[0] * SinA + Fwd[0] * CosA, -Right[1] * SinA + Fwd[1] * CosA, -Right[2] * SinA + Fwd[2] * CosA];
+                const Eps = Math.max(0.006, SmoothRad * 0.14);
+                const BPlusU = EvalBarkFbm3d(SkinX + TangCircum[0] * Eps, SkinY + TangCircum[1] * Eps, SkinZ + TangCircum[2] * Eps, BarkNoiseFreq);
+                const BPlusV = EvalBarkFbm3d(SkinX + Dir[0] * Eps,        SkinY + Dir[1] * Eps,        SkinZ + Dir[2] * Eps,        BarkNoiseFreq);
+                const SlopeScale = (SmoothRad * BarkDispMaxFrac * BarkNoiseAmp) / Eps;
+                const Du = (BPlusU - BarkFbm) * SlopeScale * 0.65;
+                const Dv = (BPlusV - BarkFbm) * SlopeScale * 0.65;
+                OutNorm = Normalize3([
+                    OutNorm[0] - TangCircum[0] * Du - Dir[0] * Dv,
+                    OutNorm[1] - TangCircum[1] * Du - Dir[1] * Dv,
+                    OutNorm[2] - TangCircum[2] * Du - Dir[2] * Dv
+                ]);
+            }
+
+            const Px = St.Center[0] + NoisyRad * UnitX;
+            const Py = St.Center[1] + NoisyRad * UnitY;
+            const Pz = St.Center[2] + NoisyRad * UnitZ;
+
+            const RidgeFactor = Math.max(0.0, Math.min(1.0, 0.52 + 0.48 * BarkFbm));
+            const Cr = BarkCrevice[0] + (BarkRidge[0] - BarkCrevice[0]) * RidgeFactor;
+            const Cg = BarkCrevice[1] + (BarkRidge[1] - BarkCrevice[1]) * RidgeFactor;
+            const Cb = BarkCrevice[2] + (BarkRidge[2] - BarkCrevice[2]) * RidgeFactor;
+            const Ao = 0.74 + 0.22 * RidgeFactor;
 
             Acc.PushVertex(
-                Cx + Rad * Nx, Cy + Rad * Ny, Cz + Rad * Nz, 1,
-                Nx, Ny, Nz, -1,
-                Cr, Cg, Cb, 0.88
+                Px, Py, Pz, 1,
+                OutNorm[0], OutNorm[1], OutNorm[2], -1,
+                Cr, Cg, Cb, Ao
             );
         }
     }
 
     const Stride = RadialSides + 1;
-    for (let K = 0; K < Rings; ++K)
+    for (let RIdx = 0; RIdx < RingCount - 1; ++RIdx)
     {
         for (let S = 0; S < RadialSides; ++S)
         {
-            const A = StartVert + K * Stride + S;
+            const A = StartVert + RIdx * Stride + S;
             const B = A + Stride;
             Acc.PushQuad(A, A + 1, B + 1, B);
         }
-    }
-
-    // Rounded tip cap at P1
-    const TipCenter = Acc.PushVertex(
-        P1[0] + Dir[0] * R1 * 0.65, P1[1] + Dir[1] * R1 * 0.65, P1[2] + Dir[2] * R1 * 0.65, 1,
-        Dir[0], Dir[1], Dir[2], -1,
-        BarkLight[0], BarkLight[1], BarkLight[2], 0.92
-    );
-    const LastRingStart = StartVert + Rings * Stride;
-    for (let S = 0; S < RadialSides; ++S)
-    {
-        Acc.PushTri(LastRingStart + S, LastRingStart + S + 1, TipCenter);
     }
 }
 
@@ -340,10 +428,12 @@ export function BuildFoliageSceneGeometry(SceneSpec)
         AppendAxisBox(Acc, [-4.6, 0.0, -18.5], [-4.3, 4.2, 4.5], WallColor, 0.85, 1.0);
     }
 
-    // 3. Wooden Trunk & Tapered Branch Capsules
+    // 3. Watertight Tapered Wooden Trunk & Branch Capsules (+ 3D Procedural Bark & Burl FBM Displacement)
+    const BarkAmp  = SceneSpec.BarkNoiseAmp  !== undefined ? SceneSpec.BarkNoiseAmp  : DefaultBarkNoiseAmp;
+    const BarkFreq = SceneSpec.BarkNoiseFreq !== undefined ? SceneSpec.BarkNoiseFreq : DefaultBarkNoiseFreq;
     for (let C = 0; C < SceneSpec.Capsules.length; ++C)
     {
-        AppendTaperedWoodCapsule(Acc, SceneSpec.Capsules[C], 12);
+        AppendWatertightWoodCapsule(Acc, SceneSpec.Capsules[C], BarkAmp, BarkFreq, 16);
     }
 
     // 4. Instanced Curved Botanical Leaf Blades (alpha-clipped in fragment shader by the exact 64x64 2D Leaf Archetype SDF!)
@@ -471,8 +561,32 @@ export function BuildDebugWireframeGeometry(CompiledVol, CompiledArchetypes, Sun
         const TMax = 7.5;
         let HitT = TMax;
         let HitLeaf = false;
+        let HitWood = false;
+        const Caps = CompiledVol.SceneSpec.Capsules;
+        const BarkAmp  = CompiledVol.SceneSpec.BarkNoiseAmp  !== undefined ? CompiledVol.SceneSpec.BarkNoiseAmp  : DefaultBarkNoiseAmp;
+        const BarkFreq = CompiledVol.SceneSpec.BarkNoiseFreq !== undefined ? CompiledVol.SceneSpec.BarkNoiseFreq : DefaultBarkNoiseFreq;
 
-        for (let Step = 0; Step < 36 && T < TMax; ++Step)
+        // First check exact intersection with the continuous Tapered-Capsule Wood Skeleton!
+        for (let C = 0; C < Caps.length; ++C)
+        {
+            const Wv = EvalRayCapsuleShadow(Ro, SunDir, 0.02, TMax, 0.006, Caps[C], BarkAmp, BarkFreq);
+            if (Wv < 0.35)
+            {
+                const MidCap = [
+                    0.5 * (Caps[C].P0[0] + Caps[C].P1[0]) - Ro[0],
+                    0.5 * (Caps[C].P0[1] + Caps[C].P1[1]) - Ro[1],
+                    0.5 * (Caps[C].P0[2] + Caps[C].P1[2]) - Ro[2]
+                ];
+                const ApproxT = Math.max(0.05, MidCap[0] * SunDir[0] + MidCap[1] * SunDir[1] + MidCap[2] * SunDir[2]);
+                if (ApproxT < HitT)
+                {
+                    HitT = ApproxT;
+                    HitWood = true;
+                }
+            }
+        }
+
+        for (let Step = 0; Step < 36 && T < HitT; ++Step)
         {
             const P = [Ro[0] + SunDir[0] * T, Ro[1] + SunDir[1] * T, Ro[2] + SunDir[2] * T];
             if (P[0] < BMin[0] || P[0] > BMax[0] || P[1] < BMin[1] || P[1] > BMax[1] || P[2] < BMin[2] || P[2] > BMax[2])
@@ -497,14 +611,14 @@ export function BuildDebugWireframeGeometry(CompiledVol, CompiledArchetypes, Sun
             const By = Math.max(0, Math.min(CanopyBrickRes - 1, Math.floor(((P[1] - BMin[1]) / Span[1]) * CanopyBrickRes)));
             const Bz = Math.max(0, Math.min(CanopyBrickRes - 1, Math.floor(((P[2] - BMin[2]) / Span[2]) * CanopyBrickRes)));
 
-            let TBrickOut = TMax;
+            let TBrickOut = HitT;
             const CellX = BMin[0] + (SunDir[0] >= 0 ? Bx + 1 : Bx) * BrickSz[0];
             const CellY = BMin[1] + (SunDir[1] >= 0 ? By + 1 : By) * BrickSz[1];
             const CellZ = BMin[2] + (SunDir[2] >= 0 ? Bz + 1 : Bz) * BrickSz[2];
             if (Math.abs(SunDir[0]) > 1e-6) TBrickOut = Math.min(TBrickOut, (CellX - Ro[0]) / SunDir[0]);
             if (Math.abs(SunDir[1]) > 1e-6) TBrickOut = Math.min(TBrickOut, (CellY - Ro[1]) / SunDir[1]);
             if (Math.abs(SunDir[2]) > 1e-6) TBrickOut = Math.min(TBrickOut, (CellZ - Ro[2]) / SunDir[2]);
-            TBrickOut = Math.max(T + 0.02, Math.min(TMax, TBrickOut));
+            TBrickOut = Math.max(T + 0.02, Math.min(HitT, TBrickOut));
 
             const Flat = (Bz * CanopyBrickRes + By) * CanopyBrickRes + Bx;
             const StartOff = CompiledVol.BrickOffsetsU32[Flat * 4 + 0];
@@ -517,6 +631,7 @@ export function BuildDebugWireframeGeometry(CompiledVol, CompiledArchetypes, Sun
                 {
                     HitT = 0.5 * (T + TBrickOut);
                     HitLeaf = true;
+                    HitWood = false;
                     break;
                 }
             }
@@ -525,16 +640,71 @@ export function BuildDebugWireframeGeometry(CompiledVol, CompiledArchetypes, Sun
         }
 
         const EndPt = [Ro[0] + SunDir[0] * HitT, Ro[1] + SunDir[1] * HitT, Ro[2] + SunDir[2] * HitT];
-        const RayCol = HitLeaf ? [0.28, 0.98, 0.56, 0.96] : [1.0, 0.62, 0.22, 0.72];
+        const AnyHit = HitLeaf || HitWood;
+        const RayCol = HitWood ? [0.98, 0.74, 0.32, 0.96] : (HitLeaf ? [0.28, 0.98, 0.56, 0.96] : [1.0, 0.62, 0.22, 0.72]);
         PushLine(Ro[0], Ro[1], Ro[2], EndPt[0], EndPt[1], EndPt[2], 2.0, RayCol);
 
-        if (HitLeaf)
+        if (AnyHit)
         {
             const D = 0.065;
-            PushLine(EndPt[0] - D, EndPt[1], EndPt[2], EndPt[0], EndPt[1] + D, EndPt[2], 2.0, [0.28, 1.0, 0.56, 1.0]);
-            PushLine(EndPt[0], EndPt[1] + D, EndPt[2], EndPt[0] + D, EndPt[1], EndPt[2], 2.0, [0.28, 1.0, 0.56, 1.0]);
-            PushLine(EndPt[0] + D, EndPt[1], EndPt[2], EndPt[0], EndPt[1] - D, EndPt[2], 2.0, [0.28, 1.0, 0.56, 1.0]);
-            PushLine(EndPt[0], EndPt[1] - D, EndPt[2], EndPt[0] - D, EndPt[1], EndPt[2], 2.0, [0.28, 1.0, 0.56, 1.0]);
+            const HitCol = HitWood ? [1.0, 0.82, 0.38, 1.0] : [0.28, 1.0, 0.56, 1.0];
+            PushLine(EndPt[0] - D, EndPt[1], EndPt[2], EndPt[0], EndPt[1] + D, EndPt[2], 2.0, HitCol);
+            PushLine(EndPt[0], EndPt[1] + D, EndPt[2], EndPt[0] + D, EndPt[1], EndPt[2], 2.0, HitCol);
+            PushLine(EndPt[0] + D, EndPt[1], EndPt[2], EndPt[0], EndPt[1] - D, EndPt[2], 2.0, HitCol);
+            PushLine(EndPt[0], EndPt[1] - D, EndPt[2], EndPt[0] - D, EndPt[1], EndPt[2], 2.0, HitCol);
+        }
+    }
+
+    // Layer 3: Analytic Tapered-Capsule Skeleton + Ball-Joint Rings (warm amber/gold wireframe cage)
+    const Caps = CompiledVol.SceneSpec.Capsules;
+    const CapCol  = [0.98, 0.74, 0.30, 0.86];
+    const AxisCol = [1.00, 0.92, 0.58, 0.94];
+    for (let C = 0; C < Caps.length; ++C)
+    {
+        const { P0, R0, P1, R1 } = Caps[C];
+        const Lift0 = R0 * 1.04 + 0.003;
+        const Lift1 = R1 * 1.04 + 0.003;
+        const Axis = [P1[0] - P0[0], P1[1] - P0[1], P1[2] - P0[2]];
+        const Dir  = Normalize3(Axis);
+        const UpRef = Math.abs(Dir[1]) > 0.92 ? [1.0, 0.0, 0.0] : [0.0, 1.0, 0.0];
+        const Right = Normalize3(Cross3(UpRef, Dir));
+        const Fwd   = Normalize3(Cross3(Dir, Right));
+
+        // Centerline spine segment
+        PushLine(P0[0], P0[1], P0[2], P1[0], P1[1], P1[2], 3.0, AxisCol);
+
+        // Joint rings at P0 and P1 + 4 longitudinal capsule generatrices
+        const RingSegs = 12;
+        for (let S = 0; S < RingSegs; ++S)
+        {
+            const A0 = (S / RingSegs) * Math.PI * 2.0;
+            const A1 = ((S + 1) / RingSegs) * Math.PI * 2.0;
+            const U0x = Right[0] * Math.cos(A0) + Fwd[0] * Math.sin(A0);
+            const U0y = Right[1] * Math.cos(A0) + Fwd[1] * Math.sin(A0);
+            const U0z = Right[2] * Math.cos(A0) + Fwd[2] * Math.sin(A0);
+            const U1x = Right[0] * Math.cos(A1) + Fwd[0] * Math.sin(A1);
+            const U1y = Right[1] * Math.cos(A1) + Fwd[1] * Math.sin(A1);
+            const U1z = Right[2] * Math.cos(A1) + Fwd[2] * Math.sin(A1);
+
+            PushLine(
+                P0[0] + Lift0 * U0x, P0[1] + Lift0 * U0y, P0[2] + Lift0 * U0z,
+                P0[0] + Lift0 * U1x, P0[1] + Lift0 * U1y, P0[2] + Lift0 * U1z,
+                3.0, CapCol
+            );
+            PushLine(
+                P1[0] + Lift1 * U0x, P1[1] + Lift1 * U0y, P1[2] + Lift1 * U0z,
+                P1[0] + Lift1 * U1x, P1[1] + Lift1 * U1y, P1[2] + Lift1 * U1z,
+                3.0, CapCol
+            );
+
+            if (S % 3 === 0)
+            {
+                PushLine(
+                    P0[0] + Lift0 * U0x, P0[1] + Lift0 * U0y, P0[2] + Lift0 * U0z,
+                    P1[0] + Lift1 * U0x, P1[1] + Lift1 * U0y, P1[2] + Lift1 * U0z,
+                    3.0, CapCol
+                );
+            }
         }
     }
 
