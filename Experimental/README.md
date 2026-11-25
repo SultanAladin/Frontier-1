@@ -35,6 +35,7 @@
 | **`DeterministicRaytracingLab/`** | WebGPU 4-wide `BVH4` deterministic full-raytracing laboratory (`:8097`). |
 | **`GtxReflectionBenchmark/`** | Frozen WebGPU GTX specular reflection & contact shadow benchmark (`:8096`). |
 | **`ShadowAlgorithmLab/`** | Solar frustum, contact-PCSS, SMRT, and PCF shadow comparison lab. |
+| **`RadiometricLightingLab/`** | Unified 7-class luminaire register (`IES`, `ECE -1.0°`, `Dual-Lobe LTC`, `Picott/Karis Tube`, `Stokes Emissive`, `Portal`), Conty-Kulla `LightPartition` cut (`up to 96 lights`), and A/B comparison against Clustered Froxels, 1-spp ReSTIR DI, and Pure SDF Voxel lighting across Lobbies 1–3 (`:8088`). |
 
 ---
 

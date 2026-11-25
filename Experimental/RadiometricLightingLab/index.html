@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Frontier · Radiometric Lighting Architecture Lab</title>
+  <link rel="stylesheet" href="./LightingLabStyle.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Top Studio Control Bar -->
+    <header class="top-bar">
+      <div class="brand-cluster">
+        <div class="brand-mark">RL</div>
+        <div>
+          <div class="brand-title">Radiometric Lighting Architecture Lab</div>
+          <div class="brand-subtitle">7-Class Luminaire Register · Conty-Kulla Partition Cut · AutoSpace Lobbies 1–3</div>
+        </div>
+      </div>
+
+      <div class="toolbar-group">
+        <span class="toolbar-label">Lobby</span>
+        <div class="seg-strip" id="segScenes">
+          <button class="seg-btn active" data-val="0">1 · Cyclorama</button>
+          <button class="seg-btn" data-val="1">2 · Forest LED</button>
+          <button class="seg-btn" data-val="2">3 · Pit Garage</button>
+        </div>
+      </div>
+
+      <div class="toolbar-group">
+        <span class="toolbar-label">Engine</span>
+        <div class="seg-strip" id="segEngines">
+          <button class="seg-btn" data-val="0">MatCap</button>
+          <button class="seg-btn" data-val="1">OpenPBR Direct</button>
+          <button class="seg-btn active" data-val="2">Hybrid GI (SDF Vis)</button>
+          <button class="seg-btn" data-val="3">Sobol PT</button>
+        </div>
+      </div>
+
+      <div class="toolbar-group">
+        <span class="toolbar-label">Many-Light Solver</span>
+        <div class="seg-strip" id="segSolvers">
+          <button class="seg-btn active" data-val="0" title="Selected Architecture: Unified Analytic + Spatial-Orientation Cone Partition Cut">⭐ Analytic + Partition</button>
+          <button class="seg-btn warn-active" data-val="1" title="Comparison: Camera-Space Clustered 3D Froxels">Clustered Froxels</button>
+          <button class="seg-btn warn-active" data-val="2" title="Comparison: 1-spp Spatiotemporal ReSTIR DI">1-spp ReSTIR DI</button>
+          <button class="seg-btn warn-active" data-val="3" title="Forbidden Anti-Pattern: Pure SDF Voxel Lighting">Pure SDF Voxel</button>
+        </div>
+      </div>
+
+      <div class="toolbar-group">
+        <span class="toolbar-label">Lights</span>
+        <div class="seg-strip" id="segDensity">
+          <button class="seg-btn active" data-val="0">Rig (~12)</button>
+          <button class="seg-btn" data-val="1">40</button>
+          <button class="seg-btn" data-val="2">96</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main 3-Column Studio Grid -->
+    <main class="workspace-grid">
+      <!-- Left: World Luminaire Outliner -->
+      <aside class="side-pane left">
+        <div class="pane-header">
+          <span>Luminaire Register</span>
+          <span id="outlinerCount" style="font-family: var(--font-mono); color: var(--ink-primary);">12 / 12</span>
+        </div>
+        <div class="pane-scroll" id="outlinerScroll"></div>
+      </aside>
+
+      <!-- Center: Live WebGL2 3D Radiometric Stage -->
+      <section class="viewport-stage">
+        <canvas id="glCanvas"></canvas>
+
+        <!-- Split-Screen Wipe Comparator Overlay -->
+        <div class="split-overlay hidden" id="splitOverlay">
+          <div class="split-line" id="splitLine"></div>
+          <div class="split-knob" id="splitKnob" title="Drag to compare Reference vs Selected Solver">↔</div>
+          <div class="split-tag left-tag">LEFT · ⭐ Analytic + Partition Cut (Reference)</div>
+          <div class="split-tag right-tag" id="splitRightTag">RIGHT · Comparison Solver</div>
+        </div>
+
+        <!-- Top-Left Live Telemetry Chips -->
+        <div class="hud-top-left">
+          <div class="hud-chip-row">
+            <div class="hud-chip">
+              <span class="hud-dot" id="solverDot"></span>
+              <span id="hudEngine">2 · Hybrid GI (SDF Vis + Analytic)</span>
+            </div>
+            <div class="hud-chip" id="hudLights">12 Active Luminaires · Cut 8</div>
+            <div class="hud-chip" id="hudPerf">-- ms · -- FPS</div>
+          </div>
+        </div>
+
+        <!-- Bottom Architectural Diagnostic Callout -->
+        <div class="hud-bottom-bar">
+          <div class="diagnostic-callout">
+            <div class="diagnostic-title" id="diagTitle">Rank #1 · Unified Analytic Radiometry + Spatial-Orientation Partition Cut</div>
+            <div class="diagnostic-body" id="diagBody">Loading WebGL2 radiometric stage...</div>
+          </div>
+          <div class="camera-hint">Drag: Orbit · Shift/Right-Drag: Pan · Wheel: Zoom</div>
+        </div>
+      </section>
+
+      <!-- Right: Contextual Photometric & Architecture Inspector -->
+      <aside class="side-pane right">
+        <div class="pane-header">
+          <span>Luminaire Inspector</span>
+          <span id="inspClassBadge" style="font-family: var(--font-mono); color: var(--accent-blue);">PhotometricIes</span>
+        </div>
+
+        <div class="pane-scroll">
+          <!-- Selected Luminaire Photometry Card (1:1 LightInspectorShared.h) -->
+          <div class="luminaire-card">
+            <div class="card-title-row">
+              <span class="card-title" id="inspName">Barn-Door Key Fresnel</span>
+            </div>
+
+            <div class="giant-metric-block">
+              <div class="giant-digits">
+                <span id="giantWhole">17,850</span><span class="dec" id="giantDec">.0</span><span class="unit" id="giantUnit">cd</span>
+              </div>
+              <div class="giant-caption" id="giantCaption">LM-63 Type-C 128×32 Grid · Analytic 4-Leaf Barn-Door Clip</div>
+            </div>
+
+            <div class="polar-canvas-wrap">
+              <canvas id="polarCanvas"></canvas>
+            </div>
+
+            <div class="ctl-row" id="rowIesProfile">
+              <span class="ctl-label">IES Distribution</span>
+              <select class="dark-select" id="selIesProfile" style="grid-column: span 2;">
+                <option value="0">0 · Barn-Door Studio Fresnel</option>
+                <option value="1">1 · ECE R112 Low-Beam (-1.0° Kink)</option>
+                <option value="2">2 · Automotive High-Beam Pencil</option>
+                <option value="3">3 · Architectural Batwing Downlight</option>
+                <option value="4">4 · Automotive Red Taillamp / Fog</option>
+                <option value="5">5 · Focused Studio Octa Strobe</option>
+              </select>
+            </div>
+
+            <div class="ctl-row">
+              <span class="ctl-label">Intensity Scale</span>
+              <input type="range" id="ctlIntensity" min="0.1" max="38.0" step="0.1" value="21.0" />
+              <span class="ctl-val" id="valIntensity">21.0</span>
+            </div>
+
+            <div class="ctl-row">
+              <span class="ctl-label">Colour Temp</span>
+              <input type="range" id="ctlKelvin" min="2000" max="9000" step="50" value="5400" />
+              <span class="ctl-val" id="valKelvin">5400 K</span>
+            </div>
+
+            <div class="ctl-row">
+              <span class="ctl-label">Reach Window</span>
+              <input type="range" id="ctlRange" min="3.0" max="32.0" step="0.5" value="24.0" />
+              <span class="ctl-val" id="valRange">24.0 m</span>
+            </div>
+
+            <div class="ctl-row" id="rowAperture">
+              <span class="ctl-label" id="lblAperture">Barn-Door Flare</span>
+              <input type="range" id="ctlAperture" min="10" max="75" step="1" value="34" />
+              <span class="ctl-val" id="valAperture">34°</span>
+            </div>
+          </div>
+
+          <!-- Spatial-Orientation Light Partition Cut Card -->
+          <div class="luminaire-card">
+            <div class="card-title-row">
+              <span class="card-title">Spatial-Orientation Partition Cut</span>
+            </div>
+
+            <div class="metric-tiles">
+              <div class="metric-tile">
+                <div class="tile-k">BVH Entries</div>
+                <div class="tile-v" id="tileNodes">23</div>
+              </div>
+              <div class="metric-tile">
+                <div class="tile-k">Active Split</div>
+                <div class="tile-v" id="tileCut">K=8</div>
+              </div>
+              <div class="metric-tile">
+                <div class="tile-k">Tree Depth</div>
+                <div class="tile-v" id="tileHeight">5</div>
+              </div>
+            </div>
+
+            <div class="ctl-row" style="grid-template-columns: 76px 1fr;">
+              <span class="ctl-label">Split Budget</span>
+              <div class="seg-strip" id="segCut" style="justify-content: space-between;">
+                <button class="seg-btn" data-val="4">4</button>
+                <button class="seg-btn active" data-val="8">8</button>
+                <button class="seg-btn" data-val="12">12</button>
+                <button class="seg-btn" data-val="16">16</button>
+                <button class="seg-btn" data-val="96">Brute</button>
+              </div>
+            </div>
+
+            <div class="toggle-grid">
+              <button class="pill-toggle" id="btnSplit"><span>A/B Split Wipe</span><span class="st">OFF</span></button>
+              <button class="pill-toggle on" id="btnHeatmap"><span>Froxel Heatmap</span><span class="st">ON</span></button>
+              <button class="pill-toggle" id="btnFalseLux"><span>False-Colour Lux</span><span class="st">OFF</span></button>
+              <button class="pill-toggle" id="btnGizmos"><span>Light Gizmos</span><span class="st">OFF</span></button>
+            </div>
+          </div>
+
+          <!-- Dual-Layer Vehicle Clearcoat & Zero-Ghosting Motion Stress -->
+          <div class="luminaire-card">
+            <div class="card-title-row">
+              <span class="card-title">Clearcoat Paint & Motion Stress</span>
+            </div>
+
+            <div class="paint-swatches" id="paintSwatches"></div>
+
+            <div class="ctl-row">
+              <span class="ctl-label">Coat Roughness</span>
+              <input type="range" id="ctlCoatRough" min="0.010" max="0.180" step="0.005" value="0.025" />
+              <span class="ctl-val" id="valCoatRough">0.025</span>
+            </div>
+
+            <div class="ctl-row">
+              <span class="ctl-label">Stadium Sun El</span>
+              <input type="range" id="ctlSunEl" min="4" max="68" step="1" value="24" />
+              <span class="ctl-val" id="valSunEl">24°</span>
+            </div>
+
+            <div class="ctl-row">
+              <span class="ctl-label">ACES Exposure</span>
+              <input type="range" id="ctlExposure" min="0.35" max="2.60" step="0.05" value="1.16" />
+              <span class="ctl-val" id="valExposure">1.16</span>
+            </div>
+
+            <div class="toggle-grid">
+              <button class="pill-toggle" id="btnWheelSpin" title="Spin 5-spoke rims to compare zero-ghosting Partition vs temporal ReSTIR DI smear"><span>Spin Rims</span><span class="st">OFF</span></button>
+              <button class="pill-toggle" id="btnLiftAnim" title="Cycle Lobby 3 hydraulic car lift live"><span>Cycle Lift</span><span class="st">OFF</span></button>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <script type="module">
+    import { StartRadiometricLightingStudio } from "./LightingLabEngine.js";
+    StartRadiometricLightingStudio();
+  </script>
+</body>
+</html>
