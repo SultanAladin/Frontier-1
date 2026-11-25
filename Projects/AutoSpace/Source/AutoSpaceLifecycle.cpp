@@ -70,6 +70,19 @@ bool AutoSpaceLifecycle::Initialize(
     {
         EffectiveProjectRoot = std::filesystem::path("Projects") / "AutoSpace";
     }
+    {
+        std::error_code RootEc {};
+        if (!std::filesystem::exists(EffectiveProjectRoot / "Content" / "Worlds" / "MainWorld.WorldSpace", RootEc))
+        {
+#if defined(AUTOSPACE_PROJECT_ROOT_DIR)
+            const std::filesystem::path CompiledProjectRoot(AUTOSPACE_PROJECT_ROOT_DIR);
+            if (std::filesystem::exists(CompiledProjectRoot / "Content" / "Worlds" / "MainWorld.WorldSpace", RootEc))
+            {
+                EffectiveProjectRoot = CompiledProjectRoot;
+            }
+#endif
+        }
+    }
 
     if (!RuntimeLoop.BootFromProjectRoot(EffectiveProjectRoot, OutDiagnostic, ForceHeadlessWindow))
     {
@@ -92,7 +105,7 @@ bool AutoSpaceLifecycle::Initialize(
         return false;
     }
 
-    // Verify Sun + Sky assets referenced by MainWorld.WorldSpace
+    // Verify Sun + Sky documents referenced by MainWorld.WorldSpace
     Frontier::Codecs::WorldSpaceDocumentModel WorldDoc {};
     if (Frontier::Codecs::WorldSpaceDecoder::DecodeFromFile(StartupWorldPath, WorldDoc, WorldDiag))
     {
@@ -143,8 +156,8 @@ uint32_t AutoSpaceLifecycle::RunBoundedTicks(uint32_t MaximumOuterTicks, double 
     return RuntimeLoop.ExecuteBoundedFixedLoop(
         MaximumOuterTicks,
         WallStepSeconds,
-        &AutoSpaceLifecycle::DispatchFixedStep,
-        &AutoSpaceLifecycle::DispatchPresentationStep,
+        &AutoSpaceLifecycle::RouteFixedStep,
+        &AutoSpaceLifecycle::RoutePresentationStep,
         this);
 }
 
@@ -211,30 +224,30 @@ AutoSpaceLoopMetrics AutoSpaceLifecycle::InspectMetrics() const noexcept
     return Metrics;
 }
 
-void AutoSpaceLifecycle::DispatchFixedStep(double FixedDeltaSeconds, uint64_t FixedStepOrdinal, void* Payload) noexcept
+void AutoSpaceLifecycle::RouteFixedStep(double FixedDeltaSeconds, uint64_t FixedStepOrdinal, void* Payload) noexcept
 {
     if (auto* Self = static_cast<AutoSpaceLifecycle*>(Payload))
     {
-        Self->OnFixedSimulationStep(FixedDeltaSeconds, FixedStepOrdinal);
+        Self->ExecuteFixedSimulationStep(FixedDeltaSeconds, FixedStepOrdinal);
     }
 }
 
-void AutoSpaceLifecycle::DispatchPresentationStep(double InterpolationAlpha, double WallDeltaSeconds, void* Payload) noexcept
+void AutoSpaceLifecycle::RoutePresentationStep(double InterpolationAlpha, double WallDeltaSeconds, void* Payload) noexcept
 {
     if (auto* Self = static_cast<AutoSpaceLifecycle*>(Payload))
     {
-        Self->OnPresentationStep(InterpolationAlpha, WallDeltaSeconds);
+        Self->ExecutePresentationStep(InterpolationAlpha, WallDeltaSeconds);
     }
 }
 
-void AutoSpaceLifecycle::OnFixedSimulationStep(double FixedDeltaSeconds, uint64_t /*FixedStepOrdinal*/) noexcept
+void AutoSpaceLifecycle::ExecuteFixedSimulationStep(double FixedDeltaSeconds, uint64_t /*FixedStepOrdinal*/) noexcept
 {
     (void)WorldHost.StepRuntimeWorld(FixedDeltaSeconds);
     ++Metrics.TotalFixedStepsExecuted;
     Metrics.SimulatedElapsedSeconds += FixedDeltaSeconds;
 }
 
-void AutoSpaceLifecycle::OnPresentationStep(double InterpolationAlpha, double /*WallDeltaSeconds*/) noexcept
+void AutoSpaceLifecycle::ExecutePresentationStep(double InterpolationAlpha, double /*WallDeltaSeconds*/) noexcept
 {
     ++Metrics.PresentationTicksCount;
     Metrics.LastInterpolationAlpha = InterpolationAlpha;

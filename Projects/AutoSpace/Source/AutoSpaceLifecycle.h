@@ -71,17 +71,17 @@ public:
     [[nodiscard]] Frontier::Lifecycle::RuntimeWorldHost&    AccessWorldHost() noexcept { return WorldHost; }
 
 private:
-    static void DispatchFixedStep(double FixedDeltaSeconds, uint64_t FixedStepOrdinal, void* Payload) noexcept;
-    static void DispatchPresentationStep(double InterpolationAlpha, double WallDeltaSeconds, void* Payload) noexcept;
+    static void RouteFixedStep(double FixedDeltaSeconds, uint64_t FixedStepOrdinal, void* Payload) noexcept;
+    static void RoutePresentationStep(double InterpolationAlpha, double WallDeltaSeconds, void* Payload) noexcept;
 
-    void OnFixedSimulationStep(double FixedDeltaSeconds, uint64_t FixedStepOrdinal) noexcept;
-    void OnPresentationStep(double InterpolationAlpha, double WallDeltaSeconds) noexcept;
+    void ExecuteFixedSimulationStep(double FixedDeltaSeconds, uint64_t FixedStepOrdinal) noexcept;
+    void ExecutePresentationStep(double InterpolationAlpha, double WallDeltaSeconds) noexcept;
 
     Frontier::Lifecycle::RuntimeLifecycle RuntimeLoop {};     // [-] - Zero-Editor tight runtime loop
     Frontier::Lifecycle::RuntimeWorldHost WorldHost   {};     // [-] - Single-level SoA world host (MainWorld.WorldSpace)
     AutoSpacePolicyBundle                 Policies    {};     // [-] - Project execution, gameplay & networking policies
-    AutoSpaceLoopMetrics                  Metrics     {};     // [-] - Live runtime & world state telemetry
-    bool                                  Initialized = false;// [-] - Lifecycle active flag
+    AutoSpaceLoopMetrics                  Metrics     {};     // [-] - Live runtime & world telemetry
+    bool                                  Initialized = false;// [-] - Lifecycle active indicator
 };
 
 } // namespace AutoSpace

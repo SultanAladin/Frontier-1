@@ -41,7 +41,7 @@ namespace
 //                                        RFC 8439 CHACHA20 & POLY1305 PRIMITIVES
 //------------------------------------------------------------------------------------------------------------------------
 
-[[nodiscard]] constexpr uint32_t RotateLeft32(uint32_t Word, uint32_t Shift) noexcept
+[[nodiscard]] constexpr uint32_t RotateBitsLeft32(uint32_t Word, uint32_t Shift) noexcept
 {
     return (Word << Shift) | (Word >> (32u - Shift));
 }
@@ -64,10 +64,10 @@ void WriteLittleEndian32(uint8_t* Destination, uint32_t Word) noexcept
 
 constexpr void ChaChaQuarterRound(uint32_t& A, uint32_t& B, uint32_t& C, uint32_t& D) noexcept
 {
-    A += B; D ^= A; D = RotateLeft32(D, 16u);
-    C += D; B ^= C; B = RotateLeft32(B, 12u);
-    A += B; D ^= A; D = RotateLeft32(D, 8u);
-    C += D; B ^= C; B = RotateLeft32(B, 7u);
+    A += B; D ^= A; D = RotateBitsLeft32(D, 16u);
+    C += D; B ^= C; B = RotateBitsLeft32(B, 12u);
+    A += B; D ^= A; D = RotateBitsLeft32(D, 8u);
+    C += D; B ^= C; B = RotateBitsLeft32(B, 7u);
 }
 
 void ComputeChaCha20Block(

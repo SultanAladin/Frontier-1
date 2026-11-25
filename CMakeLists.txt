@@ -314,7 +314,7 @@ endif()
 #                                      SLANG -> SPIR-V SHADER COMPILATION PIPELINE
 #------------------------------------------------------------------------------------------------------------------------
 
-if(WIN32)
+if(CMAKE_HOST_WIN32)
     set(FRONTIER_SLANGC_BIN "${CMAKE_SOURCE_DIR}/ExternalPackages/VulkanCompute/Slang/slangtorch/bin/slangc.exe")
 else()
     set(FRONTIER_SLANGC_BIN "${CMAKE_SOURCE_DIR}/ExternalPackages/VulkanCompute/Slang/slangtorch/bin/slangc")

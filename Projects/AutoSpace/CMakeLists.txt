@@ -1,6 +1,6 @@
-# ============================================================================================================================================
-#                                                     PROJECTS/AUTOSPACE/CMAKELISTS.TXT
-# ============================================================================================================================================
+#============================================================================================================================================
+#                                                      PROJECTS/AUTOSPACE/CMAKELISTS.TXT
+#============================================================================================================================================
 # 🧩 Standalone project build target for AutoSpace (isolated from Engine/; links FrontierEngine with zero Editor UI)
 
 add_library(AutoSpaceProject STATIC
@@ -13,6 +13,10 @@ target_include_directories(AutoSpaceProject PUBLIC
 )
 target_link_libraries(AutoSpaceProject PUBLIC
     FrontierEngine
+    FrontierCompileSettings
+)
+target_compile_definitions(AutoSpaceProject PUBLIC
+    AUTOSPACE_PROJECT_ROOT_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
 )
 target_compile_features(AutoSpaceProject PUBLIC cxx_std_20)
 

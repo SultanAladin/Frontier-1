@@ -26,10 +26,10 @@ namespace AutoSpace
 
 struct AutoSpacePolicyBundle
 {
-    Frontier::Lifecycle::ProjectExecutionPolicy                   ExecutionPolicy   {}; // [-] - Cadence, opt-in domains & worker lanes
+    Frontier::Lifecycle::ProjectExecutionPolicy                   ExecutionPolicy   {}; // [-] - Step rate, opt-in scopes & channel count
     Frontier::SimulationSpace::Policies::GameplayRulePolicy       GameplayPolicy    {}; // [-] - Fixed Hz, alignment hash & bounds rules
     Frontier::SimulationSpace::Policies::DeterministicDrivingPolicy DrivingPolicy   {}; // [-] - 16->20->3 deterministic driver policy
-    Frontier::NetworkingSpace::ReplicationScheduleSpec            VehicleContract   {}; // [-] - Kinematic replication schedule
+    Frontier::NetworkingSpace::ReplicationScheduleSpec            VehicleSchedule   {}; // [-] - Kinematic replication schedule
     Frontier::NetworkingSpace::TransportSelectionInput            TransportInput    {}; // [-] - Transport routing & failover rule
 };
 

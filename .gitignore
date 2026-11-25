@@ -18,6 +18,7 @@ dist/
 Projects/*/Saved/
 
 # Editor / OS / Python / Node transient artifacts
+.venv/
 imgui.ini
 __pycache__/
 *.pyc

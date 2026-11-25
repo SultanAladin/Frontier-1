@@ -70,7 +70,7 @@ AutoSpacePolicyBundle BuildAutoSpacePolicyBundle(uint64_t DrivingSeed) noexcept
     Bundle.ExecutionPolicy = BuildAutoSpaceExecutionPolicy();
     Bundle.GameplayPolicy  = BuildAutoSpaceGameplayPolicy();
     Bundle.DrivingPolicy   = BuildAutoSpaceDrivingPolicy(DrivingSeed);
-    Bundle.VehicleContract = Frontier::NetworkingSpace::BuildRealtimeKinematicContract(2001u, 30.0f);
+    Bundle.VehicleSchedule = Frontier::NetworkingSpace::BuildRealtimeKinematicContract(2001u, 30.0f);
 
     Bundle.TransportInput.AccessTier = Frontier::NetworkingSpace::EntitlementAccessTier::StandardAccess;
     Bundle.TransportInput.AvailabilityMask =

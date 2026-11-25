@@ -404,23 +404,40 @@ void EditorLifecycle::PopulateWorldSceneSession(uint32_t RenderWidthPx, uint32_t
             std::error_code ExistEc {};
             if (std::filesystem::exists(ProjectWorldPath, ExistEc))
             {
-                std::filesystem::path RepoRoot = std::filesystem::current_path();
-                for (int Depth = 0; Depth < 6; ++Depth)
+                auto ResolveCandidateRoot = [&](std::filesystem::path SeedPath, std::filesystem::path& OutRoot) -> bool
                 {
-                    if (std::filesystem::exists(
-                            RepoRoot / "Content" / "Environment" / "Skies" / "ClearSkyDaylight.VolumetricSpace",
-                            ExistEc) ||
-                        std::filesystem::exists(
-                            RepoRoot / "Content" / "Worlds" / "VehicleClearSkyDefault.WorldSpace",
-                            ExistEc))
+                    if (SeedPath.empty())
                     {
-                        break;
+                        return false;
                     }
-                    if (!RepoRoot.has_parent_path())
+                    std::filesystem::path Cursor = std::filesystem::absolute(SeedPath, ExistEc).lexically_normal();
+                    for (int Depth = 0; Depth < 8 && !Cursor.empty(); ++Depth)
                     {
-                        break;
+                        if (std::filesystem::exists(
+                                Cursor / "Content" / "Environment" / "Skies" / "ClearSkyDaylight.VolumetricSpace",
+                                ExistEc) ||
+                            std::filesystem::exists(
+                                Cursor / "Content" / "Worlds" / "VehicleClearSkyDefault.WorldSpace",
+                                ExistEc))
+                        {
+                            OutRoot = Cursor;
+                            return true;
+                        }
+                        const std::filesystem::path Next = Cursor.parent_path();
+                        if (Next == Cursor)
+                        {
+                            break;
+                        }
+                        Cursor = Next;
                     }
-                    RepoRoot = RepoRoot.parent_path();
+                    return false;
+                };
+
+                std::filesystem::path RepoRoot = std::filesystem::current_path(ExistEc);
+                if (!ResolveCandidateRoot(StartupConfig.ProjectSpacePath.parent_path(), RepoRoot) &&
+                    !ResolveCandidateRoot(StartupConfig.FontRepositoryRoot, RepoRoot))
+                {
+                    (void)ResolveCandidateRoot(std::filesystem::current_path(ExistEc), RepoRoot);
                 }
                 std::string LoadDiag {};
                 LoadedProjectWorld = GeometricRaster::LoadWorldSceneFromSpaceFile(
