@@ -1,0 +1,503 @@
+{
+  "SourceReference": "Experimental/FluidEditor/Engine/KeyTracks.js L1-L360",
+  "KeyTimeEpsilon": 0.0020833333333333333,
+  "SampleTimes": [
+    -0.5,
+    0,
+    0.25,
+    0.5,
+    0.75,
+    1,
+    1.25,
+    1.5,
+    2,
+    2.5,
+    3,
+    3.75,
+    4.5,
+    5.25
+  ],
+  "TrackSamples": [
+    {
+      "Name": "ScalarConstantHold",
+      "Track": {
+        "Path": "Strength",
+        "Extrapolation": 0,
+        "Period": 0,
+        "Keys": [
+          {
+            "Time": 0,
+            "Amount": 1,
+            "Ease": 0,
+            "In": 0,
+            "Out": 0
+          },
+          {
+            "Time": 1,
+            "Amount": 4,
+            "Ease": 0,
+            "In": 0,
+            "Out": 0
+          },
+          {
+            "Time": 2,
+            "Amount": -2,
+            "Ease": 0,
+            "In": 0,
+            "Out": 0
+          }
+        ]
+      },
+      "Stepped": false,
+      "Values": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        4,
+        4,
+        4,
+        -2,
+        -2,
+        -2,
+        -2,
+        -2,
+        -2
+      ]
+    },
+    {
+      "Name": "ScalarLinearCycle",
+      "Track": {
+        "Path": "Strength",
+        "Extrapolation": 1,
+        "Period": 2,
+        "Keys": [
+          {
+            "Time": 0,
+            "Amount": 0,
+            "Ease": 1,
+            "In": 0,
+            "Out": 0
+          },
+          {
+            "Time": 1,
+            "Amount": 10,
+            "Ease": 1,
+            "In": 0,
+            "Out": 0
+          },
+          {
+            "Time": 2,
+            "Amount": 2,
+            "Ease": 1,
+            "In": 0,
+            "Out": 0
+          }
+        ]
+      },
+      "Stepped": false,
+      "Values": [
+        0,
+        0,
+        2.5,
+        5,
+        7.5,
+        10,
+        8,
+        6,
+        0,
+        5,
+        10,
+        4,
+        5,
+        8
+      ]
+    },
+    {
+      "Name": "ScalarSmoothMonotonePingPong",
+      "Track": {
+        "Path": "Buoyancy",
+        "Extrapolation": 2,
+        "Period": 2,
+        "Keys": [
+          {
+            "Time": 0,
+            "Amount": 0,
+            "Ease": 2,
+            "In": 0,
+            "Out": 0
+          },
+          {
+            "Time": 0.6,
+            "Amount": 3.5,
+            "Ease": 2,
+            "In": 0,
+            "Out": 0
+          },
+          {
+            "Time": 1.4,
+            "Amount": 1.2,
+            "Ease": 2,
+            "In": 0,
+            "Out": 0
+          },
+          {
+            "Time": 2,
+            "Amount": 5,
+            "Ease": 2,
+            "In": 0,
+            "Out": 0
+          }
+        ]
+      },
+      "Stepped": false,
+      "Values": [
+        0,
+        0,
+        1.316551,
+        3.240741,
+        3.287744,
+        2.35,
+        1.412256,
+        1.481481,
+        5,
+        1.481481,
+        2.35,
+        1.316551,
+        3.240741,
+        1.412256
+      ]
+    },
+    {
+      "Name": "ScalarBezierHold",
+      "Track": {
+        "Path": "Radius",
+        "Extrapolation": 0,
+        "Period": 0,
+        "Keys": [
+          {
+            "Time": 0,
+            "Amount": 1,
+            "Ease": 3,
+            "In": 0,
+            "Out": 4.5
+          },
+          {
+            "Time": 1.5,
+            "Amount": 2.5,
+            "Ease": 3,
+            "In": -2,
+            "Out": 1
+          },
+          {
+            "Time": 3,
+            "Amount": 0.5,
+            "Ease": 3,
+            "In": 0,
+            "Out": 0
+          }
+        ]
+      },
+      "Stepped": false,
+      "Values": [
+        1,
+        1,
+        1.961806,
+        2.611111,
+        2.96875,
+        3.055556,
+        2.892361,
+        2.5,
+        2.203704,
+        1.12963,
+        0.5,
+        0.5,
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "Name": "Vector3SmoothHold",
+      "Track": {
+        "Path": "Position",
+        "Extrapolation": 0,
+        "Period": 0,
+        "Keys": [
+          {
+            "Time": 0,
+            "Amount": [
+              0,
+              0.5,
+              -1
+            ],
+            "Ease": 2,
+            "In": 0,
+            "Out": 0
+          },
+          {
+            "Time": 1,
+            "Amount": [
+              2,
+              1.5,
+              0.5
+            ],
+            "Ease": 2,
+            "In": 0,
+            "Out": 0
+          },
+          {
+            "Time": 2.5,
+            "Amount": [
+              -1,
+              3,
+              2
+            ],
+            "Ease": 2,
+            "In": 0,
+            "Out": 0
+          }
+        ]
+      },
+      "Stepped": false,
+      "Values": [
+        [
+          0,
+          0.5,
+          -1
+        ],
+        [
+          0,
+          0.5,
+          -1
+        ],
+        [
+          0.3125,
+          0.609375,
+          -0.822635
+        ],
+        [
+          1,
+          0.875,
+          -0.402027
+        ],
+        [
+          1.6875,
+          1.203125,
+          0.094595
+        ],
+        [
+          2,
+          1.5,
+          0.5
+        ],
+        [
+          1.777778,
+          1.784722,
+          0.82226
+        ],
+        [
+          1.222222,
+          2.111111,
+          1.159159
+        ],
+        [
+          -0.222222,
+          2.722222,
+          1.746246
+        ],
+        [
+          -1,
+          3,
+          2
+        ],
+        [
+          -1,
+          3,
+          2
+        ],
+        [
+          -1,
+          3,
+          2
+        ],
+        [
+          -1,
+          3,
+          2
+        ],
+        [
+          -1,
+          3,
+          2
+        ]
+      ]
+    },
+    {
+      "Name": "ColourLinearSmoothHold",
+      "Track": {
+        "Path": "FireFlame",
+        "Extrapolation": 0,
+        "Period": 0,
+        "Keys": [
+          {
+            "Time": 0,
+            "Amount": "#ff3300",
+            "Ease": 2,
+            "In": 0,
+            "Out": 0
+          },
+          {
+            "Time": 1,
+            "Amount": "#ffe066",
+            "Ease": 1,
+            "In": 0,
+            "Out": 0
+          },
+          {
+            "Time": 2,
+            "Amount": "#2266ff",
+            "Ease": 2,
+            "In": 0,
+            "Out": 0
+          }
+        ]
+      },
+      "Stepped": false,
+      "Values": [
+        "#ff3300",
+        "#ff3300",
+        "#ff6a19",
+        "#ffa837",
+        "#ffd050",
+        "#ffe066",
+        "#e1caa0",
+        "#bdb1c6",
+        "#2266ff",
+        "#2266ff",
+        "#2266ff",
+        "#2266ff",
+        "#2266ff",
+        "#2266ff"
+      ]
+    },
+    {
+      "Name": "SteppedChoiceHold",
+      "Track": {
+        "Path": "Mode",
+        "Extrapolation": 0,
+        "Period": 0,
+        "Keys": [
+          {
+            "Time": 0,
+            "Amount": "Emit",
+            "Ease": 2,
+            "In": 0,
+            "Out": 0
+          },
+          {
+            "Time": 1.25,
+            "Amount": "Cloner",
+            "Ease": 2,
+            "In": 0,
+            "Out": 0
+          }
+        ]
+      },
+      "Stepped": true,
+      "Values": [
+        "Emit",
+        "Emit",
+        "Emit",
+        "Emit",
+        "Emit",
+        "Emit",
+        "Cloner",
+        "Cloner",
+        "Cloner",
+        "Cloner",
+        "Cloner",
+        "Cloner",
+        "Cloner",
+        "Cloner"
+      ]
+    }
+  ],
+  "TimingEnvelopeWeights": [
+    {
+      "Node": {
+        "Name": "ImmediateInfinite",
+        "StartTime": 0,
+        "Duration": 0,
+        "Fade": 0.15,
+        "Repeat": 0
+      },
+      "Weights": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "Node": {
+        "Name": "WindowedFade",
+        "StartTime": 0.5,
+        "Duration": 1.5,
+        "Fade": 0.25,
+        "Repeat": 0
+      },
+      "Weights": [
+        0,
+        0,
+        0,
+        0,
+        1,
+        1,
+        1,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "Node": {
+        "Name": "RepeatingPulse",
+        "StartTime": 0.2,
+        "Duration": 0.8,
+        "Fade": 0.1,
+        "Repeat": 1.5
+      },
+      "Weights": [
+        0,
+        0,
+        0.5,
+        1,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        1,
+        0,
+        1
+      ]
+    }
+  ]
+}

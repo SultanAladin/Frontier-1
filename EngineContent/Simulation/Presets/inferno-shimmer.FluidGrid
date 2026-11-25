@@ -1,0 +1,133 @@
+# Thermal Shimmer Plume — scene preset (Fire). Turbulent roaring fire column paired with a GasVolume Heat shimmer overlay layer refracting the air above it.
+
+[Document]
+Format = "frontier-fluid-preset"
+Revision = 2
+SpecificationHash = "193ceeab39c3eb37"
+
+[Scene]
+Order = 40
+Id = "preset-inferno-shimmer"
+Name = "Thermal Shimmer Plume"
+Family = "VFX"
+Icon = "flame"
+Boundary = "OpenTop"
+Summary = "Turbulent roaring fire column paired with a GasVolume Heat shimmer overlay layer refracting the air above it."
+
+[Grid]
+Resolution = [48, 80, 48]
+Size = [3, 5, 3]
+
+[Render]
+Visible = true
+Exposure = 1.2
+Steps = 80
+Filter = "Smooth"
+
+[[Volume]]
+  Token = "gas-volume"
+  Category = 1
+
+  [[Volume.Layer]]
+    Token = "layer-1"
+    Category = 101
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Gravity = 0.25, ForceResponse = 1.0, PressureIterations = 36, TimeScale = 1.0, SceneLoop = 0.0, Advection = 1 }
+
+  [[Volume.Layer]]
+    Token = "layer-2"
+    Category = 102
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Emitter = "emitter-1" }
+
+  [[Volume.Layer]]
+    Token = "layer-3"
+    Category = 103
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Buoyancy = 2.4, AmbientTemperature = 0.0, Cooling = 0.65 }
+
+  [[Volume.Layer]]
+    Token = "layer-4"
+    Category = 104
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Combustion = 1.0, Expansion = 0.65, BurnRate = 3.4, BurnHeat = 6.2, Soot = 0.55 }
+
+  [[Volume.Layer]]
+    Token = "layer-5"
+    Category = 105
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Vorticity = 1.65 }
+
+  [[Volume.Layer]]
+    Token = "layer-6"
+    Category = 106
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Dissipation = 0.996, VelocityDissipation = 0.992, DensityDissipation = 0.986, TemperatureDissipation = 0.982, FuelDissipation = 0.975 }
+
+  [[Volume.Layer]]
+    Token = "layer-7"
+    Category = 107
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Density = 1.1, Albedo = "#71717a", Absorption = 3.4, Anisotropy = 0.48, Ambient = "#3f3f46", LightIntensity = 1.4 }
+
+  [[Volume.Layer]]
+    Token = "layer-8"
+    Category = 108
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { FireIntensity = 5.2, FireThreshold = 1.0, FireSoftness = 3.2, FireOpacity = 1.5, FireEmber = "#ff2a05", FireFlame = "#ff8a16", FireCore = "#fff5d6", FireLight = 1.4 }
+
+  [[Volume.Layer]]
+    Token = "layer-9"
+    Category = 109
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { ShimmerStrength = 0.45, ShimmerFrequency = 16.0, ShimmerSpeed = 2.6, ShimmerChromatic = 0.3 }
+
+[[Emitter]]
+  Token = "emitter-1"
+  Name = "Burner Core"
+  Enabled = true
+  Visible = true
+  Shape = "Disc"
+  Position = [0, -2.2, 0]
+  Radius = 0.55
+  Density = 3.2
+  Temperature = 5.2
+  Fuel = 3.8
+  Velocity = [0, 2.2, 0]
+  Orientation = [0, 1, 0]
+  PathKind = "None"
+  PathRadius = 0.8
+  PathSpeed = 0.6
+  PulsePeriod = 0
+  PulseDuty = 1
+  StartTime = 0
+  Duration = 0
+  Fade = 0.15
+  Repeat = 0

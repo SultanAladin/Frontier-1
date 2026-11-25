@@ -1,0 +1,88 @@
+# Silk Ribbons — particle template (Trails). A twisting bundle of magenta strands with loose sparks — the woven X-Particles trail look.
+# Converted from the legacy template object by script; node fingerprint 331e9099f0f826cc (checked by FluidValidation.mjs).
+
+[Document]
+Format = "frontier-particle-template"
+Revision = 1
+SpecificationHash = "c0d4526879189117"
+
+[Template]
+Order = 4
+Id = "silk-ribbons"
+Name = "Silk Ribbons"
+Category = "Trails"
+Icon = "silk"
+Tint = "#f472b6"
+Summary = "A twisting bundle of magenta strands with loose sparks — the woven X-Particles trail look."
+
+[[Layer]]
+  Token = "layer-1"
+  Category = 201
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Mode = 0, Shape = 3, Position = [0, 0, 0], Direction = [1, 0.1, 0], Radius = 0.5, Fill = 0.0, Count = 1536, Rate = 0.7, Lifetime = 26.0, Linger = 4.0, Speed = 0.8, Spread = 0.1, Radial = 0.0 }
+
+[[Layer]]
+  Token = "layer-2"
+  Category = 204
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Drag = 0.08 }
+
+[[Layer]]
+  Token = "layer-3"
+  Category = 205
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Noise = 0.55, NoiseScale = 0.4, NoiseSpeed = 0.05 }
+
+[[Layer]]
+  Token = "layer-4"
+  Category = 206
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { FieldInfluence = 1.0 }
+
+[[Layer]]
+  Token = "layer-5"
+  Category = 209
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { ColourMode = 5, Palette = ["#ff7ab6", "#f472b6", "#c084fc", "#fb7185", "#fff1f2"], RampSource = 0, Ramp = 0, MaxSpeed = 6.0, DisplacementRange = 1.0, CycleSpeed = 0.5, HueJitter = 0.05, BrightnessJitter = 0.4, Brightness = 1.2, Flicker = 0.2 }
+
+[[Layer]]
+  Token = "layer-6"
+  Category = 210
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { SizeMode = 0, SizeStart = 0.02, SizeEnd = 0.012, SizeRandom = 0.8 }
+
+[[Layer]]
+  Token = "layer-7"
+  Category = 211
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Sprite = 0, Glow = 0.7, Blend = 1, Style = 0, FocusDistance = 6.0, Aperture = 0.5 }
+
+[[Layer]]
+  Token = "layer-8"
+  Category = 212
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Trail = 1, TrailLength = 96, TrailInterval = 0.12, TrailWidth = 0.016, TrailTaper = 0.5, TrailFade = 0.5, TrailSubdivisions = 3, TrailColour = 0, TrailRatio = 1.0 }

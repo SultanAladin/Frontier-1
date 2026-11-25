@@ -1,0 +1,1609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Frontier Engine — Full Architecture, CPU/GPU Execution & Bottleneck Map</title>
+<style>
+  :root {
+    --bg: #0a0c10;
+    --bg-elev: #11151e;
+    --bg-card: #151a26;
+    --bg-card-hover: #1b2232;
+    --border: rgba(255, 255, 255, 0.09);
+    --border-strong: rgba(255, 255, 255, 0.18);
+    --text: #e8edf5;
+    --muted: #8f9bb3;
+    --subtle: #5c677d;
+
+    --cpu: #f59e0b;
+    --cpu-bg: rgba(245, 158, 11, 0.12);
+    --gpu-comp: #38bdf8;
+    --gpu-comp-bg: rgba(56, 189, 248, 0.12);
+    --gpu-gfx: #10b981;
+    --gpu-gfx-bg: rgba(16, 185, 129, 0.12);
+    --sync: #a855f7;
+    --sync-bg: rgba(168, 85, 247, 0.12);
+    --danger: #f43f5e;
+    --danger-bg: rgba(244, 63, 94, 0.13);
+    --fixed: #22c55e;
+    --fixed-bg: rgba(34, 197, 94, 0.13);
+    --warn: #fb923c;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: radial-gradient(1200px 600px at 15% -10%, rgba(56,189,248,0.08), transparent 60%),
+                radial-gradient(900px 500px at 85% 0%, rgba(168,85,247,0.07), transparent 55%),
+                var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
+    line-height: 1.55;
+    font-size: 14px;
+  }
+
+  /* Top sticky navigation */
+  header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    backdrop-filter: blur(14px);
+    background: rgba(10, 12, 16, 0.84);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner {
+    max-width: 1420px;
+    margin: 0 auto;
+    padding: 12px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    font-size: 15px;
+  }
+  .brand-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--gpu-comp), var(--sync));
+    box-shadow: 0 0 12px var(--gpu-comp);
+  }
+  .nav-links {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .nav-links a {
+    color: var(--muted);
+    text-decoration: none;
+    padding: 6px 11px;
+    border-radius: 7px;
+    font-size: 12.5px;
+    font-weight: 500;
+    border: 1px solid transparent;
+    transition: all 0.15s ease;
+  }
+  .nav-links a:hover {
+    color: var(--text);
+    background: rgba(255,255,255,0.05);
+    border-color: var(--border);
+  }
+
+  main {
+    max-width: 1420px;
+    margin: 0 auto;
+    padding: 28px 24px 80px;
+  }
+
+  /* Hero */
+  .hero {
+    background: linear-gradient(180deg, rgba(21,26,38,0.92), rgba(15,19,29,0.92));
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 26px 28px;
+    margin-bottom: 28px;
+  }
+  .hero-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+  .hero h1 {
+    font-size: 24px;
+    font-weight: 750;
+    letter-spacing: -0.02em;
+    margin-bottom: 6px;
+  }
+  .hero p {
+    color: var(--muted);
+    max-width: 820px;
+    font-size: 13.8px;
+  }
+  .pill-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 14px;
+  }
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 600;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.03);
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+  .dot-cpu { background: var(--cpu); }
+  .dot-comp { background: var(--gpu-comp); }
+  .dot-gfx { background: var(--gpu-gfx); }
+  .dot-sync { background: var(--sync); }
+  .dot-danger { background: var(--danger); }
+  .dot-fixed { background: var(--fixed); }
+
+  /* Sections */
+  section {
+    margin-bottom: 36px;
+    scroll-margin-top: 72px;
+  }
+  .sec-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+  .sec-head h2 {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+  }
+  .sec-num {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--gpu-comp);
+    background: var(--gpu-comp-bg);
+    border: 1px solid rgba(56,189,248,0.28);
+    padding: 2px 7px;
+    border-radius: 6px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .sec-sub {
+    color: var(--muted);
+    font-size: 12.8px;
+  }
+
+  /* Grids & Cards */
+  .grid-4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+  .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  @media (max-width: 1080px) { .grid-4 { grid-template-columns: repeat(2, 1fr); } .grid-3 { grid-template-columns: 1fr; } }
+  @media (max-width: 820px) { .grid-2, .grid-4 { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 13px;
+    padding: 18px;
+  }
+  .card h3 {
+    font-size: 14.5px;
+    font-weight: 680;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .metric-val {
+    font-size: 26px;
+    font-weight: 780;
+    letter-spacing: -0.02em;
+    margin: 4px 0;
+  }
+  .metric-sub { font-size: 12px; color: var(--muted); }
+
+  code, .mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    background: rgba(255,255,255,0.06);
+    padding: 1px 5px;
+    border-radius: 4px;
+    color: #dbeafe;
+  }
+
+  /* Badges */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 8px;
+    border-radius: 5px;
+    font-size: 11px;
+    font-weight: 650;
+    white-space: nowrap;
+  }
+  .b-cpu { background: var(--cpu-bg); color: #fcd34d; border: 1px solid rgba(245,158,11,0.35); }
+  .b-comp { background: var(--gpu-comp-bg); color: #7dd3fc; border: 1px solid rgba(56,189,248,0.35); }
+  .b-gfx { background: var(--gpu-gfx-bg); color: #6ee7b7; border: 1px solid rgba(16,185,129,0.35); }
+  .b-sync { background: var(--sync-bg); color: #d8b4fe; border: 1px solid rgba(168,85,247,0.35); }
+  .b-danger { background: var(--danger-bg); color: #fda4af; border: 1px solid rgba(244,63,94,0.38); }
+  .b-fixed { background: var(--fixed-bg); color: #86efac; border: 1px solid rgba(34,197,94,0.38); }
+
+  /* Stacked Frame Budget Bar */
+  .bar-wrap { margin: 14px 0 8px; }
+  .bar-label-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    margin-bottom: 5px;
+    color: var(--muted);
+  }
+  .stacked-bar {
+    height: 30px;
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    background: #0d1018;
+    border: 1px solid var(--border);
+  }
+  .seg {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    color: #080a0f;
+    overflow: hidden;
+    white-space: nowrap;
+    padding: 0 4px;
+    transition: filter 0.15s;
+  }
+  .seg:hover { filter: brightness(1.15); }
+  .bar-legend {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    font-size: 11.8px;
+    color: var(--muted);
+    margin-top: 8px;
+  }
+  .bar-legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .swatch { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+  /* Interactive Swimlane Architecture Diagram */
+  .arch-layout {
+    display: grid;
+    grid-template-columns: 1fr 370px;
+    gap: 16px;
+    align-items: start;
+  }
+  @media (max-width: 1180px) { .arch-layout { grid-template-columns: 1fr; } }
+
+  .swimlanes {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .lane {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 13px;
+    padding: 14px 16px;
+    position: relative;
+  }
+  .lane-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 11px;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .lane-title {
+    font-size: 12.5px;
+    font-weight: 750;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .lane.lane-cpu { border-left: 4px solid var(--cpu); }
+  .lane.lane-sync { border-left: 4px solid var(--sync); }
+  .lane.lane-comp { border-left: 4px solid var(--gpu-comp); }
+  .lane.lane-gfx { border-left: 4px solid var(--gpu-gfx); }
+
+  .node-row {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .node {
+    flex: 1 1 155px;
+    min-width: 148px;
+    background: #0e121c;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 11px;
+    cursor: pointer;
+    transition: all 0.14s ease;
+    position: relative;
+  }
+  .node:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--border-strong);
+    transform: translateY(-1px);
+  }
+  .node.active {
+    border-color: var(--gpu-comp);
+    box-shadow: 0 0 0 2px rgba(56,189,248,0.22);
+    background: #141e30;
+  }
+  .node.hazard {
+    border-color: rgba(244,63,94,0.45);
+  }
+  .node.fixed-node {
+    border-color: rgba(34,197,94,0.45);
+  }
+  .node-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 4px;
+  }
+  .node-step {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10px;
+    color: var(--subtle);
+    font-weight: 700;
+  }
+  .node-name {
+    font-size: 12.8px;
+    font-weight: 680;
+    color: var(--text);
+    margin-bottom: 3px;
+  }
+  .node-cost {
+    font-size: 11.3px;
+    color: var(--muted);
+  }
+  .arrow-sep {
+    display: flex;
+    align-items: center;
+    color: var(--subtle);
+    font-weight: 700;
+    font-size: 14px;
+    user-select: none;
+  }
+
+  /* Inspector Side Panel */
+  .inspector-panel {
+    background: linear-gradient(180deg, #161d2c, #111622);
+    border: 1px solid var(--border-strong);
+    border-radius: 14px;
+    padding: 18px;
+    position: sticky;
+    top: 72px;
+  }
+  .inspector-panel h3 {
+    font-size: 15.5px;
+    margin-bottom: 6px;
+  }
+  .insp-section {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+  }
+  .insp-label {
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--subtle);
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .insp-list {
+    padding-left: 16px;
+    color: #cbd5e1;
+    font-size: 12.6px;
+  }
+  .insp-list li { margin-bottom: 4px; }
+
+  /* GPU Hardware & Queue Diagram */
+  .svg-box {
+    background: #0d111a;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px;
+    overflow-x: auto;
+  }
+  svg text { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif; }
+
+  /* Filterable Hazard Table */
+  .filter-bar {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+  .filter-btn {
+    background: var(--bg-card);
+    color: var(--muted);
+    border: 1px solid var(--border);
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 12.2px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.14s;
+  }
+  .filter-btn:hover { color: var(--text); border-color: var(--border-strong); }
+  .filter-btn.active {
+    background: rgba(56,189,248,0.16);
+    color: #7dd3fc;
+    border-color: rgba(56,189,248,0.45);
+  }
+
+  .table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--bg-card);
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.7px;
+  }
+  th, td {
+    text-align: left;
+    padding: 11px 13px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  th {
+    background: rgba(255,255,255,0.03);
+    color: var(--muted);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 700;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+
+  /* Callout Boxes */
+  .callout {
+    border-radius: 12px;
+    padding: 15px 17px;
+    border: 1px solid var(--border);
+    margin-top: 12px;
+  }
+  .callout-danger {
+    background: rgba(244,63,94,0.07);
+    border-color: rgba(244,63,94,0.32);
+  }
+  .callout-info {
+    background: rgba(56,189,248,0.07);
+    border-color: rgba(56,189,248,0.3);
+  }
+  .callout-fixed {
+    background: rgba(34,197,94,0.07);
+    border-color: rgba(34,197,94,0.3);
+  }
+
+  .code-block {
+    background: #090c12;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: 12px 14px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    color: #d1e3ff;
+    overflow-x: auto;
+    white-space: pre;
+    line-height: 1.5;
+    margin: 10px 0;
+  }
+  .hl-red { color: #fda4af; font-weight: 700; }
+  .hl-green { color: #86efac; font-weight: 700; }
+  .hl-amber { color: #fcd34d; }
+  .hl-cyan { color: #7dd3fc; }
+  .hl-muted { color: #64748b; }
+
+  .two-col-compare {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  @media (max-width: 900px) { .two-col-compare { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="nav-inner">
+    <div class="brand">
+      <span class="brand-dot"></span>
+      <span>FRONTIER ENGINE — Architecture &amp; CPU/GPU Performance Map</span>
+    </div>
+    <nav class="nav-links">
+      <a href="#telemetry">1. Frame Budget</a>
+      <a href="#pipeline">2. CPU vs GPU Map</a>
+      <a href="#gpu-internals">3. How GPU Executes</a>
+      <a href="#hazards">4. Every Spike &amp; Load</a>
+      <a href="#gtx-bug">5. GTX Sky-Line Bug</a>
+      <a href="#phase2">6. P1 + P2 + UI Merge</a>
+      <a href="#instances">7. Instance &amp; Dual Loop</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <!-- HERO -->
+  <div class="hero">
+    <div class="hero-top">
+      <div>
+        <h1>Frontier Engine Architecture, GPU Execution &amp; Bottleneck Blueprint</h1>
+        <p>
+          Complete interactive X-ray of <code>egoistinbox-hue/Frontier</code> grounded directly in the C++20 / Vulkan 1.2 / Slang codebase and your measured
+          <b>NVIDIA GeForce GTX 1650 SUPER</b> timing log (<code>FrontierTiming.log</code>, <code>GTX GDF GI / ContactPCSS Q3</code>).
+          Click any pipeline node below to inspect its exact source files, CPU vs GPU ownership, synchronization hazards, and Phase 1 / Phase 2 optimization status.
+        </p>
+      </div>
+      <div style="text-align:right; min-width:250px;">
+        <div class="badge b-fixed" style="margin-bottom:6px;">Phase 2 Verified: 248.6 FPS Avg on GTX!</div><br />
+        <span style="font-size:11.5px; color:var(--muted);">Branch: <code>arena/2809d087-frontier</code> · Phase 2 + UI Merge</span>
+      </div>
+    </div>
+    <div class="pill-row">
+      <span class="pill"><span class="dot dot-cpu"></span>CPU Main Thread (Input · Scene · UI · Cmd Record)</span>
+      <span class="pill"><span class="dot dot-sync"></span>Vulkan Timeline / Single Queue Bus</span>
+      <span class="pill"><span class="dot dot-comp"></span>GPU Compute (Lean Direct · ½-Res AO/GI · 2×2 Upsample)</span>
+      <span class="pill"><span class="dot dot-gfx"></span>GPU Graphics Raster (HW VisBuffer · Gizmo · ThorVG · ImGui)</span>
+      <span class="pill"><span class="dot dot-danger"></span>Remaining Future Opportunity (Phase 3)</span>
+      <span class="pill"><span class="dot dot-fixed"></span>Shipped in Phase 1 + Tick Fix + Phase 2</span>
+    </div>
+  </div>
+
+  <!-- SECTION 1: TELEMETRY -->
+  <section id="telemetry">
+    <div class="sec-head">
+      <h2><span class="sec-num">01</span> Measured GTX 1650 SUPER Frame Budget &amp; Spike Anatomy</h2>
+      <span class="sec-sub">Baseline from <code>FrontierTiming.log</code> (150 steady frames + 187 spike frames at 960×497..744)</span>
+    </div>
+
+    <div class="grid-4" style="margin-bottom:16px;">
+      <div class="card">
+        <h3>Phase 2 Steady FPS <span class="badge b-fixed">Measured GTX!</span></h3>
+        <div class="metric-val" style="color:var(--fixed);">248.6 FPS</div>
+        <div class="metric-sub">Median <b>246.6 FPS</b> · Peak <b>383.6 FPS</b> (<code>Total 4.06 ms</code> med · up from ~51–69 FPS baseline!)</div>
+      </div>
+      <div class="card">
+        <h3>Phase 2 GPU World Total <span class="badge b-fixed">5.7× Faster!</span></h3>
+        <div class="metric-val" style="color:var(--fixed);">3.34 ms</div>
+        <div class="metric-sub">Down from <b>19.1 ms</b> baseline &amp; <b>8.72 ms</b> P1 (<code>Trc 2.46 ms</code> · <code>Den 0.80 ms</code> · min <b>1.98 ms</b>)</div>
+      </div>
+      <div class="card">
+        <h3>SceneSync / Tick / Gizmo <span class="badge b-fixed">Zero Stalls</span></h3>
+        <div class="metric-val" style="color:var(--fixed);">0.02 ms</div>
+        <div class="metric-sub"><code>SceneSync 0.02 ms</code> (was 28.74 ms) · <code>Tick 0.05 ms</code> (was 500 ms) · <code>Gizmo 0.52 ms</code></div>
+      </div>
+      <div class="card">
+        <h3>Merged UI &amp; SVG Overhaul <span class="badge b-fixed">Merged Now</span></h3>
+        <div class="metric-val" style="color:var(--gpu-comp);">50 SVGs + GPU</div>
+        <div class="metric-sub">31 1:1 HTML inspectors, <code>InspectorGpuBaker</code>, <code>RetainedCanvasCache</code>, deferred ImGui retirement</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Where Every Millisecond Goes (GTX 1650 SUPER · 960×670 · GTX GDF GI Q3 — Measured Progression)</h3>
+
+      <div class="bar-wrap">
+        <div class="bar-label-row">
+          <span><b>Before Phase 1 (Measured Baseline)</b> — Monolithic Compute + 3-Pass Denoise + Sync Wait</span>
+          <span><b>19.1 ms GPU</b> (~51–69 FPS steady · <b>35–45 ms</b> during object drags)</span>
+        </div>
+        <div class="stacked-bar">
+          <div class="seg" style="width:65%; background:#38bdf8;" title="Primary ComputeEntry (BVH Trace + SSBO GDF/GI): 16.9 ms">Primary Trace + SSBO GDF/GI · 16.9 ms</div>
+          <div class="seg" style="width:10.5%; background:#818cf8;" title="3-Step Bilateral Denoise: 2.1 ms">Den · 2.1</div>
+          <div class="seg" style="width:8.5%; background:#f59e0b;" title="UI + Inspector CPU/Upload: 1.5 ms">UI · 1.5</div>
+          <div class="seg" style="width:6%; background:#10b981;" title="Gizmo + Present: 1.4 ms">P·1.4</div>
+          <div class="seg" style="width:10%; background:repeating-linear-gradient(45deg,#f43f5e,#f43f5e 6px,#be123c 6px,#be123c 12px); color:#fff;" title="Per-drag SceneSync spike: +22..28.7 ms">+Drag Spike 28ms</div>
+        </div>
+      </div>
+
+      <div class="bar-wrap">
+        <div class="bar-label-row">
+          <span><b>Phase 1 + Tick Fix (Measured GTX — <code>185a8926</code> + <code>c2e6c5a1</code>)</b> — 3D Tex GDF/GI + 1-Pass Denoise + GPU Transform + Tick Fix</span>
+          <span><b>8.72 ms GPU measured</b> (<b>115+ FPS</b> steady · <code>SceneSync 0.43 ms</code> · <code>Gizmo 0.24 ms</code>)</span>
+        </div>
+        <div class="stacked-bar">
+          <div class="seg" style="width:39%; background:#38bdf8;">Primary Compute (3D Tex + Early-Out) · 7.80 ms</div>
+          <div class="seg" style="width:4.5%; background:#818cf8;">0.86</div>
+          <div class="seg" style="width:6%; background:#f59e0b;">UI · 0.9</div>
+          <div class="seg" style="width:4%; background:#10b981;">0.6</div>
+          <div class="seg" style="width:46.5%; background:rgba(34,197,94,0.12); color:#86efac;">Verified 2.2× GPU speedup · Drag &amp; Tick spikes gone</div>
+        </div>
+      </div>
+
+      <div class="bar-wrap">
+        <div class="bar-label-row">
+          <span><b>Phase 2 + UI Overhaul (Verified GTX — <code>FrontierTiming-4.log</code>, <code>be2d1fe8+</code>)</b> — HW VisBuffer + ½-Res AO/GI + 2×2 Upsample + GPU Inspectors</span>
+          <span><b>3.34 ms GPU median · 4.06 ms Total</b> (<b>246.6 FPS med · 383.6 FPS peak!</b> · <b>5.7× GPU gain</b>)</span>
+        </div>
+        <div class="stacked-bar">
+          <div class="seg" style="width:12.5%; background:#10b981;">Vis+Direct+½GI · 2.46ms</div>
+          <div class="seg" style="width:4.5%; background:#818cf8;">0.80</div>
+          <div class="seg" style="width:7%; background:#f59e0b;">UI 1.39</div>
+          <div class="seg" style="width:4%; background:#06b6d4;">0.75</div>
+          <div class="seg" style="width:72%; background:rgba(34,197,94,0.14); color:#86efac;">Verified 248.6 FPS avg · 383.6 FPS peak on GTX 1650 SUPER!</div>
+        </div>
+      </div>
+
+      <div class="bar-legend">
+        <span><span class="swatch" style="background:#38bdf8;"></span>GPU Compute Trace/Shading</span>
+        <span><span class="swatch" style="background:#818cf8;"></span>GPU Denoise + ACES Tone</span>
+        <span><span class="swatch" style="background:#10b981;"></span>GPU Graphics Raster (VisBuf / Gizmo / Present)</span>
+        <span><span class="swatch" style="background:#f59e0b;"></span>CPU Main Thread / UI / Inspector</span>
+        <span><span class="swatch" style="background:#f43f5e;"></span>CPU/GPU Blocking Stall Spikes</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECTION 2: INTERACTIVE ARCHITECTURE FLOW -->
+  <section id="pipeline">
+    <div class="sec-head">
+      <h2><span class="sec-num">02</span> Complete Interactive Engine Map — What Runs on CPU vs GPU</h2>
+      <span class="sec-sub">Click any stage box to inspect exact files, memory flow, GPU execution details, and bottlenecks</span>
+    </div>
+
+    <div class="arch-layout">
+      <div class="swimlanes">
+
+        <!-- LANE 1: CPU -->
+        <div class="lane lane-cpu">
+          <div class="lane-header">
+            <div class="lane-title"><span class="dot dot-cpu"></span>Lane A — CPU Main Thread (<code>EditorLifecycle.cpp</code>)</div>
+            <span class="badge b-cpu">Single-threaded game/editor loop</span>
+          </div>
+          <div class="node-row">
+            <div class="node active" data-id="cpu-input">
+              <div class="node-top"><span class="node-step">A1</span><span class="badge b-cpu">CPU</span></div>
+              <div class="node-name">GLFW Input &amp; Camera</div>
+              <div class="node-cost">~0.1 ms · Orbit/Fly/Pick</div>
+            </div>
+            <div class="arrow-sep">→</div>
+            <div class="node fixed-node" data-id="cpu-scenesync">
+              <div class="node-top"><span class="node-step">A2</span><span class="badge b-fixed">P1 Fixed</span></div>
+              <div class="node-name">Scene Sync &amp; Top-BVH</div>
+              <div class="node-cost">Was 28ms → now &lt;0.3ms</div>
+            </div>
+            <div class="arrow-sep">→</div>
+            <div class="node" data-id="cpu-nanite">
+              <div class="node-top"><span class="node-step">A3</span><span class="badge b-cpu">CPU</span></div>
+              <div class="node-name">Nanite LOD Cut Mask</div>
+              <div class="node-cost">~0.05 ms · Bitmask UBO</div>
+            </div>
+            <div class="arrow-sep">→</div>
+            <div class="node fixed-node" data-id="cpu-ui">
+              <div class="node-top"><span class="node-step">A4</span><span class="badge b-fixed">P2 Async</span></div>
+              <div class="node-name">ImGui + Inspector UI</div>
+              <div class="node-cost">Async Tex/Vec · Tick Fixed</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- LANE 2: SYNC & BUS -->
+        <div class="lane lane-sync">
+          <div class="lane-header">
+            <div class="lane-title"><span class="dot dot-sync"></span>Lane B — Vulkan Queue, Memory Bus &amp; Synchronization (<code>VulkanInterchange.cpp</code>)</div>
+            <span class="badge b-sync">Single PrimaryQueue + Timeline Semaphore</span>
+          </div>
+          <div class="node-row">
+            <div class="node fixed-node" data-id="sync-ring">
+              <div class="node-top"><span class="node-step">B1</span><span class="badge b-fixed">P1 Added</span></div>
+              <div class="node-name">4-Slot Descriptor Ring</div>
+              <div class="node-cost">Slots 0/1 Live · 2 Pre · 3 Xfm</div>
+            </div>
+            <div class="arrow-sep">→</div>
+            <div class="node" data-id="sync-queue">
+              <div class="node-top"><span class="node-step">B2</span><span class="badge b-sync">FIFO Bus</span></div>
+              <div class="node-name">Single PrimaryQueue</div>
+              <div class="node-cost">All Compute+Gfx Async FIFO</div>
+            </div>
+            <div class="arrow-sep">→</div>
+            <div class="node fixed-node" data-id="sync-retire">
+              <div class="node-top"><span class="node-step">B3</span><span class="badge b-fixed">P1 Added</span></div>
+              <div class="node-name">Deferred RT Retirement</div>
+              <div class="node-cost">Zero vkDeviceWaitIdle</div>
+            </div>
+            <div class="arrow-sep">→</div>
+            <div class="node fixed-node" data-id="sync-ui-wait">
+              <div class="node-top"><span class="node-step">B4</span><span class="badge b-fixed">P2 Fixed</span></div>
+              <div class="node-name">UI/Vector Async Ring</div>
+              <div class="node-cost">Zero mid-frame AwaitTimeline</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- LANE 3: GPU COMPUTE + HW VISBUFFER -->
+        <div class="lane lane-comp">
+          <div class="lane-header">
+            <div class="lane-title"><span class="dot dot-comp"></span>Lane C — GPU World Engine: HW VisBuffer + Split Compute (<code>VulkanWorldRenderSequence.cpp</code>)</div>
+            <span class="badge b-fixed">39 Bindings · HW VisBuffer + ½-Res AO/GI</span>
+          </div>
+          <div class="node-row">
+            <div class="node fixed-node" data-id="gpu-xform">
+              <div class="node-top"><span class="node-step">C1</span><span class="badge b-fixed">P1 New</span></div>
+              <div class="node-name">GPU Instance Transform</div>
+              <div class="node-cost">&lt;0.1 ms · Dirty spans only</div>
+            </div>
+            <div class="arrow-sep">→</div>
+            <div class="node fixed-node" data-id="gpu-precomp">
+              <div class="node-top"><span class="node-step">C2</span><span class="badge b-fixed">P1+P2 Fix</span></div>
+              <div class="node-name">Precompute (3D GDF/Sky)</div>
+              <div class="node-cost">Async 3D Vol · Seamless Sky</div>
+            </div>
+            <div class="arrow-sep">→</div>
+            <div class="node fixed-node" data-id="gpu-primary">
+              <div class="node-top"><span class="node-step">C3</span><span class="badge b-fixed">P2 Split!</span></div>
+              <div class="node-name">HW VisBuf + Direct + ½-GI</div>
+              <div class="node-cost">0 primary BVH4 · ¼ px AO/GI</div>
+            </div>
+            <div class="arrow-sep">→</div>
+            <div class="node fixed-node" data-id="gpu-denoise">
+              <div class="node-top"><span class="node-step">C4</span><span class="badge b-fixed">P2 Upsample</span></div>
+              <div class="node-name">2×2 Bilateral + ACES</div>
+              <div class="node-cost">1-pass upsample + tone map</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- LANE 4: GPU GRAPHICS -->
+        <div class="lane lane-gfx">
+          <div class="lane-header">
+            <div class="lane-title"><span class="dot dot-gfx"></span>Lane D — GPU Graphics / Rasterization &amp; Display Present</div>
+            <span class="badge b-gfx">Vulkan Graphics RenderPasses</span>
+          </div>
+          <div class="node-row">
+            <div class="node fixed-node" data-id="gfx-gizmo">
+              <div class="node-top"><span class="node-step">D1</span><span class="badge b-fixed">P1 3-Slot</span></div>
+              <div class="node-name">Gizmo Overlay Raster</div>
+              <div class="node-cost">0.24 ms · Async pick</div>
+            </div>
+            <div class="arrow-sep">→</div>
+            <div class="node fixed-node" data-id="gfx-vector">
+              <div class="node-top"><span class="node-step">D2</span><span class="badge b-fixed">P2 Async</span></div>
+              <div class="node-name">ThorVG Vector Canvas</div>
+              <div class="node-cost">Async GPU bake + reap</div>
+            </div>
+            <div class="arrow-sep">→</div>
+            <div class="node fixed-node" data-id="gfx-imgui">
+              <div class="node-top"><span class="node-step">D3</span><span class="badge b-fixed">P2 Async</span></div>
+              <div class="node-name">ImGui Overlay Raster</div>
+              <div class="node-cost">Async staging upload ring</div>
+            </div>
+            <div class="arrow-sep">→</div>
+            <div class="node" data-id="gfx-present">
+              <div class="node-top"><span class="node-step">D4</span><span class="badge b-gfx">Swapchain</span></div>
+              <div class="node-name">Swapchain Present</div>
+              <div class="node-cost">MAILBOX/FIFO · 2-3 imgs</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- INTERACTIVE INSPECTOR SIDEBAR -->
+      <aside class="inspector-panel" id="nodeInspector">
+        <div style="font-size:11px; color:var(--gpu-comp); font-weight:700; letter-spacing:0.07em; text-transform:uppercase; margin-bottom:4px;" id="inspTag">STAGE A1 · CPU MAIN THREAD</div>
+        <h3 id="inspTitle">GLFW Input, Camera &amp; Editor State</h3>
+        <p id="inspDesc" style="color:var(--muted); font-size:12.8px;"></p>
+
+        <div class="insp-section">
+          <div class="insp-label">Source Files</div>
+          <div id="inspFiles" style="font-size:12px;"></div>
+        </div>
+
+        <div class="insp-section">
+          <div class="insp-label">What Runs Here</div>
+          <ul class="insp-list" id="inspWork"></ul>
+        </div>
+
+        <div class="insp-section">
+          <div class="insp-label">Spike / Bottleneck Risk</div>
+          <div id="inspRisk" style="font-size:12.6px;"></div>
+        </div>
+
+        <div class="insp-section">
+          <div class="insp-label">Status (Phase 1 vs Phase 2)</div>
+          <div id="inspStatus" style="font-size:12.6px;"></div>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- SECTION 3: HOW IT RUNS ON THE GPU -->
+  <section id="gpu-internals">
+    <div class="sec-head">
+      <h2><span class="sec-num">03</span> How It Actually Runs on Your GTX 1650 SUPER (Hardware X-Ray)</h2>
+      <span class="sec-sub">Why a 1,280-core Turing GPU takes 12.38 ms on a 960×650 viewport — and how Phase 1 &amp; Phase 2 change hardware utilization</span>
+    </div>
+
+    <div class="grid-2" style="margin-bottom:16px;">
+      <!-- SVG 1: Single Queue Serialization & Stall Bubble -->
+      <div class="card">
+        <h3>1. The Single-Queue FIFO Domino Effect <span class="badge b-danger">Root Cause of UI/Insp Spikes</span></h3>
+        <p style="color:var(--muted); font-size:12.6px; margin-bottom:10px;">
+          <code>VulkanInterchange</code> creates <b>1 queue</b> (<code>PrimaryQueue</code>) shared by World Compute, Precompute, Gizmo, VectorCanvas, and ImGui.
+          In Vulkan, all submissions to one queue execute in strict FIFO order. If ANY tiny UI texture upload calls <code>AwaitTimelineTick</code>, the CPU freezes until the entire 12 ms World Compute pass ahead of it finishes!
+        </p>
+        <div class="svg-box">
+          <svg viewBox="0 0 600 220" width="100%" height="220">
+            <!-- Labels -->
+            <text x="10" y="24" fill="#8f9bb3" font-size="11" font-weight="700">BEFORE PHASE 1 (Synchronous Waits Everywhere)</text>
+            <text x="10" y="54" fill="#fcd34d" font-size="10.5" font-weight="700">CPU</text>
+            <text x="10" y="92" fill="#7dd3fc" font-size="10.5" font-weight="700">GPU Q0</text>
+
+            <!-- Before CPU -->
+            <rect x="60" y="38" width="95" height="24" rx="5" fill="#f43f5e"/>
+            <text x="107" y="54" fill="#fff" font-size="10" font-weight="700" text-anchor="middle">SceneSync 24ms</text>
+            <rect x="158" y="38" width="175" height="24" rx="5" fill="rgba(244,63,94,0.22)" stroke="#f43f5e" stroke-dasharray="4 3"/>
+            <text x="245" y="54" fill="#fda4af" font-size="10" font-weight="700" text-anchor="middle">CPU BLOCKED (AwaitTimeline)</text>
+            <rect x="336" y="38" width="60" height="24" rx="5" fill="#f59e0b"/>
+            <text x="366" y="54" fill="#080a0f" font-size="10" font-weight="700" text-anchor="middle">UI/Insp</text>
+            <rect x="399" y="38" width="75" height="24" rx="5" fill="rgba(244,63,94,0.22)" stroke="#f43f5e" stroke-dasharray="4 3"/>
+            <text x="436" y="54" fill="#fda4af" font-size="9.5" font-weight="700" text-anchor="middle">Tex/Vec Wait</text>
+            <rect x="477" y="38" width="55" height="24" rx="5" fill="#10b981"/>
+            <text x="504" y="54" fill="#080a0f" font-size="10" font-weight="700" text-anchor="middle">Present</text>
+
+            <!-- Before GPU -->
+            <rect x="60" y="76" width="95" height="24" rx="5" fill="rgba(255,255,255,0.04)" stroke="#334155" stroke-dasharray="3 3"/>
+            <text x="107" y="92" fill="#64748b" font-size="10" text-anchor="middle">GPU IDLE!</text>
+            <rect x="158" y="76" width="150" height="24" rx="5" fill="#38bdf8"/>
+            <text x="233" y="92" fill="#080a0f" font-size="10" font-weight="700" text-anchor="middle">World Compute 14.3ms</text>
+            <rect x="311" y="76" width="22" height="24" rx="5" fill="#10b981"/>
+            <text x="322" y="92" fill="#080a0f" font-size="9" font-weight="700" text-anchor="middle">Gz</text>
+            <rect x="336" y="76" width="60" height="24" rx="5" fill="rgba(255,255,255,0.04)" stroke="#334155" stroke-dasharray="3 3"/>
+            <text x="366" y="92" fill="#64748b" font-size="9.5" text-anchor="middle">IDLE</text>
+            <rect x="399" y="76" width="75" height="24" rx="5" fill="#a855f7"/>
+            <text x="436" y="92" fill="#fff" font-size="9.5" font-weight="700" text-anchor="middle">Vec/ImGui</text>
+            <rect x="477" y="76" width="55" height="24" rx="5" fill="#10b981"/>
+            <text x="504" y="92" fill="#080a0f" font-size="10" font-weight="700" text-anchor="middle">Present</text>
+
+            <!-- Divider -->
+            <line x1="10" y1="120" x2="590" y2="120" stroke="rgba(255,255,255,0.1)" />
+
+            <!-- After Phase 1 -->
+            <text x="10" y="142" fill="#86efac" font-size="11" font-weight="700">AFTER PHASE 1 (2-Slot Async Live Ring + GPU Transform + Async Precompute)</text>
+            <text x="10" y="170" fill="#fcd34d" font-size="10.5" font-weight="700">CPU</text>
+            <text x="10" y="204" fill="#7dd3fc" font-size="10.5" font-weight="700">GPU Q0</text>
+
+            <!-- Phase 1 CPU -->
+            <rect x="60" y="154" width="38" height="22" rx="4" fill="#22c55e"/>
+            <text x="79" y="169" fill="#080a0f" font-size="9" font-weight="700" text-anchor="middle">Rec F1</text>
+            <rect x="102" y="154" width="50" height="22" rx="4" fill="#f59e0b"/>
+            <text x="127" y="169" fill="#080a0f" font-size="9" font-weight="700" text-anchor="middle">UI F1</text>
+            <rect x="156" y="154" width="38" height="22" rx="4" fill="#22c55e"/>
+            <text x="175" y="169" fill="#080a0f" font-size="9" font-weight="700" text-anchor="middle">Rec F2</text>
+            <rect x="198" y="154" width="50" height="22" rx="4" fill="#f59e0b"/>
+            <text x="223" y="169" fill="#080a0f" font-size="9" font-weight="700" text-anchor="middle">UI F2</text>
+            <rect x="252" y="154" width="44" height="22" rx="4" fill="rgba(244,63,94,0.28)" stroke="#f43f5e"/>
+            <text x="274" y="169" fill="#fda4af" font-size="8.5" font-weight="700" text-anchor="middle">Insp?*</text>
+            <rect x="300" y="154" width="38" height="22" rx="4" fill="#22c55e"/>
+            <text x="319" y="169" fill="#080a0f" font-size="9" font-weight="700" text-anchor="middle">Rec F3</text>
+
+            <!-- Phase 1 GPU (back-to-back!) -->
+            <rect x="75" y="188" width="128" height="22" rx="4" fill="#38bdf8"/>
+            <text x="139" y="203" fill="#080a0f" font-size="9.5" font-weight="700" text-anchor="middle">F1: Xfm+World+Den+Gz</text>
+            <rect x="205" y="188" width="128" height="22" rx="4" fill="#0ea5e9"/>
+            <text x="269" y="203" fill="#080a0f" font-size="9.5" font-weight="700" text-anchor="middle">F2: World+Den+Gz</text>
+            <rect x="335" y="188" width="128" height="22" rx="4" fill="#38bdf8"/>
+            <text x="399" y="203" fill="#080a0f" font-size="9.5" font-weight="700" text-anchor="middle">F3: World+Den+Gz</text>
+            <text x="472" y="203" fill="#86efac" font-size="9.5" font-weight="700">GPU 99% busy!</text>
+          </svg>
+        </div>
+        <div style="font-size:11.6px; color:var(--muted); margin-top:6px;">
+          *Remaining sync point: when an Inspector card redraws via <code>VectorCanvasRasterizer</code> or uploads a new texture in <code>ImGuiOverlayRasterization:991</code>, it still calls <code>AwaitTimelineTick</code> — queued for Phase 2 cleanup.
+        </div>
+      </div>
+
+      <!-- SVG 2: Monolithic Uber-Shader Register Pressure & Warp Divergence -->
+      <div class="card">
+        <h3>2. Why <code>ComputeEntry</code> Takes 12.38 ms on GTX 1650 SUPER <span class="badge b-comp">SM Occupancy</span></h3>
+        <p style="color:var(--muted); font-size:12.6px; margin-bottom:10px;">
+          Right now, <b>one single compute shader</b> (<code>WorldViewportRadiometricCompute.slang</code>, 4,647 lines, 197 KB SPIR-V, compiled <code>-O0</code>) does EVERY job per pixel in one giant <code>8×8</code> dispatch:
+          primary BVH4 ray trace + triangle shading + OpenPBR + shadow PCSS + 3D GDF AO + 3D Radiosity GI + specular reflections + sky LUT + clouds + local fog.
+        </p>
+        <div class="svg-box">
+          <svg viewBox="0 0 600 220" width="100%" height="220">
+            <!-- Left: Monolithic Uber-Shader -->
+            <text x="12" y="20" fill="#fda4af" font-size="11" font-weight="700">TODAY: Monolithic ComputeEntry (197 KB SPIR-V, -O0)</text>
+            <rect x="12" y="30" width="275" height="175" rx="8" fill="#131824" stroke="rgba(244,63,94,0.45)"/>
+
+            <text x="24" y="50" fill="#e8edf5" font-size="10.5" font-weight="700">Turing SM Register File (64K 32-bit regs / SM)</text>
+            <!-- Register bar packed to max -->
+            <rect x="24" y="58" width="250" height="18" rx="4" fill="#1e293b"/>
+            <rect x="24" y="58" width="232" height="18" rx="4" fill="#f43f5e"/>
+            <text x="140" y="70" fill="#fff" font-size="9.5" font-weight="700" text-anchor="middle">~128–192 VGPRs/thread → ~25% occupancy!</text>
+
+            <text x="24" y="96" fill="#e8edf5" font-size="10.5" font-weight="700">32-Thread Warp Divergence (8×8 Tile)</text>
+            <rect x="24" y="104" width="250" height="22" rx="4" fill="#0f172a" stroke="#334155"/>
+            <rect x="26" y="106" width="52" height="18" rx="3" fill="#38bdf8"/>
+            <text x="52" y="118" fill="#080a0f" font-size="8.5" font-weight="700" text-anchor="middle">Sky (0.3ms)</text>
+            <rect x="81" y="106" width="84" height="18" rx="3" fill="#f59e0b"/>
+            <text x="123" y="118" fill="#080a0f" font-size="8.5" font-weight="700" text-anchor="middle">Ground (5ms)</text>
+            <rect x="168" y="106" width="104" height="18" rx="3" fill="#f43f5e"/>
+            <text x="220" y="118" fill="#fff" font-size="8.5" font-weight="700" text-anchor="middle">Car BVH+GI (14ms)</text>
+
+            <text x="24" y="144" fill="#94a3b8" font-size="10">• 100% of pixels trace BVH4 software rays</text>
+            <text x="24" y="159" fill="#94a3b8" font-size="10">• Fixed-function Triangle Rasterizer sits 0% IDLE</text>
+            <text x="24" y="174" fill="#94a3b8" font-size="10">• Full-res (1×1) AO + GI cone marching per pixel</text>
+            <text x="24" y="189" fill="#94a3b8" font-size="10">• Compiled with -O0 (no SPIR-V register compaction)</text>
+
+            <!-- Right: Phase 2 Split -->
+            <text x="312" y="20" fill="#86efac" font-size="11" font-weight="700">PHASE 2: Split Raster VisBuf + Lean Passes</text>
+            <rect x="312" y="30" width="276" height="175" rx="8" fill="#101a1c" stroke="rgba(16,185,129,0.45)"/>
+
+            <rect x="324" y="42" width="252" height="28" rx="5" fill="#10b981"/>
+            <text x="450" y="59" fill="#06120e" font-size="10" font-weight="700" text-anchor="middle">Pass 1: Hardware Raster VisBuffer (~0.4 ms!)</text>
+
+            <rect x="324" y="76" width="252" height="28" rx="5" fill="#38bdf8"/>
+            <text x="450" y="93" fill="#06121a" font-size="10" font-weight="700" text-anchor="middle">Pass 2: Lean Direct PBR + PCSS (~1.4 ms · 75% occ)</text>
+
+            <rect x="324" y="110" width="252" height="28" rx="5" fill="#06b6d4"/>
+            <text x="450" y="127" fill="#06121a" font-size="10" font-weight="700" text-anchor="middle">Pass 3: Half-Res (¼ pixels!) 3D GDF AO/GI (~1.5 ms)</text>
+
+            <rect x="324" y="144" width="252" height="28" rx="5" fill="#818cf8"/>
+            <text x="450" y="161" fill="#080a0f" font-size="10" font-weight="700" text-anchor="middle">Pass 4: Joint Bilateral Upsample + Tone (~0.7 ms)</text>
+
+            <text x="324" y="191" fill="#86efac" font-size="10" font-weight="600">Total GPU: ~4.0 ms (3× faster on GTX 1650 SUPER)</text>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- Memory / Bindings Map -->
+    <div class="card">
+      <h3>3. GPU VRAM Layout &amp; Descriptor Architecture (38 Bindings per Compute Dispatch) <span class="badge b-comp">DEVICE_LOCAL VRAM</span></h3>
+      <div class="grid-3" style="margin-top:10px;">
+        <div style="background:#0e121c; border:1px solid var(--border); border-radius:10px; padding:12px;">
+          <div style="font-size:12px; font-weight:700; color:#7dd3fc; margin-bottom:6px;">Scene Geometry &amp; Acceleration (Slots 1–3, 31)</div>
+          <ul class="insp-list">
+            <li><code>BvhEntryBuffer</code> (Slot 1): Wide 4-lane BVH nodes (128 B/node). Top-level reserved headroom + per-instance subtrees.</li>
+            <li><code>ShadedTriangleBuffer</code> (Slot 2): World-space triangles (96 B/tri) updated in VRAM by <code>WorldInstanceTransformCompute</code> (P1).</li>
+            <li><code>ResidentLocalBvh/TriBuffer</code> (P1): Immutable local-space templates in VRAM so drags never touch PCIe or CPU.</li>
+            <li><code>ActiveClusterMaskBuffer</code> (Slot 31): Dual-slice Nanite LOD bitmask (Slice 0 = finest for shadows/GDF, Slice 1 = camera LOD).</li>
+          </ul>
+        </div>
+        <div style="background:#0e121c; border:1px solid var(--border); border-radius:10px; padding:12px;">
+          <div style="font-size:12px; font-weight:700; color:#86efac; margin-bottom:6px;">Hardware 3D Volumes &amp; Shadow/Sky (Slots 5, 7, 32–37)</div>
+          <ul class="insp-list">
+            <li><code>GdfFineImage3D</code> / <code>GdfCoarseImage3D</code> (Slots 32–33, P1): <code>64³</code> <code>R16_SFLOAT</code> hardware 3D textures + <code>VK_FILTER_LINEAR</code> + <code>REPEAT</code> (1 TMU fetch vs 8 SSBO fetches).</li>
+            <li><code>RadiosityMip0/CoarseImage3D</code> (Slots 34–35, P1): <code>64³</code> + <code>32³/16³/8³</code> <code>RGBA16F</code> hardware 3D mip pyramid.</li>
+            <li><code>SolarShadowDepthBuffer</code> (Slot 5): 2-cascade orthographic shadow depth SSBO.</li>
+            <li><code>AtmosphericSkyViewLutBuffer</code> (Slot 7): Packed SSBO (SkyView 192×108 + Transmittance 256×64 + MultiScatter 32×32) — <b>Phase 2: convert to 2D texture!</b></li>
+          </ul>
+        </div>
+        <div style="background:#0e121c; border:1px solid var(--border); border-radius:10px; padding:12px;">
+          <div style="font-size:12px; font-weight:700; color:#d8b4fe; margin-bottom:6px;">Per-Pixel G-Buffer, Ping-Pong &amp; Display (Slots 4, 6, 10–17, 26–27)</div>
+          <ul class="insp-list">
+            <li><b>9 full-res <code>RGBA32F</code> (16 B/px) SSBOs</b>: <code>AccumulationHdr</code>, <code>GBufPosMask</code>, <code>GBufNormAo</code>, <code>GBufDirectBase</code>, <code>GBufSunContrib</code>, <code>GBufAlbedo</code>, <code>Ping/PongShadowAo</code>, <code>Ping/PongIndirect</code>.</li>
+            <li>At 1920×1080 that's <b>~33 MB/frame written + read</b> in raw <code>float4</code> SSBOs (Phase 2: pack to <code>RGBA16F</code>/<code>R11G11B10F</code> = 2×–4× less VRAM bandwidth!).</li>
+            <li><code>OutputPixelBuffer</code> (Slot 4) → <code>vkCmdCopyBufferToImage</code> → <code>DisplayOutputImage2D</code> (sampled by Gizmo &amp; ImGui).</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECTION 4: COMPLETE HAZARD MATRIX -->
+  <section id="hazards">
+    <div class="sec-head">
+      <h2><span class="sec-num">04</span> Complete Catalogue of Every CPU/GPU Spike, Stall &amp; High-Load Cause</h2>
+      <span class="sec-sub">Every single bottleneck discovered across the Frontier codebase — filter by status or domain</span>
+    </div>
+
+    <div class="filter-bar">
+      <button class="filter-btn active" data-filter="all">All 13 Bottlenecks</button>
+      <button class="filter-btn" data-filter="fixed">Fixed in P1 + Tick + P2 (11)</button>
+      <button class="filter-btn" data-filter="open">Future Phase 3 (2)</button>
+      <button class="filter-btn" data-filter="cpu">CPU / Sync Stalls</button>
+      <button class="filter-btn" data-filter="gpu">GPU Load / Bandwidth</button>
+    </div>
+
+    <div class="table-wrap">
+      <table id="hazardTable">
+        <thead>
+          <tr>
+            <th style="width:18%;">Bottleneck</th>
+            <th style="width:10%;">Domain</th>
+            <th style="width:12%;">Measured Impact</th>
+            <th style="width:28%;">Exact Mechanism &amp; Code Location</th>
+            <th style="width:20%;">Fix / Architecture Action</th>
+            <th style="width:12%;">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr data-status="fixed" data-domain="cpu">
+            <td><b>1. Per-Drag CPU Geometry Flattening</b></td>
+            <td><span class="badge b-cpu">CPU + PCIe</span></td>
+            <td><b>147 spikes</b><br/>22–28.7 ms/drag</td>
+            <td><code>AssembleResidentClusterSceneBvh</code> rebuilt &amp; re-uploaded ALL triangles &amp; BVH nodes on CPU every gizmo drag frame.</td>
+            <td>GPU-only dirty-instance transform shader (<code>WorldInstanceTransformCompute.slang</code>) + resident VRAM local buffers.</td>
+            <td><span class="badge b-fixed">Fixed in P1</span></td>
+          </tr>
+          <tr data-status="fixed" data-domain="cpu">
+            <td><b>2. Blocking Scene Precompute Wait</b></td>
+            <td><span class="badge b-sync">CPU Stall</span></td>
+            <td>+3–8 ms/drag</td>
+            <td><code>DispatchGpuScenePrecompute</code> called <code>AwaitTimelineTick</code> synchronously during <code>SceneSync</code>.</td>
+            <td>Dedicated <code>PrecomputeUniformBuffer</code> + Descriptor Ring Slot 2 + async timeline submission.</td>
+            <td><span class="badge b-fixed">Fixed in P1</span></td>
+          </tr>
+          <tr data-status="fixed" data-domain="gpu">
+            <td><b>3. Software 8-Fetch SSBO 3D Trilinear</b></td>
+            <td><span class="badge b-comp">GPU ALU/Mem</span></td>
+            <td>~4–6 ms/frame</td>
+            <td><code>WorldViewportRadiometricCompute.slang</code> fetched 8 linear SSBO indices manually per GDF &amp; Radiosity step.</td>
+            <td>Hardware <code>VK_IMAGE_TYPE_3D</code> (<code>R16F</code>/<code>RGBA16F</code>) + <code>VK_FILTER_LINEAR</code> + AO/GI early-outs &amp; trimmed steps.</td>
+            <td><span class="badge b-fixed">Fixed in P1</span></td>
+          </tr>
+          <tr data-status="fixed" data-domain="gpu">
+            <td><b>4. 3-Pass Bilateral Denoise + <code>pow()</code></b></td>
+            <td><span class="badge b-comp">GPU BW</span></td>
+            <td>1.93 ms avg<br/>(up to 2.70 ms)</td>
+            <td>3 sequential full-screen bilateral passes reading/writing 6 <code>RGBA32F</code> buffers + expensive <code>pow()</code> normal weights.</td>
+            <td>Collapsed to 1 fused pass (stride 2) on DirectPBR/GTX GDF GI + multiply-chain weights.</td>
+            <td><span class="badge b-fixed">Fixed in P1</span></td>
+          </tr>
+          <tr data-status="fixed" data-domain="cpu">
+            <td><b>5. Gizmo / Display Resize <code>vkDeviceWaitIdle</code> &amp; Sync Pick</b></td>
+            <td><span class="badge b-sync">CPU Stall</span></td>
+            <td><b>7 spikes</b><br/>21–38 ms</td>
+            <td><code>WorldGizmoOverlayRasterization</code> &amp; <code>EnsureDisplayOutputImage</code> called <code>vkDeviceWaitIdle</code> / blocking <code>AwaitTimelineTick</code> every frame/resize.</td>
+            <td>3-slot async gizmo ring, non-blocking pick harvest, 2-slot live world ring, deferred RT retirement, stationary gizmo cache.</td>
+            <td><span class="badge b-fixed">Fixed in P1</span></td>
+          </tr>
+          <tr data-status="fixed" data-domain="cpu">
+            <td><b>6. 500 ms/frame CPU SkyView Ping-Pong</b></td>
+            <td><span class="badge b-cpu">CPU Stall</span></td>
+            <td><b>427–1,195 ms</b><br/>(forced GPU P8 clock!)</td>
+            <td><code>WorldEnvironmentRegistry::SyncToWorld</code> reset <code>SkyRadiance</code> every frame, triggering <code>EditorLifecycle</code> CPU Bruneton SkyView LUT bake even when <code>GpuReady == true</code>.</td>
+            <td>Adopted synced <code>SkyRadiance</code> in <code>WorldEnvironmentRegistry.cpp</code> and gated CPU fallback on <code>!GpuReady</code> in <code>EditorLifecycle.cpp</code>.</td>
+            <td><span class="badge b-fixed">Fixed c2e6c5a1</span></td>
+          </tr>
+          <tr data-status="fixed" data-domain="gpu">
+            <td><b>7. Monolithic Primary BVH4 Compute</b></td>
+            <td><span class="badge b-comp">GPU #1 Load</span></td>
+            <td><b>12.38 → 7.80 ms</b><br/>(now split in P2)</td>
+            <td><code>ComputeEntry</code> previously software-traced BVH4 primary rays + full shading + AO + GI in one pass while the hardware rasterizer sat idle.</td>
+            <td><b>Phase 2:</b> Hardware Vulkan Reversed-Z VisBuffer (<code>WorldPrimaryVisRaster.slang</code> → <code>R32_UINT</code>) + 1-triangle hit reconstruction in <code>ComputeEntry</code> (0 primary BVH4 nodes!).</td>
+            <td><span class="badge b-fixed">Fixed in P2</span></td>
+          </tr>
+          <tr data-status="fixed" data-domain="gpu">
+            <td><b>8. Full-Resolution AO &amp; GI Cone Marching</b></td>
+            <td><span class="badge b-comp">GPU ALU/Tex</span></td>
+            <td>~3.5–5 ms/frame</td>
+            <td>Every pixel (1×1) marched 3D GDF AO + 5-cone Radiosity GI even though diffuse indirect lighting is low-frequency.</td>
+            <td><b>Phase 2:</b> Dedicated <code>HalfResIndirectEntry</code> at <code>(W+1)/2 × (H+1)/2</code> (<b>¼ pixels</b>) + 2×2 depth/plane/normal joint bilateral upsample in <code>DenoiseCompositeEntry</code>.</td>
+            <td><span class="badge b-fixed">Fixed in P2</span></td>
+          </tr>
+          <tr data-status="fixed" data-domain="cpu">
+            <td><b>9. Inspector / ThorVG Vector Sync Readback</b></td>
+            <td><span class="badge b-sync">CPU+GPU Stall</span></td>
+            <td><b>18 spikes</b><br/>10–22.9 ms</td>
+            <td><code>VectorCanvasRasterizer.cpp</code> called <code>AwaitTimelineTick</code> + metrics readback synchronously even for GPU-resident bakes (<code>OutRGBA == nullptr</code>).</td>
+            <td><b>Phase 2:</b> Async <code>PendingAsyncFrames</code> retirement queue reaped via <code>QueryTimelineReached</code> without blocking CPU.</td>
+            <td><span class="badge b-fixed">Fixed in P2</span></td>
+          </tr>
+          <tr data-status="fixed" data-domain="cpu">
+            <td><b>10. ImGui Texture Upload Blocking Wait</b></td>
+            <td><span class="badge b-sync">CPU Stall</span></td>
+            <td>Part of <b>Present</b> &amp; <b>Insp</b> spikes</td>
+            <td><code>ImGuiOverlayRasterization.cpp:991</code> submitted texture upload and immediately called <code>AwaitTimelineTick</code>.</td>
+            <td><b>Phase 2:</b> Transient staging buffer + async timeline submission reaped non-blockingly via <code>ReapPendingAsyncTexUploads</code>.</td>
+            <td><span class="badge b-fixed">Fixed in P2</span></td>
+          </tr>
+          <tr data-status="fixed" data-domain="gpu">
+            <td><b>11. SkyViewLUT GTX Negative <code>OpSRem</code> Seam</b></td>
+            <td><span class="badge b-comp">GPU + GTX Bug</span></td>
+            <td>14 px vertical stripe + 8 fetches/eval</td>
+            <td><code>SkyViewTransmittanceCompute.slang:198</code> emitted negative <code>floor(FX)</code> + 3× signed <code>OpSRem</code> on <code>-O0</code> SPIR-V at world azimuth <code>±π</code>.</td>
+            <td><b>Phase 2:</b> Replaced with strictly non-negative unsigned wrap (<code>uint(U*W + W - 0.5) % W</code>) + smoothstep bilinear (halves fetches 8 → 4, zero signed <code>OpSRem</code>).</td>
+            <td><span class="badge b-fixed">Fixed in P2</span></td>
+          </tr>
+          <tr data-status="open" data-domain="gpu">
+            <td><b>12. Unpacked <code>RGBA32F</code> G-Buffers + Copy-to-Image</b></td>
+            <td><span class="badge b-comp">GPU BW</span></td>
+            <td>~1–2 ms at 1080p+</td>
+            <td>9 separate 128-bit <code>StructuredBuffer&lt;float4&gt;</code> G-buffers + <code>OutputPixelBuffer</code> copied to <code>DisplayOutputImage2D</code> every frame.</td>
+            <td><b>Phase 3:</b> Compact <code>RGBA16F</code> / oct-normal G-buffer textures + direct <code>RWTexture2D</code> write to display image.</td>
+            <td><span class="badge b-comp">Phase 3</span></td>
+          </tr>
+          <tr data-status="open" data-domain="gpu">
+            <td><b>13. <code>slangc -O0</code> (No <code>spirv-opt</code> Bundled)</b></td>
+            <td><span class="badge b-comp">GPU ALU/Reg</span></td>
+            <td>~10–15% shader ALU</td>
+            <td>Pinned <code>slangtorch</code> lacks downstream <code>spirv-opt</code>, so shaders compile at <code>-O0</code> (splitting into lean VisBuf + Direct + HalfRes kernels in Phase 2 mitigates VGPR pressure directly).</td>
+            <td><b>Phase 3:</b> Bundle official standalone <code>spirv-opt</code> (Vulkan SDK) in <code>PrepareShaderToolchain.py</code> to optimize compiled <code>.spv</code> binaries post-Slang.</td>
+            <td><span class="badge b-comp">Phase 3</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- SECTION 5: FORENSIC BREAKDOWN OF THE GTX VERTICAL LINE BUG -->
+  <section id="gtx-bug">
+    <div class="sec-head">
+      <h2><span class="sec-num">05</span> Forensic Diagnosis: The GTX-Only Vertical Sky &amp; Ground Line Bug</h2>
+      <span class="sec-sub">Exact root cause of the ~14 px razor-sharp pale stripe visible in your screenshots on GTX (not RTX)</span>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <h3>Why It Appears on BOTH Sky &amp; Ground at the Exact Same X <span class="badge b-danger">100% Diagnosed</span></h3>
+        <div class="svg-box" style="margin-bottom:12px;">
+          <svg viewBox="0 0 560 230" width="100%" height="230">
+            <!-- Sky background -->
+            <defs>
+              <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#2b5592"/>
+                <stop offset="100%" stop-color="#6b96c9"/>
+              </linearGradient>
+              <linearGradient id="gndGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#62666e"/>
+                <stop offset="100%" stop-color="#52565e"/>
+              </linearGradient>
+            </defs>
+            <rect x="16" y="16" width="240" height="118" fill="url(#skyGrad)" rx="4"/>
+            <rect x="16" y="134" width="240" height="80" fill="url(#gndGrad)" rx="4"/>
+            <!-- The vertical pale stripe matching user screenshot -->
+            <rect x="132" y="16" width="14" height="118" fill="rgba(210,232,255,0.34)"/>
+            <rect x="132" y="134" width="14" height="80" fill="rgba(220,228,236,0.16)"/>
+            <!-- Dashed seam marker -->
+            <line x1="132" y1="10" x2="132" y2="220" stroke="#f43f5e" stroke-dasharray="3 3" stroke-width="1.2"/>
+            <line x1="146" y1="10" x2="146" y2="220" stroke="#f43f5e" stroke-dasharray="3 3" stroke-width="1.2"/>
+            <text x="139" y="228" fill="#fda4af" font-size="9.5" font-weight="700" text-anchor="middle">Azimuth ∈ [-π, -π + 0.94°) ≈ 14 px</text>
+
+            <!-- Callouts right side -->
+            <line x1="146" y1="62" x2="275" y2="52" stroke="#7dd3fc" stroke-width="1.2"/>
+            <text x="282" y="48" fill="#7dd3fc" font-size="11" font-weight="700">SKY: EvaluateSkyDome(RayDir)</text>
+            <text x="282" y="63" fill="#cbd5e1" font-size="10">atan2(RayDir.y, RayDir.x) crosses ±π (-X axis)</text>
+            <text x="282" y="77" fill="#cbd5e1" font-size="10">U ∈ [0, 0.5/192) → FX = U·192 − 0.5 ∈ [-0.5, 0)</text>
+
+            <line x1="146" y1="168" x2="275" y2="152" stroke="#fcd34d" stroke-width="1.2"/>
+            <text x="282" y="148" fill="#fcd34d" font-size="11" font-weight="700">GROUND: EvaluateSkyDome(DomDir)</text>
+            <text x="282" y="163" fill="#cbd5e1" font-size="10">GroundPlane N=(0,0,1), matte (Rough &gt; 0.28)</text>
+            <text x="282" y="177" fill="#cbd5e1" font-size="10">DomDir = normalize(lerp(N, reflect(Rd, N), k))</text>
+            <text x="282" y="191" fill="#86efac" font-size="10" font-weight="700">Same (x, y) ratio ⇒ IDENTICAL azimuth atan2(y,x)!</text>
+            <text x="282" y="205" fill="#94a3b8" font-size="9.8">Attenuated by SpecScale → fainter stripe directly below!</text>
+          </svg>
+        </div>
+        <ul class="insp-list">
+          <li><b>Compass proof from your 2 screenshots:</b> In both images, the bottom-right XYZ compass shows <code>+X</code> pointing back-right and <code>+Y</code> pointing left — meaning the vertical stripe sits strictly on the <b><code>-X</code> world axis (<code>Dir.x &lt; 0, Dir.y ≈ 0</code> ⇒ <code>Azimuth = ±π</code>)</b> and orbits with the world!</li>
+          <li><b>Width proof:</b> <code>SkyViewLUT</code> is <code>192</code> texels wide (<code>360° / 192 = 1.875°</code>). The half-texel where <code>FX &lt; 0</code> is <code>0.9375°</code>. On your viewport (~65° HFOV, ~840 px wide), <code>0.9375° / 65° × 840 px = 12–14 px</code> — an exact pixel match with razor-sharp edges at <code>U = 0</code> and <code>U = 0.5/192</code>!</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h3>Why It Only Happens on GTX (Turing) and NOT RTX <span class="badge b-comp">SPIR-V -O0 OpSRem</span></h3>
+        <p style="color:var(--muted); font-size:12.6px; margin-bottom:8px;">
+          In <code>Engine/Shaders/Atmosphere/SkyViewTransmittanceCompute.slang</code> lines <code>177–200</code>:
+        </p>
+        <div class="code-block"><span class="hl-muted">// SkyViewTransmittanceCompute.slang:177-200</span>
+float Azimuth = atan2(Dir.y, Dir.x);
+float U       = frac(Azimuth / AtmoTauConst + 0.5);
+<span class="hl-amber">float FX      = U * float(W) - 0.5;</span>         <span class="hl-muted">// ∈ [-0.5, 0.0) ONLY when U ∈ [0, 0.5/192)</span>
+<span class="hl-red">int   IX0     = ((int(floor(FX)) % W) + W) % W;</span> <span class="hl-muted">// floor(FX) = -1 → signed OpSRem(-1, W)!</span>
+int   IX1     = (IX0 + 1) % W;</div>
+
+        <p style="color:var(--muted); font-size:12.6px; margin-bottom:8px;">
+          We inspected the actual compiled SPIR-V binary (<code>WorldViewportRadiometricCompute.comp.spv</code>) and confirmed <code>slangc -O0</code> emits <b>three signed <code>OpSRem</code> instructions</b> with a runtime UBO divisor <code>W</code>:
+        </p>
+        <div class="code-block"><span class="hl-cyan">OpConvertFToS</span>  %3541 = int(floor(FX))     <span class="hl-muted">// = -1 inside the 14px -X stripe</span>
+<span class="hl-red">OpSRem</span>         %3542 = %3541 % W          <span class="hl-muted">// negative signed remainder on Turing -O0</span>
+<span class="hl-red">OpSRem</span>         %3544 = (%3542 + W) % W
+<span class="hl-red">OpSRem</span>         %3546 = (%3544 + 1) % W</div>
+
+        <div class="callout callout-fixed" style="margin-top:10px;">
+          <b style="color:#86efac;">Fixed in Phase 2 (Commit <code>306820fe</code> — 100% immune on all GPUs):</b>
+          <div style="font-size:12.4px; color:#cbd5e1; margin-top:4px;">
+            1. <b>Strictly unsigned azimuth wrap:</b> Eliminated negative <code>FX</code> and all 3 signed <code>OpSRem</code> instructions in <code>SkyViewTransmittanceCompute.slang</code> via <code>float FXPos = U * float(WidthPx) + float(WidthPx) - 0.5; uint UX0 = uint(FXPos) % WidthPx;</code> (100% <code>OpConvertFToU</code> + <code>OpUMod</code>, never negative).<br/>
+            2. <b>2× fewer SkyView memory fetches:</b> Replaced 4-row Catmull-Rom (8 SSBO reads) with horizon-clamped smoothstep bilinear (4 reads), preserving bank boundaries while cutting SkyView bandwidth in half.
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECTION 6: PHASE 1 VS PHASE 2 ROADMAP -->
+  <section id="phase2">
+    <div class="sec-head">
+      <h2><span class="sec-num">06</span> Completed Delivery: Phase 1 + Tick Fix + Phase 2 (All Live on GitHub)</h2>
+      <span class="sec-sub">Branch <code>arena/2809d087-frontier</code> — Phase 1 (<code>185a8926</code>), Tick Ping-Pong Fix (<code>c2e6c5a1</code>), Phase 2 + Timing Log SHA + Cached Windows CI (<code>306820fe+</code>)</span>
+    </div>
+
+    <div class="two-col-compare">
+      <div class="card" style="border-color:rgba(34,197,94,0.4);">
+        <h3>Phase 1 + Tick Fix — Verified on GTX <span class="badge b-fixed">Done · 2.2× GPU Gain</span></h3>
+        <ul class="insp-list" style="margin-top:8px;">
+          <li><b>Fix #1 (GPU Dirty-Instance Transform):</b> <code>WorldInstanceTransformCompute.slang</code> transforms only dirty spans in VRAM; drag <code>SceneSync</code> dropped <b>28.74 ms → 0.43 ms</b> (45× faster).</li>
+          <li><b>Fix #2A &amp; #2B (Hardware 3D GDF/Radiosity):</b> Real <code>VK_IMAGE_TYPE_3D</code> textures (<code>R16F</code>/<code>RGBA16F</code>) + AO/GI early-outs dropped steady GPU <b>19.1 ms → 8.72 ms</b>.</li>
+          <li><b>Fix #3 (1-Pass Fused Denoise):</b> Dropped <code>Denoise</code> from <b>2.1 ms → 0.86 ms</b>.</li>
+          <li><b>Fix #4 &amp; #6 (Async Rings):</b> 3-slot async gizmo (<b>24 ms → 0.24 ms</b>) + 2-slot live world ring + deferred RT retirement.</li>
+          <li><b>CPU SkyView Ping-Pong Fix (<code>c2e6c5a1</code>):</b> Fixed <code>WorldEnvironmentRegistry.cpp</code> ↔ <code>EditorLifecycle.cpp</code> 500 ms/frame CPU SkyView LUT re-bake &amp; GPU P8 clock drop.</li>
+        </ul>
+      </div>
+
+      <div class="card" style="border-color:rgba(34,197,94,0.45);">
+        <h3>Phase 2 + Telemetry + CI Cache — Shipped Now <span class="badge b-fixed">Done · 7/7 Tests Pass</span></h3>
+        <ul class="insp-list" style="margin-top:8px;">
+          <li><b>Hardware Rasterized VisBuffer (<code>WorldPrimaryVisRaster.slang</code>):</b> Reversed-Z <code>D32_SFLOAT</code> + <code>R32_UINT</code> triangle-ID rasterizer + Nanite cluster culling. <code>ComputeEntry</code> skips software BVH4 primary rays completely.</li>
+          <li><b>Half-Res AO/GI + 2×2 Joint Bilateral Upsample:</b> Dedicated <code>HalfResIndirectEntry</code> runs 3D GDF AO &amp; 5-cone GI at <b>¼ pixel count</b>; <code>DenoiseCompositeEntry</code> upsamples with plane/normal weights.</li>
+          <li><b>GTX Vertical Sky/Ground Seam Fix:</b> Strictly unsigned <code>SkyViewTransmittanceCompute.slang</code> wrap + 4-tap smoothstep bilinear.</li>
+          <li><b>Async ImGui &amp; VectorCanvas Retirement:</b> Eliminated mid-frame <code>AwaitTimelineTick</code> stalls in <code>ImGuiOverlayRasterization</code> &amp; <code>VectorCanvasRasterizer</code>.</li>
+          <li><b>Build Commit &amp; DateTime in <code>FrontierTiming.log</code> + Fast Windows CI:</b> Stamps <code># BuildCommit: &lt;sha&gt; | RunDateTime: YYYY-MM-DD HH:MM:SS</code> + caches deps/fonts/<code>sccache</code> in <code>windows-build.yml</code>.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+  <!-- SECTION 7: LIGHTWEIGHT INSTANCE ARCHITECTURE & DUAL EDITOR/PRODUCTION LOOP -->
+  <section id="instances">
+    <div class="sec-head">
+      <h2><span class="sec-num">07</span> World Instance Architecture, <code>.Instance</code> Documents &amp; Dual Execution Loop</h2>
+      <span class="sec-sub">Full specification in <code>Documentation/Plans/WorldInstanceArchitecturePlan.md</code> &amp; <code>Engine/World/</code></span>
+    </div>
+
+    <div class="grid-2" style="margin-bottom:16px;">
+      <div class="card" style="border-color:rgba(16,185,129,0.38);">
+        <h3>1. Zero-Bloat Category <code>Instance</code> Classes (No <code>UObject</code>!) <span class="badge b-gfx">48 B · Zero vtable</span></h3>
+        <p style="color:var(--muted); font-size:12.6px; margin-bottom:10px;">
+          Every world participant (<code>SurfaceInstance</code>, <code>LunarInstance</code>, <code>SolarInstance</code>, <code>LuminaireInstance</code>, <code>ParticleInstance</code>, <code>ForceFieldInstance</code>, <code>TriggerInstance</code>, <code>AcousticInstance</code>) uses an 8-byte generation-checked <code>InstanceToken</code> + 48-byte trivially-copyable <code>InstanceRecordEntry</code> (<code>EnclosingIndex</code>, <code>FirstNestedIndex</code>, <code>NextLateralIndex</code>) backed by cache-contiguous SoA registers.
+        </p>
+        <ul class="insp-list">
+          <li><b>Dual Constructor/Destructor (<code>#if FRONTIER_PROFILE_EDITOR</code>):</b> Production builds run ONLY <code>RegisterProduction()</code> / <code>UnregisterProduction()</code> (O(1) SoA slot, sets <code>RequireRebuild</code>, zero UI headers). Editor builds execute the exact same Production path first + automatically register/unregister Outliner &amp; Inspector entries via <code>EditorSurfaceHooks</code> — so C++ construction &amp; Editor <code>+</code> construction are always 100% identical!</li>
+          <li><b>Tight Loop Execution (<code>ExecuteLunarLoop</code>, <code>ExecuteSolarLoop</code>, <code>ExecuteParticleLoop</code>, <code>ExecuteForceFieldLoop</code>, <code>ExecuteTriggerLoop</code>):</b> Every category loop takes a parameter struct with <code>ExecutionEnabled</code> &amp; <code>RequireRebuild</code> — skipping idle/static categories in 1 branch (~0.0001 ms) and streaming linearly over contiguous SoA arrays when active.</li>
+        </ul>
+      </div>
+
+      <div class="card" style="border-color:rgba(56,189,248,0.38);">
+        <h3>2. Composable <code>.Instance</code> Document Format (<code>InstanceCodec</code>) <span class="badge b-comp">Multi-.Space File</span></h3>
+        <p style="color:var(--muted); font-size:12.6px; margin-bottom:10px;">
+          Built on Frontier's TomlWithBinarySection container (UTF-8 TOML header at top + 64-byte aligned binary payload &amp; <code>.Revision</code> log at bottom). One <code>.Instance</code> document combines multiple native space formats:
+        </p>
+        <div class="code-block"><span class="hl-cyan">RallyWheelUnit.Instance</span>  (TomlWithBinarySection · 64B Aligned)
+ ├── <span class="hl-amber">[EditorDirectives]</span>  Title, CategoryTag, SVG Icon, Folder <span class="hl-muted">(stripped in Shipping!)</span>
+ ├── <span class="hl-green">Slot 0 · .GeometrySpace</span>    PolygonNetwork / Analytic / Procedural solid
+ ├── <span class="hl-green">Slot 1 · .MaterialSpace</span>    OpenPBR closure + embedded .TextureSpace
+ ├── <span class="hl-green">Slot 2 · .ParticleSpace</span>    GPU compute gravel/dust particle cloud
+ ├── <span class="hl-green">Slot 3 · .ForceField</span>       Slipstream / rigid dynamics force volume
+ └── <span class="hl-green">Slot 4 · .Acoustic</span>         Spatial acoustic propagation profile</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>3. Production / Shipping Tight Loop vs Editor Loop Separation</h3>
+      <div class="svg-box" style="margin-top:8px;">
+        <svg viewBox="0 0 880 185" width="100%" height="185">
+          <!-- Production Row -->
+          <text x="12" y="22" fill="#86efac" font-size="11.5" font-weight="700">PRODUCTION / SHIPPING LOOP (FRONTIER_PROFILE_SHIPPING — ZERO EDITOR OVERHEAD)</text>
+          <rect x="12" y="32" width="105" height="36" rx="6" fill="#f59e0b"/>
+          <text x="64" y="54" fill="#080a0f" font-size="10.5" font-weight="700" text-anchor="middle">1. Input Intake</text>
+          <text x="125" y="54" fill="#64748b" font-size="13" font-weight="700">→</text>
+
+          <rect x="140" y="32" width="320" height="36" rx="6" fill="#0ea5e9"/>
+          <text x="300" y="48" fill="#06121a" font-size="10.5" font-weight="700" text-anchor="middle">2. Tight Category Loops (SoA · Skip if !ExecutionEnabled)</text>
+          <text x="300" y="61" fill="#082f49" font-size="9" font-weight="600" text-anchor="middle">ExecuteSolar/Lunar · ForceField · JoltPhysics · Trigger · Particle · Transform</text>
+          <text x="468" y="54" fill="#64748b" font-size="13" font-weight="700">→</text>
+
+          <rect x="483" y="32" width="235" height="36" rx="6" fill="#10b981"/>
+          <text x="600" y="48" fill="#06120e" font-size="10.5" font-weight="700" text-anchor="middle">3. Phase 2 GPU World (2.5–3.5 ms)</text>
+          <text x="600" y="61" fill="#064e3b" font-size="9" font-weight="600" text-anchor="middle">GPU Xfm · HW VisBuf · Direct · ½-Res GI · ACES</text>
+          <text x="726" y="54" fill="#64748b" font-size="13" font-weight="700">→</text>
+
+          <rect x="741" y="32" width="126" height="36" rx="6" fill="#22c55e"/>
+          <text x="804" y="54" fill="#06120e" font-size="10.5" font-weight="700" text-anchor="middle">4. Direct Present</text>
+
+          <!-- Divider -->
+          <line x1="12" y1="88" x2="868" y2="88" stroke="rgba(255,255,255,0.12)" stroke-dasharray="4 4"/>
+
+          <!-- Editor Row -->
+          <text x="12" y="110" fill="#7dd3fc" font-size="11.5" font-weight="700">EDITOR LOOP (#if FRONTIER_PROFILE_EDITOR — WRAPS IDENTICAL CORE + ASYNC UI)</text>
+          <rect x="12" y="120" width="140" height="44" rx="6" fill="#a855f7"/>
+          <text x="82" y="139" fill="#fff" font-size="10" font-weight="700" text-anchor="middle">Editor Pre-Sync</text>
+          <text x="82" y="153" fill="#e9d5ff" font-size="8.8" text-anchor="middle">Outliner / Insp / PIE Gate</text>
+          <text x="159" y="146" fill="#64748b" font-size="13" font-weight="700">→</text>
+
+          <rect x="174" y="120" width="230" height="44" rx="6" fill="rgba(14,165,233,0.22)" stroke="#38bdf8"/>
+          <text x="289" y="139" fill="#7dd3fc" font-size="10" font-weight="700" text-anchor="middle">Identical Tight Category Loops</text>
+          <text x="289" y="153" fill="#bae6fd" font-size="8.8" text-anchor="middle">Edit: RequireRebuild · PIE: Full Tick</text>
+          <text x="411" y="146" fill="#64748b" font-size="13" font-weight="700">→</text>
+
+          <rect x="426" y="120" width="185" height="44" rx="6" fill="rgba(16,185,129,0.22)" stroke="#10b981"/>
+          <text x="518" y="139" fill="#6ee7b7" font-size="10" font-weight="700" text-anchor="middle">Identical Phase 2 GPU World</text>
+          <text x="518" y="153" fill="#a7f3d0" font-size="8.8" text-anchor="middle">3.34 ms med on GTX 1650S</text>
+          <text x="618" y="146" fill="#64748b" font-size="13" font-weight="700">→</text>
+
+          <rect x="633" y="120" width="234" height="44" rx="6" fill="#f59e0b"/>
+          <text x="750" y="139" fill="#080a0f" font-size="10" font-weight="700" text-anchor="middle">Async Editor Overlays + Present</text>
+          <text x="750" y="153" fill="#451a03" font-size="8.8" font-weight="600" text-anchor="middle">3-Slot Gizmo · Retained/GPU Insp · 50 SVGs</text>
+        </svg>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+const NODE_DATA = {
+  "cpu-input": {
+    tag: "STAGE A1 · CPU MAIN THREAD",
+    title: "GLFW Input, Camera Basis & Selection",
+    desc: "Polls OS window events, updates orbital/fly camera transform, computes ray basis vectors, and processes gizmo drag deltas.",
+    files: "<code>Engine/Lifecycle/EditorLifecycle.cpp</code> · <code>Engine/GeometricRaster/Gizmo/TransformGizmo.h</code>",
+    work: [
+      "Polls GLFW mouse/keyboard events and updates viewport camera yaw/pitch/origin.",
+      "Reads non-blocking gizmo hover/pick ID harvested from the previous completed GPU gizmo slot (zero stall in Phase 1).",
+      "Applies drag translation/rotation/scale to selected entity and flags <code>PendingInteractionSceneSync</code>."
+    ],
+    risk: "Very low CPU cost (~0.1 ms). Previously suffered indirect hitches when downstream stages blocked the main thread.",
+    status: "<span class='badge b-fixed'>Healthy</span> No bottleneck here."
+  },
+  "cpu-scenesync": {
+    tag: "STAGE A2 · CPU → GPU SCENE SYNC",
+    title: "Scene Synchronization & Top-Level BVH",
+    desc: "Synchronizes entity transforms and material edits into GPU VRAM buffers whenever objects move or change.",
+    files: "<code>Engine/GeometricRaster/GlobalIllumination/VulkanWorldRenderSequence.cpp</code> (<code>AssembleResidentClusterSceneBvh</code>)",
+    work: [
+      "Computes lightweight topology &amp; transform hashes.",
+      "Rebuilds only the tiny top-level BVH (one AABB per cluster instance) and copies it into <code>TopNodeStagingBuffer</code>.",
+      "Detects which instance spans are dirty and dispatches GPU compute transform on Ring Slot 3."
+    ],
+    risk: "<b>Was the #1 stutter source (147 spikes up to 28.74 ms!)</b> because it previously flattened and re-uploaded every triangle &amp; BVH node on CPU every drag frame.",
+    status: "<span class='badge b-fixed'>Fixed in Phase 1</span> Cold build runs once; drags are 100% GPU-driven (&lt;0.3 ms CPU)."
+  },
+  "cpu-nanite": {
+    tag: "STAGE A3 · CPU LOD SELECTION",
+    title: "Nanite Hierarchical Cluster Cut Mask",
+    desc: "Evaluates screen-space projected error per rigid cluster instance to toggle LOD hierarchy bits.",
+    files: "<code>Engine/GeometricRaster/GlobalIllumination/VulkanWorldRenderSequence.cpp</code> (<code>RefreshNaniteLodGeometry</code>)",
+    work: [
+      "Iterates cluster hierarchy nodes on CPU and computes projected pixel error.",
+      "Writes compact bitmask words (~256 bytes) into Slice 1 of <code>ActiveClusterMaskBuffer</code>.",
+      "Skips work completely if camera/cut signature hasn't changed."
+    ],
+    risk: "Negligible (~0.05 ms) on current scene sizes. Could be moved to a GPU compute cull pass for 100k+ instances later.",
+    status: "<span class='badge b-fixed'>Low Cost</span> Not a current bottleneck."
+  },
+  "cpu-ui": {
+    tag: "STAGE A4 · CPU EDITOR UI & INSPECTORS",
+    title: "ImGui Layout, Outliner & Project Zero Inspectors",
+    desc: "Builds immediate-mode ImGui draw lists and triggers ThorVG vector graphics / preview cards asynchronously when inspector widgets change.",
+    files: "<code>Engine/Lifecycle/EditorLifecycle.cpp</code> · <code>Engine/Editor/Inspectors/*.cpp</code> · <code>Engine/Editor/WorldEnvironmentRegistry.cpp</code>",
+    work: [
+      "Emits ImGui draw commands for Outliner, Toolbar, Status bar, and Inspector cards (~0.6–1.0 ms steady).",
+      "WorldEnvironmentRegistry now adopts synced SkyRadiance &amp; gates CPU SkyView fallback on <code>!GpuReady</code> (eliminated 500 ms/frame Tick ping-pong in <code>c2e6c5a1</code>).",
+      "Uploads modified RGBA texture surfaces &amp; GPU-resident vector cards asynchronously without mid-frame stalls (Phase 2)."
+    ],
+    risk: "Previously suffered 500 ms Tick ping-pong + 18 Inspector sync spikes (up to 22.93 ms).",
+    status: "<span class='badge b-fixed'>Fixed in c2e6c5a1 + Phase 2</span> Async UI texture &amp; vector baking."
+  },
+  "sync-ring": {
+    tag: "STAGE B1 · VULKAN DESCRIPTOR ISOLATION",
+    title: "4-Slot Isolated Descriptor Pool Ring",
+    desc: "Allows multiple async GPU submissions to be in flight simultaneously without overwriting each other's descriptor sets.",
+    files: "<code>Engine/GeometricRaster/Compute/ComputeDispatchEncoder.{h,cpp}</code>",
+    work: [
+      "Ring Slot 0 &amp; Slot 1: Alternating async live viewport frames.",
+      "Ring Slot 2: Async scene precompute (Shadow Cascades, 3D GDF, 3D Radiosity).",
+      "Ring Slot 3: Async GPU dirty-instance transform dispatches."
+    ],
+    risk: "Without isolated rings, resetting transient descriptors while an earlier async frame is still executing causes Vulkan validation errors / GPU corruption.",
+    status: "<span class='badge b-fixed'>Added in Phase 1</span> Fully active across all async paths."
+  },
+  "sync-queue": {
+    tag: "STAGE B2 · VULKAN QUEUE TOPOLOGY",
+    title: "Single PrimaryQueue (Compute + Graphics + Transfer)",
+    desc: "All engine subsystems submit command buffers to a single Vulkan queue tracked by one monotonic timeline semaphore.",
+    files: "<code>Engine/GeometricRaster/VulkanInterchange.{h,cpp}</code>",
+    work: [
+      "<code>DispatchCommandBufferAsync(Cmd)</code> increments the timeline semaphore and calls <code>vkQueueSubmit</code> on <code>PrimaryQueue</code>.",
+      "Guarantees strict FIFO ordering: Transform → Precompute → World Render → Gizmo → Vector → ImGui → Present with zero cross-queue ownership transfers."
+    ],
+    risk: "<b>Key architectural coupling:</b> Any single synchronous <code>AwaitTimelineTick</code> anywhere in UI/Vector/ImGui forces the CPU to wait for ALL work already queued ahead of it (e.g., a 12 ms World Compute pass).",
+    status: "<span class='badge b-danger'>Watchpoint</span> Keep ALL live-frame paths 100% async (never wait mid-frame)."
+  },
+  "sync-retire": {
+    tag: "STAGE B3 · ZERO-WAIT RESOURCE LIFECYCLE",
+    title: "Deferred Render Target &amp; Display Image Retirement",
+    desc: "Replaces full-device stalls during viewport resizing with timeline-tracked delayed destruction.",
+    files: "<code>VulkanWorldRenderSequence.cpp</code> (<code>RetiredDisplayImages</code>) · <code>WorldGizmoOverlayRasterization.cpp</code> (<code>RetiredRenderTargets</code>)",
+    work: [
+      "On resize, old <code>VkImage</code> / <code>VkFramebuffer</code> handles move to a retirement vector stamped with the latest timeline signal + 4-frame ImGui grace window.",
+      "Reaped non-blockingly via <code>QueryTimelineReached</code> on subsequent frames."
+    ],
+    risk: "Previously called <code>vkDeviceWaitIdle</code> on every single pixel drag of the viewport splitter, freezing the entire editor for 20–38 ms per event.",
+    status: "<span class='badge b-fixed'>Fixed in Phase 1</span> Zero <code>vkDeviceWaitIdle</code> during viewport/gizmo resize."
+  },
+  "sync-ui-wait": {
+    tag: "STAGE B4 · ASYNC UI & VECTOR RETIREMENT (PHASE 2)",
+    title: "Non-Blocking ImGui &amp; VectorCanvas Retirement Rings",
+    desc: "Replaces mid-frame blocking AwaitTimelineTick calls with timeline-tracked async retirement queues.",
+    files: "<code>ImGuiOverlayRasterization.{h,cpp}</code> · <code>VectorCanvasRasterizer.{h,cpp}</code>",
+    work: [
+      "<code>ImGuiOverlayRasterization</code> allocates transient upload staging buffers, submits async, and reaps via <code>QueryTimelineReached</code> in <code>ReapPendingAsyncTexUploads</code>.",
+      "<code>VectorCanvasRasterizer</code> pushes GPU-resident bakes (<code>OutRGBA == nullptr</code>) to <code>PendingAsyncFrames</code> and harvests metrics asynchronously on subsequent frames.",
+      "Zero mid-frame queue drains while dragging sliders or hovering inspector controls."
+    ],
+    risk: "Previously caused 18 Inspector spikes (up to 22.93 ms) by draining the shared queue behind a 12 ms world frame.",
+    status: "<span class='badge b-fixed'>Fixed in Phase 2 (306820fe)</span>"
+  },
+  "gpu-xform": {
+    tag: "STAGE C1 · GPU COMPUTE (NEW IN PHASE 1)",
+    title: "GPU Dirty-Instance BVH &amp; Triangle Transform",
+    desc: "Transforms moved/rotated/scaled instances directly from immutable VRAM local templates into active world-space BVH &amp; triangle buffers.",
+    files: "<code>Engine/Shaders/GeometricRaster/WorldInstanceTransformCompute.slang</code> · <code>VulkanWorldRenderSequence.cpp</code>",
+    work: [
+      "<code>TransformBvhNodesEntry</code> (64 threads/group): transforms local AABBs for dirty instance spans only.",
+      "<code>TransformTrianglesEntry</code> (64 threads/group): transforms vertices, edges, and inverse-transpose normals for dirty spans only.",
+      "Submits asynchronously on Ring Slot 3; untouched static instances do 0 work."
+    ],
+    risk: "Sub-0.1 ms GPU cost even for 25k–100k triangles; zero CPU or PCIe upload bottleneck.",
+    status: "<span class='badge b-fixed'>Added in Phase 1</span> Ready to benchmark on GTX."
+  },
+  "gpu-precomp": {
+    tag: "STAGE C2 · GPU ASYNC PRECOMPUTE + SEAMLESS SKY",
+    title: "Sky LUT (Unsigned Wrap), Shadow Cascades &amp; 3D GDF/Radiosity",
+    desc: "Updates global lighting volumes asynchronously when camera clipmap scrolls, sun moves, or objects move.",
+    files: "<code>VulkanWorldRenderSequence.cpp</code> · <code>SkyViewTransmittanceCompute.slang</code>",
+    work: [
+      "Bakes <code>256×64</code> Transmittance, <code>32×32</code> MultiScatter, and <code>192×108</code> SkyView LUT on GPU only (CPU ping-pong bug fixed in <code>c2e6c5a1</code>).",
+      "Phase 2 fixed <code>EvaluateSkyViewLutSample</code> with strictly unsigned azimuth wrap + 4-tap smoothstep bilinear (kills GTX vertical sky/ground stripe).",
+      "Toroidal slab-scrolls Fine/Coarse <code>64³</code> <code>R16F</code> 3D GDF textures and bakes 2-bounce <code>RGBA16F</code> 3D Radiosity pyramid (<code>64³→32³→16³→8³</code>)."
+    ],
+    risk: "Low amortized cost; runs asynchronously on Descriptor Ring Slot 2.",
+    status: "<span class='badge b-fixed'>Fixed in P1 + c2e6 + P2</span>"
+  },
+  "gpu-primary": {
+    tag: "STAGE C3 · PHASE 2 SPLIT PIPELINE (HW VISBUF + DIRECT + ½-RES GI)",
+    title: "HW Raster VisBuffer → Lean Direct → Half-Res AO/GI",
+    desc: "Replaces software primary BVH4 tracing and full-res AO/GI with a 3-stage split GPU pipeline leveraging the GTX 1650 SUPER hardware rasterizer.",
+    files: "<code>WorldPrimaryVisRaster.slang</code> · <code>WorldViewportRadiometricCompute.slang</code> (<code>ComputeEntry</code> + <code>HalfResIndirectEntry</code>)",
+    work: [
+      "<b>Pass 1 (HW Graphics VisBuffer):</b> Vertex-pulls <code>ShadedTriangles</code> + Nanite <code>ActiveClusterBitmask</code> with Reversed-Z <code>D32_SFLOAT</code>, writing <code>R32_UINT</code> <code>TriIdx+1</code> directly to <code>PrimaryVisImg2D</code> (slot 38).",
+      "<b>Pass 2 (Lean Direct Compute):</b> Sky pixels exit with 0 BVH4 nodes; geometry pixels reconstruct exact hit + barycentrics + smooth normals from 1 triangle load and evaluate OpenPBR direct lights + ContactPCSS.",
+      "<b>Pass 3 (Half-Res Indirect):</b> <code>HalfResIndirectEntry</code> runs 3D GDF AO &amp; 5-cone Radiosity GI at <code>(W+1)/2 × (H+1)/2</code> (<b>¼ pixel count</b>) into <code>PongIndirectIrradiance</code>."
+    ],
+    risk: "Cut monolithic 12.38–16.9 ms primary compute to 7.80 ms in Phase 1, and now eliminates primary BVH4 traversal + 75% of AO/GI pixel marches in Phase 2.",
+    status: "<span class='badge b-fixed'>Shipped in Phase 2 (306820fe)</span>"
+  },
+  "gpu-denoise": {
+    tag: "STAGE C4 · GPU 2×2 JOINT BILATERAL UPSAMPLE + ACES",
+    title: "2×2 Bilateral Upsample, Fog, GodRays, ACES &amp; Display Copy",
+    desc: "Edge-preserving 2×2 depth/plane/normal upsample of half-res AO/GI fused with sun filter, sky/cloud background, volumetric fog, ACES tone map, and display copy.",
+    files: "<code>WorldViewportRadiometricCompute.slang</code> (<code>DenoiseCompositeEntry</code>) · <code>VulkanWorldRenderSequence.cpp</code>",
+    work: [
+      "Upsamples half-res <code>PongIndirectIrradiance</code> (<code>IndirIrrad</code> + <code>DiffAo</code>) using plane-distance, world-distance, and normal-cosine bilateral weights (zero halos).",
+      "Shades deferred sky/cloud/celestial background for missed pixels (<code>GBufPosMask.w &lt; -0.5</code>).",
+      "Applies volumetric fog, god rays, lens flare, ACES filmic tone map, and copies to <code>DisplayOutputImage2D</code>."
+    ],
+    risk: "Measured 0.86 ms in Phase 1 (down from 2.1 ms); Phase 2 swaps full-res 3×3 AO filter for 4-tap 2×2 bilateral upsample.",
+    status: "<span class='badge b-fixed'>1-Pass Upsample in P2</span>"
+  },
+  "gfx-gizmo": {
+    tag: "STAGE D1 · GPU GRAPHICS OVERLAY",
+    title: "3D Transform Gizmo &amp; Viewport Blit Pass",
+    desc: "Blits the world viewport image and rasterizes anti-aliased 3D transform gizmo arrows/arcs/rings plus an offscreen pick-ID patch.",
+    files: "<code>Engine/GeometricRaster/Gizmo/WorldGizmoOverlayRasterization.{h,cpp}</code> · <code>GizmoRasterization.slang</code>",
+    work: [
+      "Draws fullscreen viewport blit quad sampling <code>DisplayOutputImage2D</code>.",
+      "Rasterizes cached 3D gizmo mesh with depth buffer + MSAA/smooth fragment shading.",
+      "Copies a tiny 17×17 pick-ID patch to a per-slot host readback buffer (harvested non-blockingly 1–2 frames later)."
+    ],
+    risk: "Was 0.43 ms steady with 5 spikes up to 24.31 ms (F=1: 37.97 ms) from blocking pick readbacks and <code>vkDeviceWaitIdle</code> resizes.",
+    status: "<span class='badge b-fixed'>Fixed in Phase 1</span> 3-slot async ring + cached geometry + deferred resize."
+  },
+  "gfx-vector": {
+    tag: "STAGE D2 · GPU VECTOR GRAPHICS (ASYNC IN P2)",
+    title: "ThorVG GPU Stencil-Cover Vector Canvas",
+    desc: "Renders crisp Inspector diagrams, dials, icons, and vector cards using Vulkan stencil-cover triangle fans &amp; stroke meshes.",
+    files: "<code>Engine/GeometricRaster/Vector/VectorCanvasRasterizer.{h,cpp}</code> · <code>VulkanVectorRenderMethod.cpp</code>",
+    work: [
+      "Compiles ThorVG cubic Beziers to GPU fan/stroke vertex buffers.",
+      "Executes Vulkan stencil-cover graphics render pass into an offscreen RGBA image.",
+      "GPU-resident bakes (<code>OutRGBA == nullptr</code>) now retire command buffers &amp; metrics asynchronously via <code>PendingAsyncFrames</code>."
+    ],
+    risk: "Eliminated blocking <code>AwaitTimelineTick</code> on GPU-resident vector bakes in Phase 2.",
+    status: "<span class='badge b-fixed'>Fixed in Phase 2</span> Async timeline retirement."
+  },
+  "gfx-imgui": {
+    tag: "STAGE D3 · GPU UI COMPOSITOR (ASYNC IN P2)",
+    title: "ImGui Overlay Vulkan Graphics Pass",
+    desc: "Draws the entire editor shell (Outliner, Viewport panel, Inspector panels, Toolbar, Menus) directly onto the swapchain image.",
+    files: "<code>Engine/GeometricRaster/Rasterization/ImGuiOverlayRasterization.{h,cpp}</code>",
+    work: [
+      "Streams ImGui vertex/index buffers and renders all UI windows in a single swapchain render pass.",
+      "Samples <code>DisplayOutputImage2D</code> (or Gizmo composited output) inside the Viewport pane.",
+      "Submits UI texture uploads asynchronously with transient staging buffers reaped via <code>ReapPendingAsyncTexUploads</code>."
+    ],
+    risk: "Steady draw is &lt;0.3 ms GPU; blocking texture upload wait removed in Phase 2.",
+    status: "<span class='badge b-fixed'>Fixed in Phase 2</span> Async texture upload ring."
+  },
+  "gfx-present": {
+    tag: "STAGE D4 · SWAPCHAIN PRESENTATION",
+    title: "Vulkan Swapchain Acquire &amp; Present",
+    desc: "Acquires the next swapchain backbuffer, submits the final ImGui render pass, and presents to the Windows DWM / display.",
+    files: "<code>Engine/GeometricRaster/Rasterization/ImGuiOverlayRasterization.cpp</code> (lines 695–720, 1160–1315)",
+    work: [
+      "Prefers <code>VK_PRESENT_MODE_MAILBOX_KHR</code> (uncapped low-latency triple buffering), falls back to <code>IMMEDIATE</code> or <code>FIFO</code>.",
+      "Uses 2 in-flight present fences (<code>PresentSyncSignals</code>) and <code>ImagesInFlightSignals</code>.",
+      "Waits on fence only when all present slots are still executing on the GPU."
+    ],
+    risk: "<b>15 <code>Present</code> spikes (10–19.84 ms):</b> Occurs when GPU is saturated by a 15–20 ms world frame (fence wait on Acquire/Present) or Windows DWM compositor hitch on swapchain resize.",
+    status: "<span class='badge b-comp'>Improves with P1 &amp; P2</span> Faster GPU world pass directly shrinks fence wait."
+  }
+};
+
+function selectNode(id) {
+  const d = NODE_DATA[id];
+  if (!d) return;
+  document.querySelectorAll(".node").forEach(n => n.classList.toggle("active", n.dataset.id === id));
+  document.getElementById("inspTag").textContent = d.tag;
+  document.getElementById("inspTitle").textContent = d.title;
+  document.getElementById("inspDesc").textContent = d.desc;
+  document.getElementById("inspFiles").innerHTML = d.files;
+  document.getElementById("inspWork").innerHTML = d.work.map(w => `<li>${w}</li>`).join("");
+  document.getElementById("inspRisk").innerHTML = d.risk;
+  document.getElementById("inspStatus").innerHTML = d.status;
+}
+
+document.querySelectorAll(".node").forEach(n => {
+  n.addEventListener("click", () => selectNode(n.dataset.id));
+});
+selectNode("gpu-primary");
+
+// Table filtering
+document.querySelectorAll(".filter-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    const f = btn.dataset.filter;
+    document.querySelectorAll("#hazardTable tbody tr").forEach(tr => {
+      const st = tr.dataset.status;
+      const dm = tr.dataset.domain;
+      const show =
+        f === "all" ||
+        (f === "fixed" && st === "fixed") ||
+        (f === "open" && st === "open") ||
+        (f === "cpu" && dm === "cpu") ||
+        (f === "gpu" && dm === "gpu");
+      tr.style.display = show ? "" : "none";
+    });
+  });
+});
+</script>
+</body>
+</html>

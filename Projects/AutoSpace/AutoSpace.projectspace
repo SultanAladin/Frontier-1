@@ -1,0 +1,70 @@
+FormatVersion = 1
+ProjectTitle = 'AutoSpace'
+
+['.FontSpace']
+FormatVersion = 1
+SlotSizes = [ 32.0, 24.0, 18.0, 14.0, 12.0, 10.0 ]
+SlotWeights = [ 700, 600, 500, 400, 500, 400 ]
+Typeface = 'Inter'
+
+['.inputsettings']
+AdvancedControlsEnabled = false
+CustomShortcutsEnabled = false
+FormatVersion = 1
+InvertedPitchEnabled = false
+MouseSensitivity = 50.0
+
+    [['.inputsettings'.Shortcuts]]
+    AltHeld = false
+    Command = 'ControlCentre'
+    ControlHeld = true
+    Key = 'Comma'
+    ShiftHeld = false
+    SuperHeld = false
+
+    [['.inputsettings'.Shortcuts]]
+    AltHeld = true
+    Command = 'Typography'
+    ControlHeld = true
+    Key = 'F'
+    ShiftHeld = false
+    SuperHeld = false
+
+    [['.inputsettings'.Shortcuts]]
+    AltHeld = true
+    Command = 'Theme'
+    ControlHeld = true
+    Key = 'T'
+    ShiftHeld = false
+    SuperHeld = false
+
+    [['.inputsettings'.Shortcuts]]
+    AltHeld = false
+    Command = 'DismissPanel'
+    ControlHeld = false
+    Key = 'Escape'
+    ShiftHeld = false
+    SuperHeld = false
+
+['.notificationsettings']
+AlertHoldSeconds = 3.5
+AppliedAlertsEnabled = true
+ErrorAlertsEnabled = true
+FormatVersion = 1
+RateOverlayEnabled = false
+
+['.visualappearance']
+Accent = 'Blue'
+CautionSwatch = 0
+CornerRadius = 16.0
+FormatVersion = 1
+InterfaceScale = 100.0
+NoticeSwatch = 0
+SuccessSwatch = 1
+Theme = 'Dark'
+WarningSwatch = 0
+
+['.workspacelayout']
+DetachedWindowsEnabled = false
+DockLayout = ''
+FormatVersion = 1

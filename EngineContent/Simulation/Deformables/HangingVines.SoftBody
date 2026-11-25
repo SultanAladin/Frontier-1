@@ -1,0 +1,32 @@
+# Frontier Engine — .SoftBody Deformable Simulation Preset
+[Container]
+FormatSuffix = ".SoftBody"
+SchemaVersion = 1
+DocumentTitle = "Hanging Vines"
+PresetId = "HangingVines"
+PresetKind = "HangingVines"
+SolverCategory = "XpbdStrand"
+Description = "Foliage deformable preset (vines)"
+
+[Solver]
+Substeps = 5
+GravityY = -8.5
+Damping = 0.991999984
+UnderwaterEnabled = false
+
+[Material]
+StretchStiffness = 1600.0
+BendStiffness = 0.349999994
+FemYoungMpa = 2.4000001
+FemPoissonNu = 0.439999998
+TearRatio = 2.5999999
+
+[Environment]
+WindStrength = 3.20000005
+Turbulence = 1.60000002
+ColliderEnabled = true
+
+[Tire]
+PressurePsi = 30.0
+AxleLoad = 1.35000002
+SpinRadPerSec = 3.0

@@ -1,0 +1,97 @@
+# Fountain — particle template (Emitters). Water-like jet that arcs under gravity and splashes on the floor.
+# Converted from the legacy template object by script; node fingerprint ae3c7fac304ac63b (checked by FluidValidation.mjs).
+
+[Document]
+Format = "frontier-particle-template"
+Revision = 1
+SpecificationHash = "c0d4526879189117"
+
+[Template]
+Order = 16
+Id = "fountain"
+Name = "Fountain"
+Category = "Emitters"
+Icon = "fountain"
+Tint = "#38bdf8"
+Summary = "Water-like jet that arcs under gravity and splashes on the floor."
+
+[[Layer]]
+  Token = "layer-1"
+  Category = 201
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Mode = 0, Shape = 3, Position = [0, 0, 0], Direction = [0, 1, 0], Radius = 0.12, Fill = 0.0, Count = 8192, Rate = 25.0, Lifetime = 3.0, Linger = 0.6, Speed = 6.5, Spread = 0.12, Radial = 0.0 }
+
+[[Layer]]
+  Token = "layer-2"
+  Category = 203
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Gravity = 9.8 }
+
+[[Layer]]
+  Token = "layer-3"
+  Category = 204
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Drag = 0.2 }
+
+[[Layer]]
+  Token = "layer-4"
+  Category = 205
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Noise = 0.2, NoiseScale = 1.3, NoiseSpeed = 0.5 }
+
+[[Layer]]
+  Token = "layer-5"
+  Category = 206
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { FieldInfluence = 1.0 }
+
+[[Layer]]
+  Token = "layer-6"
+  Category = 208
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Bounce = 0.15 }
+
+[[Layer]]
+  Token = "layer-7"
+  Category = 209
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { ColourMode = 1, Palette = ["#1d6fa8", "#38bdf8", "#bfe9ff", "#ffffff"], RampSource = 0, Ramp = 0, MaxSpeed = 6.0, DisplacementRange = 1.0, CycleSpeed = 0.5, HueJitter = 0.0, BrightnessJitter = 0.0, Brightness = 1.0, Flicker = 0.0 }
+
+[[Layer]]
+  Token = "layer-8"
+  Category = 210
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { SizeMode = 1, SizeStart = 2.5, SizeEnd = 2.0, SizeRandom = 0.3 }
+
+[[Layer]]
+  Token = "layer-9"
+  Category = 211
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Sprite = 1, Glow = 0.0, Blend = 0, Style = 1, FocusDistance = 0.0, Aperture = 0.5 }

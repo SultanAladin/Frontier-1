@@ -1,0 +1,70 @@
+# Line Cloner — particle template (Cloners). Row of clones along the axis — a wave-table that reacts to every gizmo you drag through it.
+# Converted from the legacy template object by script; node fingerprint 350bab56f2196735 (checked by FluidValidation.mjs).
+
+[Document]
+Format = "frontier-particle-template"
+Revision = 1
+SpecificationHash = "c0d4526879189117"
+
+[Template]
+Order = 21
+Id = "line-cloner"
+Name = "Line Cloner"
+Category = "Cloners"
+Icon = "linecloner"
+Tint = "#38bdf8"
+Summary = "Row of clones along the axis — a wave-table that reacts to every gizmo you drag through it."
+
+[[Layer]]
+  Token = "layer-1"
+  Category = 201
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Mode = 1, Shape = 5, Position = [0, 0, 0], Direction = [0, 1, 0], Radius = 2.2, Fill = 0.0, Count = 256, Rate = 8.0, Lifetime = 3.0, Linger = 0.6, Speed = 2.0, Spread = 0.5, Radial = 0.0 }
+
+[[Layer]]
+  Token = "layer-2"
+  Category = 202
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Spring = 10.0, Damping = 3.0, Dissolve = 0.0 }
+
+[[Layer]]
+  Token = "layer-3"
+  Category = 206
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { FieldInfluence = 1.0 }
+
+[[Layer]]
+  Token = "layer-4"
+  Category = 208
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Bounce = 0.2 }
+
+[[Layer]]
+  Token = "layer-5"
+  Category = 209
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { ColourMode = 2, Palette = ["#38bdf8", "#a78bfa", "#f472b6"], RampSource = 0, Ramp = 0, MaxSpeed = 6.0, DisplacementRange = 0.5, CycleSpeed = 0.5, HueJitter = 0.0, BrightnessJitter = 0.0, Brightness = 1.0, Flicker = 0.0 }
+
+[[Layer]]
+  Token = "layer-6"
+  Category = 210
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { SizeMode = 1, SizeStart = 7.0, SizeEnd = 7.0, SizeRandom = 0.3 }

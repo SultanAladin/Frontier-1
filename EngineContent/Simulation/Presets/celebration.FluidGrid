@@ -1,0 +1,411 @@
+# Celebration — Fluid Studio scene preset (Studio). No smoke — two confetti cannons, a sparks fountain and fireflies, all pushed around by a gusting wind gizmo.
+# Converted from the legacy preset object by script; scene fingerprint 23afbf6f7153dba0 (checked by FluidValidation.mjs).
+
+[Document]
+Format = "frontier-fluid-preset"
+Revision = 1
+SpecificationHash = "c0d4526879189117"
+
+[Scene]
+Order = 16
+Id = "preset-celebration"
+Name = "Celebration"
+Family = "Studio"
+Icon = "confetti"
+Summary = "No smoke — two confetti cannons, a sparks fountain and fireflies, all pushed around by a gusting wind gizmo."
+
+[Grid]
+Resolution = [40, 48, 40]
+Size = [5, 6, 5]
+
+[Render]
+Visible = false
+
+[[Volume]]
+  Token = "gas-volume"
+  Category = 1
+
+  [[Volume.Layer]]
+    Token = "layer-1"
+    Category = 101
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Gravity = 0.25, ForceResponse = 1.0, PressureIterations = 8, TimeScale = 1.0, SceneLoop = 0.0, Advection = 1 }
+
+  [[Volume.Layer]]
+    Token = "layer-2"
+    Category = 104
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Combustion = 1.0, Expansion = 0.6 }
+
+  [[Volume.Layer]]
+    Token = "layer-3"
+    Category = 106
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Dissipation = 0.99, VelocityDissipation = 0.999 }
+
+  [[Volume.Layer]]
+    Token = "layer-4"
+    Category = 107
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Density = 1.0, Albedo = "#8e8f94", Absorption = 3.2, Anisotropy = 0.45, Ambient = "#3a414c", LightIntensity = 1.4 }
+
+  [[Volume.Layer]]
+    Token = "layer-5"
+    Category = 108
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { FireIntensity = 4.0, FireThreshold = 1.0, FireSoftness = 3.5, FireOpacity = 1.4, FireEmber = "#ff2a05", FireFlame = "#ff8a16", FireCore = "#fff3cf", FireLight = 1.0 }
+
+[[Force]]
+  Type = "DirectionalWind"
+  Name = "Gust"
+  Position = [0, 0, 0]
+  Strength = 1.2
+  Direction = [1, 0, 0.3]
+  Falloff = "Constant"
+  Frequency = 0.6
+  Secondary = 1
+
+
+[[Particle]]
+  Template = "confetti"
+  Name = "Cannon Left"
+  StartTime = 0
+  Duration = 0
+  Fade = 0.15
+  Repeat = 0
+
+  [[Particle.Layer]]
+    Token = "layer-1"
+    Category = 201
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Mode = 0, Shape = 3, Position = [-1.8, -2.8, 0], Direction = [0.45, 1, 0.1], Radius = 0.25, Fill = 0.0, Count = 4096, Rate = 10.0, Lifetime = 5.0, Linger = 0.6, Speed = 9.0, Spread = 0.3, Radial = 0.0 }
+
+  [[Particle.Layer]]
+    Token = "layer-2"
+    Category = 203
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Gravity = 5.0 }
+
+  [[Particle.Layer]]
+    Token = "layer-3"
+    Category = 204
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Drag = 1.6 }
+
+  [[Particle.Layer]]
+    Token = "layer-4"
+    Category = 205
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Noise = 1.8, NoiseScale = 1.3, NoiseSpeed = 0.5 }
+
+  [[Particle.Layer]]
+    Token = "layer-5"
+    Category = 206
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { FieldInfluence = 1.0 }
+
+  [[Particle.Layer]]
+    Token = "layer-6"
+    Category = 208
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Bounce = 0.25 }
+
+  [[Particle.Layer]]
+    Token = "layer-7"
+    Category = 209
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { ColourMode = 5, Palette = ["#ff5f7e", "#ffb454", "#fef08a", "#34c759", "#38bdf8", "#a78bfa"], RampSource = 0, Ramp = 0, MaxSpeed = 6.0, DisplacementRange = 1.0, CycleSpeed = 0.5, HueJitter = 0.08, BrightnessJitter = 0.0, Brightness = 1.0, Flicker = 0.0 }
+
+  [[Particle.Layer]]
+    Token = "layer-8"
+    Category = 210
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { SizeMode = 1, SizeStart = 4.5, SizeEnd = 4.0, SizeRandom = 0.3 }
+
+[[Particle]]
+  Template = "confetti"
+  Name = "Cannon Right"
+  StartTime = 0
+  Duration = 0
+  Fade = 0.15
+  Repeat = 0
+
+  [[Particle.Layer]]
+    Token = "layer-1"
+    Category = 201
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Mode = 0, Shape = 3, Position = [1.8, -2.8, 0], Direction = [-0.45, 1, -0.1], Radius = 0.25, Fill = 0.0, Count = 4096, Rate = 10.0, Lifetime = 5.0, Linger = 0.6, Speed = 9.0, Spread = 0.3, Radial = 0.0 }
+
+  [[Particle.Layer]]
+    Token = "layer-2"
+    Category = 203
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Gravity = 5.0 }
+
+  [[Particle.Layer]]
+    Token = "layer-3"
+    Category = 204
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Drag = 1.6 }
+
+  [[Particle.Layer]]
+    Token = "layer-4"
+    Category = 205
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Noise = 1.8, NoiseScale = 1.3, NoiseSpeed = 0.5 }
+
+  [[Particle.Layer]]
+    Token = "layer-5"
+    Category = 206
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { FieldInfluence = 1.0 }
+
+  [[Particle.Layer]]
+    Token = "layer-6"
+    Category = 208
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Bounce = 0.25 }
+
+  [[Particle.Layer]]
+    Token = "layer-7"
+    Category = 209
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { ColourMode = 5, Palette = ["#ff5f7e", "#ffb454", "#fef08a", "#34c759", "#38bdf8", "#a78bfa"], RampSource = 0, Ramp = 0, MaxSpeed = 6.0, DisplacementRange = 1.0, CycleSpeed = 0.5, HueJitter = 0.08, BrightnessJitter = 0.0, Brightness = 1.0, Flicker = 0.0 }
+
+  [[Particle.Layer]]
+    Token = "layer-8"
+    Category = 210
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { SizeMode = 1, SizeStart = 4.5, SizeEnd = 4.0, SizeRandom = 0.3 }
+
+[[Particle]]
+  Template = "sparks"
+  Name = "Spark Fountain"
+  StartTime = 0
+  Duration = 0
+  Fade = 0.15
+  Repeat = 0
+
+  [[Particle.Layer]]
+    Token = "layer-1"
+    Category = 201
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Mode = 0, Shape = 0, Position = [0, -2.9, 0], Direction = [0, 1, 0], Radius = 0.1, Fill = 0.0, Count = 4096, Rate = 18.0, Lifetime = 1.4, Linger = 0.6, Speed = 6.0, Spread = 0.35, Radial = 0.0 }
+
+  [[Particle.Layer]]
+    Token = "layer-2"
+    Category = 203
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Gravity = 6.0 }
+
+  [[Particle.Layer]]
+    Token = "layer-3"
+    Category = 204
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Drag = 0.6 }
+
+  [[Particle.Layer]]
+    Token = "layer-4"
+    Category = 205
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Noise = 0.4, NoiseScale = 1.3, NoiseSpeed = 0.5 }
+
+  [[Particle.Layer]]
+    Token = "layer-5"
+    Category = 206
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { FieldInfluence = 1.0 }
+
+  [[Particle.Layer]]
+    Token = "layer-6"
+    Category = 208
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Bounce = 0.2 }
+
+  [[Particle.Layer]]
+    Token = "layer-7"
+    Category = 209
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { ColourMode = 0, Palette = ["#fff3c4", "#ffb454", "#ff5a1f", "#b3120a"], RampSource = 0, Ramp = 0, MaxSpeed = 6.0, DisplacementRange = 1.0, CycleSpeed = 0.5, HueJitter = 0.0, BrightnessJitter = 0.3, Brightness = 1.0, Flicker = 0.0 }
+
+  [[Particle.Layer]]
+    Token = "layer-8"
+    Category = 210
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { SizeMode = 1, SizeStart = 3.5, SizeEnd = 1.0, SizeRandom = 0.3 }
+
+  [[Particle.Layer]]
+    Token = "layer-9"
+    Category = 211
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Sprite = 1, Glow = 0.0, Blend = 1, Style = 1, FocusDistance = 0.0, Aperture = 0.5 }
+
+[[Particle]]
+  Template = "fireflies"
+  Name = "Fireflies"
+  StartTime = 0
+  Duration = 0
+  Fade = 0.15
+  Repeat = 0
+
+  [[Particle.Layer]]
+    Token = "layer-1"
+    Category = 201
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Mode = 0, Shape = 1, Position = [0, 0.5, 0], Direction = [0, 1, 0], Radius = 2.0, Fill = 0.0, Count = 1024, Rate = 1.5, Lifetime = 7.0, Linger = 0.6, Speed = 0.25, Spread = 1.0, Radial = 0.0 }
+
+  [[Particle.Layer]]
+    Token = "layer-2"
+    Category = 204
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Drag = 1.2 }
+
+  [[Particle.Layer]]
+    Token = "layer-3"
+    Category = 205
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Noise = 1.3, NoiseScale = 1.3, NoiseSpeed = 0.5 }
+
+  [[Particle.Layer]]
+    Token = "layer-4"
+    Category = 206
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { FieldInfluence = 1.0 }
+
+  [[Particle.Layer]]
+    Token = "layer-5"
+    Category = 208
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Bounce = 0.0 }
+
+  [[Particle.Layer]]
+    Token = "layer-6"
+    Category = 209
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { ColourMode = 0, Palette = ["#f7ffb0", "#d9ff7a", "#5c8a00"], RampSource = 0, Ramp = 0, MaxSpeed = 6.0, DisplacementRange = 1.0, CycleSpeed = 0.5, HueJitter = 0.06, BrightnessJitter = 0.0, Brightness = 1.0, Flicker = 1.0 }
+
+  [[Particle.Layer]]
+    Token = "layer-7"
+    Category = 210
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { SizeMode = 1, SizeStart = 3.5, SizeEnd = 2.5, SizeRandom = 0.3 }
+
+  [[Particle.Layer]]
+    Token = "layer-8"
+    Category = 211
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Sprite = 1, Glow = 0.0, Blend = 1, Style = 0, FocusDistance = 0.0, Aperture = 0.5 }

@@ -1,0 +1,178 @@
+name: Frontier Windows Build
+
+on:
+  push:
+    branches:
+      - 'arena/**'
+      - 'main'
+    paths:
+      - '.github/workflows/windows-build.yml'
+      - 'CMakeLists.txt'
+      - 'Automation/**'
+      - 'Engine/**'
+      - 'EngineContent/**'
+      - 'Exhibits/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-x64:
+    name: Build portable Frontier workspace package
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - name: Check out branch source
+        uses: actions/checkout@v4
+
+      - name: Set up pinned build tools
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Set up MSVC x64 developer environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install Ninja and sccache
+        shell: pwsh
+        run: |
+          if (-not (Get-Command ninja -ErrorAction SilentlyContinue)) {
+            choco install ninja -y --no-progress
+          }
+          if (-not (Get-Command sccache -ErrorAction SilentlyContinue)) {
+            choco install sccache -y --no-progress
+          }
+          $SccacheDir = Join-Path $env:RUNNER_TEMP 'sccache'
+          New-Item -ItemType Directory -Force $SccacheDir | Out-Null
+          "SCCACHE_DIR=$SccacheDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "SCCACHE_CACHE_SIZE=4G" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          ninja --version
+          sccache --version
+
+      - name: Cache pinned native dependencies, fonts, and shader toolchain
+        id: deps-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ExternalPackages
+            EngineContent/FontsArchives
+          key: win-x64-deps-v2-${{ hashFiles('Automation/**') }}
+
+      - name: Cache sccache compiled object files
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/sccache
+          key: win-x64-sccache-v1-${{ hashFiles('CMakeLists.txt', 'Engine/**/*.h', 'Engine/**/*.cpp') }}
+          restore-keys: |
+            win-x64-sccache-v1-
+
+      - name: Install pinned font-generation dependency
+        if: steps.deps-cache.outputs.cache-hit != 'true'
+        run: python -m pip install --requirement Automation/FontRequirements.txt
+
+      - name: Recover pinned native dependencies
+        if: steps.deps-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $Output = & python Automation/PrepareDependencies.py 2>&1
+          $Result = $LASTEXITCODE
+          $Output | ForEach-Object { Write-Output "$_" }
+          if ($Result -ne 0) {
+            $Details = ($Output | Select-Object -Last 12 | ForEach-Object { "$_" }) -join ' '
+            Write-Output "::error title=Dependency preparation failed::$Details"
+            exit $Result
+          }
+
+      - name: Prepare bundled fonts
+        if: steps.deps-cache.outputs.cache-hit != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python Automation/PrepareFonts.py
+
+      - name: Install pinned Windows Slang compiler
+        if: steps.deps-cache.outputs.cache-hit != 'true'
+        run: python Automation/PrepareShaderToolchain.py
+
+      - name: Configure Windows x64 Ninja build with sccache
+        shell: pwsh
+        run: |
+          cmake -S . -B Build/Windows -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_C_COMPILER=cl `
+            -DCMAKE_CXX_COMPILER=cl `
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache `
+            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache `
+            -DCMAKE_POLICY_DEFAULT_CMP0141=NEW `
+            -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded `
+            -DFRONTIER_PROFILE=Editor `
+            -DBUILD_TESTING=OFF `
+            '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$<$<CONFIG:Debug>:Debug>'
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+      - name: Build Windows x64 Frontier and SolidArc applications
+        shell: pwsh
+        run: |
+          $Output = & cmake --build Build/Windows --parallel 4 --target `
+            Frontier FrontierSketcher `
+            FrontierEngineRuntimeDll FrontierWorkspaceUiDll 2>&1
+          $Result = $LASTEXITCODE
+          $Output | ForEach-Object { Write-Output "$_" }
+          sccache --show-stats
+          if ($Result -ne 0) {
+            $Diagnostics = $Output | Select-String -Pattern '(?i)(:\s*(?:fatal\s+)?error\b|LNK[0-9]+|FAILED|Build FAILED|MSB[0-9]+)' | Select-Object -Last 12
+            if (-not $Diagnostics) { $Diagnostics = $Output | Select-Object -Last 10 }
+            $Details = ($Diagnostics | ForEach-Object { "$_" }) -join ' '
+            Write-Output "::error title=Windows build diagnostics::$Details"
+            exit $Result
+          }
+
+      - name: Assemble portable folder
+        shell: pwsh
+        run: |
+          $Payload = Join-Path $env:RUNNER_TEMP 'Frontier-Workspaces-Windows-x64'
+          New-Item -ItemType Directory -Force "$Payload/CompiledShaders", "$Payload/EngineContent", "$Payload/Binaries/Win64" | Out-Null
+          Copy-Item 'Build/Windows/Frontier.exe' "$Payload/Frontier.exe"
+          Copy-Item 'Build/Windows/FrontierSketcher.exe' "$Payload/SolidArc.exe"
+          Copy-Item 'Build/Windows/Binaries/Win64/*' "$Payload/Binaries/Win64/" -Recurse -Force
+          Copy-Item 'Build/Windows/CompiledShaders/*' "$Payload/CompiledShaders/" -Recurse -Force
+          Copy-Item 'EngineContent/*' "$Payload/EngineContent/" -Recurse -Force
+          $RequiredPayload = @(
+            "$Payload/Frontier.exe",
+            "$Payload/SolidArc.exe",
+            "$Payload/CompiledShaders/WorldViewportRadiometricCompute.comp.spv",
+            "$Payload/EngineContent/FontsArchives/FontRepository.FontSpace",
+            "$Payload/EngineContent/FontsArchives/Inter/Inter-Regular.otf"
+          )
+          foreach ($RequiredPath in $RequiredPayload) {
+            if (-not (Test-Path $RequiredPath)) {
+              Write-Error "Portable Windows package is missing required file: $RequiredPath"
+              exit 1
+            }
+          }
+          @'
+          Frontier & SolidArc for Windows x64
+
+          Executables included:
+            - Frontier.exe : Project Browser, 3D World Editor & Integrated Workspaces
+            - SolidArc.exe : Standalone Parametric B-Rep CAD & Sketching Studio
+
+          Keep CompiledShaders, EngineContent, and Binaries/Win64 beside the executables.
+          A Windows Vulkan 1.2+ graphics driver is required.
+          '@ | Set-Content "$Payload/README.txt" -Encoding utf8
+          Compress-Archive -Path "$Payload/*" -DestinationPath 'Build/Frontier-Workspaces-Windows-x64.zip' -CompressionLevel Optimal
+
+      - name: Upload Windows x64 package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Frontier-Workspaces-Windows-x64
+          path: Build/Frontier-Workspaces-Windows-x64.zip
+          if-no-files-found: error
+          retention-days: 14

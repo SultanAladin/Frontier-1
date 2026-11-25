@@ -1,0 +1,32 @@
+# Frontier Engine — .SoftBody Deformable Simulation Preset
+[Container]
+FormatSuffix = ".SoftBody"
+SchemaVersion = 1
+DocumentTitle = "Woven Cloth"
+PresetId = "WovenCloth"
+PresetKind = "WovenCloth"
+SolverCategory = "XpbdCloth"
+Description = "Tearable deformable preset (cloth)"
+
+[Solver]
+Substeps = 6
+GravityY = -9.19999981
+Damping = 0.991999984
+UnderwaterEnabled = false
+
+[Material]
+StretchStiffness = 1800.0
+BendStiffness = 0.400000006
+FemYoungMpa = 2.4000001
+FemPoissonNu = 0.439999998
+TearRatio = 2.6500001
+
+[Environment]
+WindStrength = 3.5999999
+Turbulence = 1.60000002
+ColliderEnabled = true
+
+[Tire]
+PressurePsi = 30.0
+AxleLoad = 1.35000002
+SpinRadPerSec = 3.0

@@ -1,0 +1,32 @@
+# Frontier Engine — .SoftBody Deformable Simulation Preset
+[Container]
+FormatSuffix = ".SoftBody"
+SchemaVersion = 1
+DocumentTitle = "Cables & Chains"
+PresetId = "CablesChains"
+PresetKind = "CablesChains"
+SolverCategory = "XpbdStrand"
+Description = "Heavy Rigid deformable preset (cables)"
+
+[Solver]
+Substeps = 6
+GravityY = -11.0
+Damping = 0.992999971
+UnderwaterEnabled = false
+
+[Material]
+StretchStiffness = 2800.0
+BendStiffness = 0.300000012
+FemYoungMpa = 2.4000001
+FemPoissonNu = 0.439999998
+TearRatio = 0.0
+
+[Environment]
+WindStrength = 1.39999998
+Turbulence = 0.800000012
+ColliderEnabled = true
+
+[Tire]
+PressurePsi = 30.0
+AxleLoad = 1.35000002
+SpinRadPerSec = 3.0

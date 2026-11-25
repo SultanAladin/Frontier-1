@@ -1,0 +1,96 @@
+# Vehicle Airflow — particle template (Trails). Ported from Particle Studio (Airflow): wind-tunnel streamlines sweeping over the SportsCar roof, shifting crimson where flow compresses and curling into the wake.
+
+[Document]
+Format = "frontier-particle-template"
+Revision = 2
+SpecificationHash = "52ce39858ba4e96f"
+
+[Template]
+Order = 57
+Id = "vehicle-airflow"
+Name = "Vehicle Airflow"
+Category = "Trails"
+Icon = "streamlines"
+Tint = "#f97316"
+Summary = "Ported from Particle Studio (Airflow): wind-tunnel streamlines flowing across the SportsCar with pressure-mapped blue-to-crimson wake ribbons."
+
+[[Layer]]
+  Token = "layer-1"
+  Category = 201
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Mode = 0, Shape = 11, Position = [0.0, -0.15, 0.0], Direction = [-1, 0.12, 0], Radius = 1.85, Fill = 0.14, Count = 2048, Rate = 260.0, Lifetime = 1.7, Linger = 0.25, Speed = 3.8, Spread = 0.06, Radial = 0.08, SpawnObject = 7, SpawnSampleMode = 0, ObjectYaw = 18.0, BackingSurface = 3 }
+
+[[Layer]]
+  Token = "layer-2"
+  Category = 204
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Drag = 0.18 }
+
+[[Layer]]
+  Token = "layer-3"
+  Category = 205
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Noise = 0.42, NoiseScale = 1.4, NoiseSpeed = 0.9 }
+
+[[Layer]]
+  Token = "layer-4"
+  Category = 206
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { FieldInfluence = 1.35 }
+
+[[Layer]]
+  Token = "layer-5"
+  Category = 207
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { GasInfluence = 1.1 }
+
+[[Layer]]
+  Token = "layer-6"
+  Category = 209
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { ColourMode = 1, Palette = ["#1d4ed8", "#22d3ee", "#fbbf24", "#ef4444"], RampSource = 0, MaxSpeed = 6.5, DisplacementRange = 1.0, CycleSpeed = 0.5, HueJitter = 0.02, BrightnessJitter = 0.12, Brightness = 1.45, Flicker = 0.03 }
+
+[[Layer]]
+  Token = "layer-7"
+  Category = 210
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { SizeMode = 0, SizeStart = 0.014, SizeEnd = 0.008, SizeRandom = 0.18 }
+
+[[Layer]]
+  Token = "layer-8"
+  Category = 211
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Sprite = 0, Glow = 0.42, Blend = 1, Style = 0, FocusDistance = 0.0, Aperture = 0.5, CarrierMode = 0 }
+
+[[Layer]]
+  Token = "layer-9"
+  Category = 212
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Trail = 2, TrailLength = 34, TrailInterval = 0.025, TrailWidth = 0.012, TrailTaper = 0.55, TrailFade = 1.1, TrailSubdivisions = 3, TrailRatio = 0.55, TrailColour = 0 }

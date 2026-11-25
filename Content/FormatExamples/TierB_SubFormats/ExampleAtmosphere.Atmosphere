@@ -1,0 +1,25 @@
+# Frontier Sectioned Document Container (Canonical PascalCase TOML Header)
+['.DocumentHeader']
+AuthoringWorkspace = 'Frontier.AtmosphereWorkspace'
+BinaryAlignmentBytes = 64
+ContainerSuffix = '.Atmosphere'
+DocumentTitle = 'ClearSkyDaylight'
+SchemaVersion = 1
+StableIdentifier = '0193b5c0-7a1e-7000-8000-00000000040c'
+
+[Atmosphere]
+AtmosphereTitle = 'ClearSkyDaylight'
+AtmosphericTurbidity = 2.0999999046325684
+CelestialStarfieldEnabled = false
+CloudCoverageFraction = 0.079999998211860657
+GroundAlbedoReflectance = 0.2199999988079071
+MieAnisotropyG = 0.77999997138977051
+MieScaleHeightMeters = 1200.0
+OzoneAbsorptionWeight = 1.0
+RayleighScaleHeightMeters = 8000.0
+SolarAngularDiameterDeg = 0.53299999237060547
+SolarAzimuthDegrees = 135.0
+SolarDiskEnabled = true
+SolarElevationDegrees = 42.0
+SolarIlluminanceLux = 105000.0
+ZenithTintLinearRgb = [ 0.15999999642372131, 0.36000001430511475, 0.81999999284744263 ]

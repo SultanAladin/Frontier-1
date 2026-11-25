@@ -1,0 +1,97 @@
+# Ground Dust — particle template (Environment). Floor-hugging motes picked up by whatever the gas is doing.
+# Converted from the legacy template object by script; node fingerprint a59b59b4ea4748d5 (checked by FluidValidation.mjs).
+
+[Document]
+Format = "frontier-particle-template"
+Revision = 1
+SpecificationHash = "c0d4526879189117"
+
+[Template]
+Order = 25
+Id = "ground-dust"
+Name = "Ground Dust"
+Category = "Environment"
+Icon = "dust"
+Tint = "#b89c74"
+Summary = "Floor-hugging motes picked up by whatever the gas is doing."
+
+[[Layer]]
+  Token = "layer-1"
+  Category = 201
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Mode = 0, Shape = 3, Position = [0, 0, 0], Direction = [0, 1, 0], Radius = 2.4, Fill = 0.0, Count = 4096, Rate = 6.0, Lifetime = 6.0, Linger = 0.6, Speed = 0.1, Spread = 1.0, Radial = 0.0 }
+
+[[Layer]]
+  Token = "layer-2"
+  Category = 203
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Gravity = 0.3 }
+
+[[Layer]]
+  Token = "layer-3"
+  Category = 204
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Drag = 1.0 }
+
+[[Layer]]
+  Token = "layer-4"
+  Category = 205
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Noise = 0.3, NoiseScale = 1.3, NoiseSpeed = 0.5 }
+
+[[Layer]]
+  Token = "layer-5"
+  Category = 206
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { FieldInfluence = 1.0 }
+
+[[Layer]]
+  Token = "layer-6"
+  Category = 207
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { GasInfluence = 3.0 }
+
+[[Layer]]
+  Token = "layer-7"
+  Category = 208
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Bounce = 0.0 }
+
+[[Layer]]
+  Token = "layer-8"
+  Category = 209
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { ColourMode = 1, Palette = ["#8a7a5c", "#b89c74", "#d6c7ad", "#fff3c4"], RampSource = 0, Ramp = 0, MaxSpeed = 6.0, DisplacementRange = 1.0, CycleSpeed = 0.5, HueJitter = 0.0, BrightnessJitter = 0.3, Brightness = 1.0, Flicker = 0.0 }
+
+[[Layer]]
+  Token = "layer-9"
+  Category = 210
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { SizeMode = 1, SizeStart = 2.0, SizeEnd = 1.5, SizeRandom = 0.3 }

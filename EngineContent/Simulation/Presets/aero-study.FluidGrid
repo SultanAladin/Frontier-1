@@ -1,0 +1,82 @@
+# Aero Study — scene preset (VFX). Wind-tunnel telemetry adapted from Particle Studio: pressure-mapped aerodynamic streamlines sweep over a ghost-wireframe Digital Twin SportsCar driven by laminar wind and trailing wake turbulence.
+
+[Document]
+Format = "frontier-fluid-preset"
+Revision = 2
+SpecificationHash = "52ce39858ba4e96f"
+
+[Scene]
+Order = 48
+Id = "preset-aero-study"
+Name = "Aero Study"
+Family = "VFX"
+Icon = "streamlines"
+Boundary = "OpenAll"
+Summary = "Wind-tunnel aero study: pressure-coloured streamlines flow over the SportsCar digital twin with a turbulent trailing wake."
+
+[Grid]
+Resolution = [56, 40, 48]
+Size = [8.0, 5.0, 6.0]
+
+[Render]
+Visible = false
+Exposure = 1.25
+Steps = 72
+Filter = "Smooth"
+
+[[Volume]]
+  Token = "gas-volume"
+  Category = 1
+
+  [[Volume.Layer]]
+    Token = "layer-1"
+    Category = 101
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Gravity = 0.0, ForceResponse = 1.0, PressureIterations = 24, TimeScale = 1.0, SceneLoop = 0.0, Advection = 1 }
+
+[[Force]]
+  Type = "FlowStream"
+  Name = "Wind Tunnel Flow"
+  Position = [0.4, 0.0, 0.0]
+  Strength = 3.2
+  Radius = 4.8
+  Falloff = "Constant"
+  Direction = [-1.0, 0.08, 0.0]
+  Frequency = 0.2
+  Secondary = 0.0
+
+[[Force]]
+  Type = "CurlNoiseTurbulence"
+  Name = "Diffuser Wake"
+  Position = [-1.9, -0.05, 0.0]
+  Strength = 1.35
+  Radius = 2.4
+  Falloff = "Gaussian"
+  Direction = [0.0, 1.0, 0.0]
+  Frequency = 1.1
+  Secondary = 0.2
+
+[[Particle]]
+  Template = "digital-twin-car"
+  Name = "Digital Twin Chassis"
+  StartTime = 0.0
+  Duration = 0.0
+  Fade = 0.15
+  Repeat = 0.0
+  Position = [0.0, -0.15, 0.0]
+  Radius = 1.9
+  Count = 4096
+
+[[Particle]]
+  Template = "vehicle-airflow"
+  Name = "Aero Streamlines"
+  StartTime = 0.0
+  Duration = 0.0
+  Fade = 0.15
+  Repeat = 0.0
+  Position = [0.15, -0.1, 0.0]
+  Radius = 1.92
+  Count = 2048

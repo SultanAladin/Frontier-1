@@ -1,0 +1,87 @@
+# Digital Twin Car — particle template (Derez & Dissolve). Ported from Particle Studio (Digital twin): swirling dust condenses onto the SportsCar crease ridges as a cyan scan sweeps the chassis.
+
+[Document]
+Format = "frontier-particle-template"
+Revision = 2
+SpecificationHash = "52ce39858ba4e96f"
+
+[Template]
+Order = 56
+Id = "digital-twin-car"
+Name = "Digital Twin Car"
+Category = "Transitions"
+Icon = "derez"
+Tint = "#22d3ee"
+Summary = "Ported from Particle Studio (Digital twin): swirling dust condenses onto the SportsCar silhouette while a scan edge sweeps its ghost wireframe."
+
+[[Layer]]
+  Token = "layer-1"
+  Category = 201
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Mode = 1, Shape = 11, Position = [0.0, -0.15, 0.0], Direction = [0, 1, 0], Radius = 1.85, Fill = 0.05, Count = 4096, Rate = 8.0, Lifetime = 8.0, Linger = 0.0, Speed = 0.0, Spread = 0.0, Radial = 0.0, SpawnObject = 7, SpawnSampleMode = 2, ObjectYaw = 18.0, BackingSurface = 3 }
+
+[[Layer]]
+  Token = "layer-2"
+  Category = 202
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Spring = 7.5, Damping = 3.2, Dissolve = 0.0 }
+
+[[Layer]]
+  Token = "layer-3"
+  Category = 205
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Noise = 0.24, NoiseScale = 1.8, NoiseSpeed = 0.7 }
+
+[[Layer]]
+  Token = "layer-4"
+  Category = 206
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { FieldInfluence = 0.9 }
+
+[[Layer]]
+  Token = "layer-5"
+  Category = 213
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { DerezMode = 2, DerezMix = 1.0, DerezProgress = 0.35, DerezAutoSpeed = 0.22, DerezEdgeWidth = 0.16, DerezEdgeGlow = 2.6, DerezEdgeColour = "#22d3ee", DerezShatter = 0.55 }
+
+[[Layer]]
+  Token = "layer-6"
+  Category = 209
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { ColourMode = 2, Palette = ["#e0f2fe", "#38bdf8", "#0284c7", "#0f172a"], RampSource = 0, MaxSpeed = 6.0, DisplacementRange = 0.85, CycleSpeed = 0.5, HueJitter = 0.03, BrightnessJitter = 0.22, Brightness = 1.4, Flicker = 0.1 }
+
+[[Layer]]
+  Token = "layer-7"
+  Category = 210
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { SizeMode = 0, SizeStart = 0.022, SizeEnd = 0.01, SizeRandom = 0.45 }
+
+[[Layer]]
+  Token = "layer-8"
+  Category = 211
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Sprite = 0, Glow = 0.45, Blend = 1, Style = 0, FocusDistance = 0.0, Aperture = 0.5, CarrierMode = 0 }

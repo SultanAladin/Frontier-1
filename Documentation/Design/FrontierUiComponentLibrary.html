@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Frontier UI — Component Library &amp; Render Settings</title>
+<style>
+  :root {
+    --bg-canvas: #0b0c0e;
+    --bg-surface: #141619;
+    --bg-card: #191b1f;
+    --bg-card-hover: #1e2126;
+    --bg-pill: #23262b;
+    --bg-pill-active: #2c3037;
+    --border-hairline: rgba(255, 255, 255, 0.065);
+    --border-strong: rgba(255, 255, 255, 0.14);
+    --text-primary: #f1f3f5;
+    --text-secondary: #8e959e;
+    --text-muted: #555b63;
+    --accent-green: #4ade80;
+    --accent-red: #ef4444;
+    --accent-amber: #f59e0b;
+    --radius-card: 22px;
+    --radius-inner: 16px;
+    --radius-pill: 999px;
+    --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-mono: "JetBrains Mono", "SFMono-Regular", Menlo, monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: radial-gradient(circle at 85% 0%, #171a20 0%, var(--bg-canvas) 55%);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    padding: 28px 36px 64px;
+    min-height: 100vh;
+  }
+
+  .page-shell {
+    max-width: 1400px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 40px;
+  }
+
+  /* Top Navigation Bar */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 14px;
+    background: rgba(20, 22, 25, 0.85);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-pill);
+    backdrop-filter: blur(16px);
+  }
+
+  .brand-group { display: flex; align-items: center; gap: 18px; }
+
+  .nav-pills { display: flex; align-items: center; gap: 4px; }
+
+  .nav-pill {
+    padding: 7px 16px;
+    border-radius: var(--radius-pill);
+    color: var(--text-secondary);
+    font-size: 13px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    background: transparent;
+    transition: all 0.16s ease;
+  }
+  .nav-pill:hover { color: var(--text-primary); }
+  .nav-pill.active {
+    background: var(--bg-pill-active);
+    color: var(--text-primary);
+    border-color: var(--border-strong);
+  }
+
+  .topbar-meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    padding-right: 6px;
+  }
+
+  .status-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--accent-green);
+    box-shadow: 0 0 8px rgba(74, 222, 128, 0.55);
+  }
+
+  /* Section Header */
+  .section-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border-hairline);
+  }
+
+  .section-title { font-size: 24px; font-weight: 300; letter-spacing: -0.02em; }
+  .section-sub { font-size: 12px; color: var(--text-secondary); margin-top: 3px; }
+  .section-badge {
+    padding: 5px 12px;
+    border-radius: var(--radius-pill);
+    background: var(--bg-card);
+    border: 1px solid var(--border-hairline);
+    color: var(--text-secondary);
+    font-size: 11px;
+  }
+
+  /* Minimal 20-Widget Grid */
+  .widget-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 14px;
+  }
+  @media (max-width: 1180px) { .widget-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 680px) { .widget-grid { grid-template-columns: 1fr; } }
+
+  .widget-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-card);
+    padding: 18px 20px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 14px;
+    min-height: 142px;
+    transition: border-color 0.18s ease, background 0.18s ease;
+  }
+  .widget-card:hover { border-color: var(--border-strong); background: var(--bg-card-hover); }
+  .widget-card.span-2 { grid-column: span 2; }
+
+  .widget-head { display: flex; align-items: center; justify-content: space-between; }
+  .widget-label { font-size: 12px; color: var(--text-secondary); }
+  .widget-index { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); }
+
+  /* Primitives */
+  .pill-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 14px; border-radius: var(--radius-pill);
+    background: var(--bg-pill); border: 1px solid var(--border-hairline);
+    color: var(--text-secondary); font-size: 12px; cursor: pointer;
+    transition: all 0.15s ease; user-select: none;
+  }
+  .pill-chip.active { background: var(--bg-pill-active); color: var(--text-primary); border-color: var(--border-strong); }
+
+  .kpi-row { display: flex; align-items: flex-end; justify-content: space-between; }
+  .kpi-num {
+    font-size: 36px; font-weight: 300; letter-spacing: -0.03em;
+    font-variant-numeric: tabular-nums; line-height: 1;
+  }
+  .kpi-num .muted { color: var(--text-muted); }
+  .kpi-unit { font-size: 13px; color: var(--text-secondary); margin-left: 3px; }
+
+  .badge-circle {
+    width: 20px; height: 20px; border-radius: 50%;
+    display: grid; place-items: center; font-size: 10px; font-weight: 600;
+  }
+  .badge-green { background: rgba(74, 222, 128, 0.15); color: var(--accent-green); border: 1px solid rgba(74, 222, 128, 0.35); }
+  .badge-red { background: rgba(239, 68, 68, 0.15); color: var(--accent-red); border: 1px solid rgba(239, 68, 68, 0.35); }
+
+  .segmented {
+    display: grid; grid-template-columns: repeat(5, 1fr);
+    background: var(--bg-surface); border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-pill); padding: 3px; gap: 2px;
+  }
+  .seg-btn {
+    border: none; background: transparent; color: var(--text-secondary);
+    font-size: 11px; padding: 6px 4px; border-radius: var(--radius-pill);
+    cursor: pointer; transition: all 0.15s ease;
+  }
+  .seg-btn.active { background: var(--bg-pill-active); color: var(--text-primary); }
+
+  .toggle-row { display: flex; align-items: center; justify-content: space-between; font-size: 12px; }
+  .switch {
+    width: 40px; height: 22px; border-radius: var(--radius-pill);
+    background: var(--bg-surface); border: 1px solid var(--border-strong);
+    position: relative; cursor: pointer; transition: background 0.2s ease;
+  }
+  .switch::after {
+    content: ""; position: absolute; top: 3px; left: 3px;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--text-secondary); transition: transform 0.2s ease, background 0.2s ease;
+  }
+  .switch.on { background: rgba(74, 222, 128, 0.18); border-color: rgba(74, 222, 128, 0.45); }
+  .switch.on::after { transform: translateX(18px); background: var(--accent-green); }
+
+  input[type="range"] {
+    -webkit-appearance: none; width: 100%; height: 4px;
+    background: var(--bg-surface); border-radius: var(--radius-pill);
+    outline: none; border: 1px solid var(--border-hairline);
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%;
+    background: #ffffff; cursor: pointer;
+  }
+
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .btn {
+    padding: 7px 15px; border-radius: var(--radius-pill); font-size: 12px;
+    cursor: pointer; border: 1px solid var(--border-hairline); transition: all 0.15s ease;
+  }
+  .btn-primary { background: #ffffff; color: #0b0c0e; border-color: #ffffff; font-weight: 500; }
+  .btn-secondary { background: var(--bg-pill); color: var(--text-primary); }
+  .btn-ghost { background: transparent; color: var(--text-secondary); }
+  .btn:active { transform: scale(0.97); }
+
+  .search-box {
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--bg-surface); border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-pill); padding: 7px 12px;
+  }
+  .search-box input {
+    background: transparent; border: none; outline: none;
+    color: var(--text-primary); font-size: 12px; width: 100%;
+  }
+  .kbd {
+    font-family: var(--font-mono); font-size: 10px; padding: 2px 6px;
+    border-radius: 6px; background: var(--bg-pill); color: var(--text-secondary);
+  }
+
+  .progress-track {
+    width: 100%; height: 5px; border-radius: var(--radius-pill);
+    background: var(--bg-surface); overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%; border-radius: var(--radius-pill);
+    background: linear-gradient(90deg, #6b7280, #ffffff);
+    transition: width 0.25s ease;
+  }
+
+  .stepper {
+    display: inline-flex; align-items: center; justify-content: space-between;
+    background: var(--bg-surface); border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-pill); padding: 3px; width: 100%;
+  }
+  .stepper button {
+    width: 26px; height: 26px; border-radius: 50%; border: none;
+    background: var(--bg-pill); color: var(--text-primary); cursor: pointer;
+  }
+  .stepper span { font-family: var(--font-mono); font-size: 12px; }
+
+  .dropdown-trigger {
+    width: 100%; display: flex; align-items: center; justify-content: space-between;
+    padding: 9px 14px; border-radius: var(--radius-pill);
+    background: var(--bg-pill); border: 1px solid var(--border-strong);
+    color: var(--text-primary); font-size: 12px; cursor: pointer;
+  }
+
+  .dropdown-menu {
+    display: flex; flex-direction: column; gap: 3px; padding: 6px;
+    background: #121417; border: 1px solid var(--border-strong); border-radius: 16px;
+  }
+  .dropdown-item {
+    padding: 7px 12px; border-radius: 10px; font-size: 12px;
+    color: var(--text-secondary); cursor: pointer;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .dropdown-item:hover { background: var(--bg-pill); color: var(--text-primary); }
+  .dropdown-item.selected { background: var(--bg-pill-active); color: var(--text-primary); }
+
+  /* Interactive Chart */
+  .chart-wrap { position: relative; width: 100%; height: 110px; cursor: crosshair; }
+  .chart-tooltip {
+    position: absolute; top: 4px; pointer-events: none;
+    background: #0b0c0e; border: 1px solid var(--border-strong);
+    border-radius: 8px; padding: 4px 8px; font-size: 11px;
+    font-family: var(--font-mono); color: var(--text-primary);
+    opacity: 0; transition: opacity 0.12s ease; white-space: nowrap;
+  }
+
+  /* Minimal Render Settings Card */
+  .render-showcase {
+    display: grid;
+    grid-template-columns: 380px 1fr;
+    gap: 20px;
+    align-items: start;
+  }
+  @media (max-width: 980px) { .render-showcase { grid-template-columns: 1fr; } }
+
+  .render-card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-strong);
+    border-radius: 24px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .sub-panel {
+    background: var(--bg-card);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-inner);
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .kv-row {
+    display: flex; justify-content: space-between;
+    padding: 6px 0; border-bottom: 1px solid var(--border-hairline); font-size: 12px;
+  }
+  .kv-row:last-child { border-bottom: none; }
+</style>
+</head>
+<body>
+<div class="page-shell">
+
+  <!-- Top Navigation -->
+  <header class="topbar">
+    <div class="brand-group">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+        <path d="M4 14L10 8M4 20L16 8M10 20L20 10M16 20L20 16" stroke="#F1F3F5" stroke-width="2.2" stroke-linecap="round"/>
+      </svg>
+      <nav class="nav-pills" id="top-nav">
+        <button class="nav-pill active" onclick="setActiveNav(this)">Components</button>
+        <button class="nav-pill" onclick="setActiveNav(this)">Render Settings</button>
+        <button class="nav-pill" onclick="setActiveNav(this)">Tokens</button>
+        <button class="nav-pill" onclick="setActiveNav(this)">Telemetry</button>
+      </nav>
+    </div>
+    <div class="topbar-meta">
+      <span class="status-dot"></span>
+      <span>Frontier UI · Interactive</span>
+    </div>
+  </header>
+
+  <!-- Section 1: 20 Interactive Widgets -->
+  <section>
+    <div class="section-header">
+      <div>
+        <h1 class="section-title">28 Basic Widgets</h1>
+        <p class="section-sub">Minimal obsidian surfaces, 1px hairline borders, and interactive controls.</p>
+      </div>
+      <span class="section-badge">01 — 28</span>
+    </div>
+
+    <div class="widget-grid" style="margin-top: 18px;">
+
+      <!-- 01 -->
+      <div class="widget-card">
+        <div class="widget-head"><span class="widget-label">Nav Pill Group</span><span class="widget-index">01</span></div>
+        <div class="nav-pills" style="background: var(--bg-surface); padding: 3px; border-radius: var(--radius-pill); border: 1px solid var(--border-hairline);">
+          <button class="nav-pill active" style="padding: 5px 11px; font-size: 11px;" onclick="setPillGroup(this)">Live</button>
+          <button class="nav-pill" style="padding: 5px 11px; font-size: 11px;" onclick="setPillGroup(this)">Scene</button>
+          <button class="nav-pill" style="padding: 5px 11px; font-size: 11px;" onclick="setPillGroup(this)">Bake</button>
+        </div>
+      </div>
+
+      <!-- 02 -->
+      <div class="widget-card">
+        <div class="widget-head"><span class="widget-label">Filter Chips</span><span class="widget-index">02</span></div>
+        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+          <span class="pill-chip active" onclick="this.classList.toggle('active')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2"/></svg>24 Lights</span>
+          <span class="pill-chip" onclick="this.classList.toggle('active')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>100 Meshes</span>
+          <span class="pill-chip" onclick="this.classList.toggle('active')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>12 Cameras</span>
+        </div>
+      </div>
+
+      <!-- 03 -->
+      <div class="widget-card" style="cursor: pointer;" onclick="bumpKpi('kpi-online', 1)">
+        <div class="widget-head"><span class="badge-circle badge-green">✓</span><span class="widget-index">03</span></div>
+        <div class="kpi-row">
+          <span class="widget-label">Online</span>
+          <span class="kpi-num" id="kpi-online">12</span>
+        </div>
+      </div>
+
+      <!-- 04 -->
+      <div class="widget-card" style="cursor: pointer;" onclick="bumpKpi('kpi-offline', 1)">
+        <div class="widget-head"><span class="badge-circle badge-red">!</span><span class="widget-index">04</span></div>
+        <div class="kpi-row">
+          <span class="widget-label">Offline</span>
+          <span class="kpi-num" id="kpi-offline">4</span>
+        </div>
+      </div>
+
+      <!-- 05: Interactive Operational Efficiency Graph -->
+      <div class="widget-card span-2">
+        <div class="widget-head">
+          <span class="widget-label">Operational Efficiency</span>
+          <span class="widget-index">05 · Hover to scrub</span>
+        </div>
+        <div style="display: flex; align-items: baseline; justify-content: space-between;">
+          <div class="kpi-num" id="eff-readout">78<span class="muted">.3</span><span class="kpi-unit">%</span></div>
+          <span style="font-size: 11px; color: var(--text-secondary);">Target: &gt;80%</span>
+        </div>
+        <div class="chart-wrap" id="eff-chart-wrap">
+          <svg id="eff-svg" viewBox="0 0 420 110" width="100%" height="110" preserveAspectRatio="none"></svg>
+          <div class="chart-tooltip" id="eff-tooltip"></div>
+        </div>
+      </div>
+
+      <!-- 06 -->
+      <div class="widget-card">
+        <div class="widget-head"><span class="widget-label">Pill Dropdown</span><span class="widget-index">06</span></div>
+        <button class="dropdown-trigger" onclick="cycleLabel(this, ['GTX SDF GI', 'BVH4 Path', 'OpenPBR'])">
+          <span style="display: inline-flex; align-items: center; gap: 8px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/></svg><span>GTX SDF GI</span></span><span>⌄</span>
+        </button>
+      </div>
+
+      <!-- 07 -->
+      <div class="widget-card">
+        <div class="widget-head"><span class="widget-label">Quality Tier</span><span class="widget-index">07</span></div>
+        <div class="segmented">
+          <button class="seg-btn" onclick="setSeg(this)">Low</button>
+          <button class="seg-btn" onclick="setSeg(this)">Med</button>
+          <button class="seg-btn active" onclick="setSeg(this)">Std</button>
+          <button class="seg-btn" onclick="setSeg(this)">High</button>
+          <button class="seg-btn" onclick="setSeg(this)">Ultra</button>
+        </div>
+      </div>
+
+      <!-- 08 -->
+      <div class="widget-card">
+        <div class="widget-head"><span class="widget-label">Toggle Switch</span><span class="widget-index">08</span></div>
+        <div class="toggle-row">
+          <span style="display: inline-flex; align-items: center; gap: 8px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>Raytracing</span>
+          <div class="switch on" onclick="this.classList.toggle('on')"></div>
+        </div>
+      </div>
+
+      <!-- 09 -->
+      <div class="widget-card">
+        <div class="widget-head"><span class="widget-label">Render Scale</span><span class="widget-index">09</span></div>
+        <div>
+          <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 6px;">
+            <span style="color: var(--text-secondary);">Scale</span>
+            <span id="w9-val" style="font-family: var(--font-mono);">100%</span>
+          </div>
+          <input type="range" min="50" max="150" value="100" oninput="document.getElementById('w9-val').textContent=this.value+'%'" />
+        </div>
+      </div>
+
+      <!-- 10 -->
+      <div class="widget-card">
+        <div class="widget-head"><span class="widget-label">Action Buttons</span><span class="widget-index">10</span></div>
+        <div class="btn-row">
+          <button class="btn btn-primary" onclick="this.textContent='Queued'">Render</button>
+          <button class="btn btn-secondary" onclick="this.textContent='Baking'">Bake</button>
+          <button class="btn btn-ghost" onclick="this.parentElement.children[0].textContent='Render';this.parentElement.children[1].textContent='Bake'">Reset</button>
+        </div>
+      </div>
+
+      <!-- 11 -->
+      <div class="widget-card">
+        <div class="widget-head"><span class="widget-label">Command Search</span><span class="widget-index">11</span></div>
+        <div class="search-box">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8e959e" stroke-width="1.8" style="margin-right: 8px; flex-shrink: 0;"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+          <input type="text" placeholder="Search pass..." />
+          <span class="kbd">⌘K</span>
+        </div>
+      </div>
+
+      <!-- 12 -->
+      <div class="widget-card">
+        <div class="widget-head"><span class="widget-label">Sub-Tabs</span><span class="widget-index">12</span></div>
+        <div style="display: flex; gap: 14px; border-bottom: 1px solid var(--border-hairline); padding-bottom: 7px; font-size: 12px;" id="subtabs">
+          <span style="color: var(--text-primary); border-bottom: 1.5px solid #fff; padding-bottom: 7px; margin-bottom: -8px; cursor: pointer;" onclick="setSubTab(this)">Direct</span>
+          <span style="color: var(--text-secondary); cursor: pointer;" onclick="setSubTab(this)">GI</span>
+          <span style="color: var(--text-secondary); cursor: pointer;" onclick="setSubTab(this)">Post</span>
+        </div>
+      </div>
+
+      <!-- 13 -->
+      <div class="widget-card" style="cursor: pointer;" onclick="cycleBudget()">
+        <div class="widget-head"><span class="widget-label">Clipmap Budget</span><span class="widget-index">13</span></div>
+        <div>
+          <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 7px;">
+            <span style="color: var(--text-secondary);">3D Voxel SDF</span>
+            <span id="budget-txt" style="font-family: var(--font-mono);">3.37 / 4.00 MB</span>
+          </div>
+          <div class="progress-track"><div class="progress-fill" id="budget-bar" style="width: 84%;"></div></div>
+        </div>
+      </div>
+
+      <!-- 14 -->
+      <div class="widget-card">
+        <div class="widget-head"><span class="widget-label">Radio Group</span><span class="widget-index">14</span></div>
+        <div style="display: flex; flex-direction: column; gap: 6px; font-size: 12px;">
+          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;"><input type="radio" name="r1" checked /> BVH4 Hardware</label>
+          <label style="display: flex; align-items: center; gap: 8px; color: var(--text-secondary); cursor: pointer;"><input type="radio" name="r1" /> 3D Voxel SDF</label>
+        </div>
+      </div>
+
+      <!-- 15 -->
+      <div class="widget-card">
+        <div class="widget-head"><span class="widget-label">Checkboxes</span><span class="widget-index">15</span></div>
+        <div style="display: flex; flex-direction: column; gap: 6px; font-size: 12px;">
+          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;"><input type="checkbox" checked /> Spherical-Cap VNDF</label>
+          <label style="display: flex; align-items: center; gap: 8px; color: var(--text-secondary); cursor: pointer;"><input type="checkbox" /> Denoise Output</label>
+        </div>
+      </div>
+
+      <!-- 16 -->
+      <div class="widget-card">
+        <div class="widget-head"><span class="widget-label">Sample Stepper</span><span class="widget-index">16</span></div>
+        <div class="stepper">
+          <button onclick="stepSpp(-16)">−</button>
+          <span id="spp-val">96 SPP</span>
+          <button onclick="stepSpp(16)">+</button>
+        </div>
+      </div>
+
+      <!-- 17 -->
+      <div class="widget-card" style="cursor: pointer;" onclick="this.querySelector('#toast-msg').textContent='Recompiled in 14 ms'">
+        <div class="widget-head"><span class="widget-label">Inline Toast</span><span class="widget-index">17</span></div>
+        <div style="display: flex; align-items: center; gap: 8px; padding: 8px 11px; border-radius: 12px; background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.25); font-size: 12px;">
+          <span style="color: var(--accent-green);">●</span>
+          <span id="toast-msg">SPIR-V pipeline ready</span>
+        </div>
+      </div>
+
+      <!-- 18 -->
+      <div class="widget-card">
+        <div class="widget-head"><span class="widget-label">Tooltip</span><span class="widget-index">18</span></div>
+        <div style="padding: 8px 12px; border-radius: 10px; background: #0b0c0e; border: 1px solid var(--border-strong); font-size: 11px; color: var(--text-secondary);">
+          16-dir Golden-Spiral Cone GI
+        </div>
+      </div>
+
+      <!-- 19 -->
+      <div class="widget-card">
+        <div class="widget-head"><span class="widget-label">Telemetry Row</span><span class="widget-index">19</span></div>
+        <div>
+          <div class="kv-row"><span style="color: var(--text-secondary);">PT Ref RMSE</span><span style="font-family: var(--font-mono);">0.057</span></div>
+          <div class="kv-row"><span style="color: var(--text-secondary);">GPU vs CPU</span><span style="font-family: var(--font-mono);">0.019</span></div>
+        </div>
+      </div>
+
+      <!-- 20 -->
+      <div class="widget-card">
+        <div class="widget-head"><span class="widget-label">Accordion</span><span class="widget-index">20</span></div>
+        <div>
+          <div style="padding: 9px 12px; border-radius: 12px; background: var(--bg-surface); border: 1px solid var(--border-hairline); display: flex; justify-content: space-between; font-size: 12px; cursor: pointer;" onclick="const b=this.nextElementSibling; b.style.display=b.style.display==='none'?'block':'none'">
+            <span>Atmosphere &amp; Fog</span><span>⌄</span>
+          </div>
+          <div style="display: none; padding: 8px 12px 0; font-size: 11px; color: var(--text-secondary);">Cloud Cover: 34% · Wind: 7 m/s</div>
+        </div>
+      </div>
+
+      <!-- 21 -->
+      <div class="widget-card">
+        <div class="widget-head"><span class="widget-label">Swatch Picker</span><span class="widget-index">21</span></div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <span onclick="pickSwatch(this)" style="width: 24px; height: 24px; border-radius: 50%; background: #f1f3f5; border: 2px solid #fff; cursor: pointer;"></span>
+          <span onclick="pickSwatch(this)" style="width: 24px; height: 24px; border-radius: 50%; background: #f59e0b; border: 2px solid transparent; cursor: pointer;"></span>
+          <span onclick="pickSwatch(this)" style="width: 24px; height: 24px; border-radius: 50%; background: #4ade80; border: 2px solid transparent; cursor: pointer;"></span>
+          <span onclick="pickSwatch(this)" style="width: 24px; height: 24px; border-radius: 50%; background: #ef4444; border: 2px solid transparent; cursor: pointer;"></span>
+          <span id="swatch-hex" style="margin-left: auto; font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary);">#F1F3F5</span>
+        </div>
+      </div>
+
+      <!-- 22 -->
+      <div class="widget-card">
+        <div class="widget-head"><span class="widget-label">Pass Tags</span><span class="widget-index">22</span></div>
+        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+          <span class="pill-chip active" onclick="this.style.display='none'">SDF Cone ×</span>
+          <span class="pill-chip active" onclick="this.style.display='none'">VNDF ×</span>
+          <span class="pill-chip" onclick="this.classList.toggle('active')">+ Add</span>
+        </div>
+      </div>
+
+      <!-- 23 -->
+      <div class="widget-card">
+        <div class="widget-head"><span class="widget-label">Pass Frame Time</span><span class="widget-index">23</span></div>
+        <div style="display: flex; align-items: flex-end; gap: 8px; height: 52px;">
+          <div title="G-Buf: 0.4ms" style="flex:1; height: 32%; background: var(--bg-pill-active); border-radius: 6px; cursor: pointer;" onclick="this.style.background='#fff'"></div>
+          <div title="SDF: 1.1ms" style="flex:1; height: 68%; background: var(--bg-pill-active); border-radius: 6px; cursor: pointer;" onclick="this.style.background='#fff'"></div>
+          <div title="Cone GI: 1.6ms" style="flex:1; height: 95%; background: #ffffff; border-radius: 6px; cursor: pointer;"></div>
+          <div title="Post: 0.3ms" style="flex:1; height: 24%; background: var(--bg-pill-active); border-radius: 6px; cursor: pointer;" onclick="this.style.background='#fff'"></div>
+        </div>
+      </div>
+
+      <!-- 24 -->
+      <div class="widget-card">
+        <div class="widget-head"><span class="widget-label">Split Action</span><span class="widget-index">24</span></div>
+        <div style="display: inline-flex; border-radius: var(--radius-pill); overflow: hidden; border: 1px solid var(--border-strong); width: fit-content;">
+          <button class="btn btn-primary" style="border-radius: 0; border: none;" onclick="this.textContent='Exported'">Export PNG</button>
+          <button class="btn btn-secondary" style="border-radius: 0; border: none; border-left: 1px solid var(--border-hairline);">⌄</button>
+        </div>
+      </div>
+
+      <!-- 25 -->
+      <div class="widget-card">
+        <div class="widget-head"><span class="widget-label">Event Log</span><span class="widget-index">25</span></div>
+        <div style="display: flex; flex-direction: column; gap: 5px; font-size: 11px;">
+          <div style="display: flex; justify-content: space-between;"><span style="color: var(--accent-green);">● Clipmap built</span><span style="color: var(--text-muted); font-family: var(--font-mono);">12:04</span></div>
+          <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-secondary);">● SPIR-V cached</span><span style="color: var(--text-muted); font-family: var(--font-mono);">12:03</span></div>
+        </div>
+      </div>
+
+      <!-- 26 -->
+      <div class="widget-card" style="cursor: pointer;" onclick="cycleGauge()">
+        <div class="widget-head"><span class="widget-label">GPU Load</span><span class="widget-index">26</span></div>
+        <div style="display: flex; align-items: center; gap: 14px;">
+          <svg width="44" height="44" viewBox="0 0 44 44">
+            <circle cx="22" cy="22" r="18" fill="none" stroke="var(--bg-surface)" stroke-width="4"/>
+            <circle id="gauge-arc" cx="22" cy="22" r="18" fill="none" stroke="#ffffff" stroke-width="4" stroke-dasharray="113" stroke-dashoffset="30" stroke-linecap="round" transform="rotate(-90 22 22)"/>
+          </svg>
+          <span class="kpi-num" id="gauge-val" style="font-size: 28px;">74<span class="kpi-unit">%</span></span>
+        </div>
+      </div>
+
+      <!-- 27 -->
+      <div class="widget-card">
+        <div class="widget-head"><span class="widget-label">Vector3 Input</span><span class="widget-index">27</span></div>
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;">
+          <div class="search-box" style="padding: 5px 8px;"><span style="color: var(--accent-red); font-size: 10px; margin-right: 4px;">X</span><input type="text" value="2.25" style="font-family: var(--font-mono); font-size: 11px;"/></div>
+          <div class="search-box" style="padding: 5px 8px;"><span style="color: var(--accent-green); font-size: 10px; margin-right: 4px;">Y</span><input type="text" value="1.40" style="font-family: var(--font-mono); font-size: 11px;"/></div>
+          <div class="search-box" style="padding: 5px 8px;"><span style="color: #60a5fa; font-size: 10px; margin-right: 4px;">Z</span><input type="text" value="0.85" style="font-family: var(--font-mono); font-size: 11px;"/></div>
+        </div>
+      </div>
+
+      <!-- 28 -->
+      <div class="widget-card" style="cursor: pointer;" onclick="this.querySelector('#drop-txt').textContent='Loaded studio.ies'">
+        <div class="widget-head"><span class="widget-label">Asset Dropzone</span><span class="widget-index">28</span></div>
+        <div style="border: 1px dashed var(--border-strong); border-radius: 12px; padding: 12px; text-align: center; font-size: 11px; color: var(--text-secondary);">
+          <span id="drop-txt">Drop .ies or .hdr file</span>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Section 2: Minimal Render Settings Card -->
+  <section>
+    <div class="section-header">
+      <div>
+        <h2 class="section-title">Render Settings</h2>
+        <p class="section-sub">Minimal standalone card composed from the 20-widget library.</p>
+      </div>
+      <span class="section-badge">Interactive</span>
+    </div>
+
+    <div class="render-showcase" style="margin-top: 18px;">
+      <aside class="render-card">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <span style="font-size: 15px; font-weight: 400;">Render Settings</span>
+          <span class="pill-chip active" style="padding: 4px 10px; font-size: 11px;">GTX SDF GI</span>
+        </div>
+
+        <div class="segmented" id="quality-seg">
+          <button class="seg-btn" onclick="setQuality(this, 'Low')">Low</button>
+          <button class="seg-btn" onclick="setQuality(this, 'Med')">Med</button>
+          <button class="seg-btn active" onclick="setQuality(this, 'Std')">Std</button>
+          <button class="seg-btn" onclick="setQuality(this, 'High')">High</button>
+          <button class="seg-btn" onclick="setQuality(this, 'Ultra')">Ultra</button>
+        </div>
+
+        <div class="sub-panel">
+          <div class="toggle-row"><span style="display: inline-flex; align-items: center; gap: 8px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>Reflections</span><div class="switch on" onclick="this.classList.toggle('on')"></div></div>
+          <div class="toggle-row"><span style="display: inline-flex; align-items: center; gap: 8px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>Raytracing</span><div class="switch on" onclick="this.classList.toggle('on')"></div></div>
+          <div class="toggle-row"><span style="display: inline-flex; align-items: center; gap: 8px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>BVH4 Specular Trace</span><div class="switch on" onclick="this.classList.toggle('on')"></div></div>
+        </div>
+
+        <div class="sub-panel">
+          <div style="display: flex; justify-content: space-between; font-size: 12px;">
+            <span style="color: var(--text-secondary);">Render Scale</span>
+            <span id="scale-readout" style="font-family: var(--font-mono);">100%</span>
+          </div>
+          <input type="range" min="50" max="150" value="100" oninput="document.getElementById('scale-readout').textContent=this.value+'%'" />
+        </div>
+
+        <div class="sub-panel">
+          <span style="font-size: 11px; color: var(--text-secondary);">SDF Shadow + Penumbra</span>
+          <button class="dropdown-trigger" onclick="togglePenumbraMenu()">
+            <span id="penumbra-selected">3. 3D Voxel SDF Penumbra + Cone GI</span><span>⌄</span>
+          </button>
+          <div class="dropdown-menu" id="penumbra-menu">
+            <div class="dropdown-item" onclick="selectPenumbra(this, '0. Point-Sample SDF (No Penumbra)', '0.000', '0.071')"><span>0. Point-Sample SDF (No Penumbra)</span></div>
+            <div class="dropdown-item" onclick="selectPenumbra(this, '1. Analytic SDF Cone Penumbra', '0.684', '0.065')"><span>1. Analytic SDF Cone Penumbra</span></div>
+            <div class="dropdown-item" onclick="selectPenumbra(this, '2. 3D Voxel SDF Clipmap Penumbra', '0.583', '0.066')"><span>2. 3D Voxel SDF Clipmap Penumbra</span></div>
+            <div class="dropdown-item selected" onclick="selectPenumbra(this, '3. 3D Voxel SDF Penumbra + Cone GI', '0.583', '0.057')"><span>3. 3D Voxel SDF Penumbra + Cone GI</span><span>✓</span></div>
+            <div class="dropdown-item" onclick="selectPenumbra(this, '4. Hybrid SDF + Sobol Spherical Cap', '0.684', '0.058')"><span>4. Hybrid SDF + Sobol Spherical Cap</span></div>
+            <div class="dropdown-item" onclick="selectPenumbra(this, '5. SDF Monte Carlo PT Ref (96 SPP)', '0.724', '0.000')"><span>5. SDF Monte Carlo PT Ref (96 SPP)</span></div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Live Telemetry -->
+      <div class="render-card" style="background: var(--bg-card); border-color: var(--border-hairline);">
+        <div class="widget-head">
+          <span style="font-size: 15px; font-weight: 400;">Pipeline Telemetry</span>
+          <span class="section-badge" id="quality-badge">Tier: Std</span>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div class="sub-panel">
+            <div class="widget-head"><span class="badge-circle badge-green">✓</span><span class="widget-label">Penumbra Width</span></div>
+            <div class="kpi-num" id="telemetry-penumbra">0.583<span class="kpi-unit">m</span></div>
+          </div>
+          <div class="sub-panel">
+            <div class="widget-head"><span class="badge-circle badge-green">●</span><span class="widget-label">PT Ref RMSE</span></div>
+            <div class="kpi-num" id="telemetry-rmse">0.057</div>
+          </div>
+        </div>
+        <div class="sub-panel">
+          <div class="kv-row"><span style="color: var(--text-secondary);">Active SDF Mode</span><span id="telemetry-mode" style="font-family: var(--font-mono);">3. 3D Voxel SDF Penumbra + Cone GI</span></div>
+          <div class="kv-row"><span style="color: var(--text-secondary);">Clipmap Memory</span><span style="font-family: var(--font-mono);">3,532,800 B (3.37 MB)</span></div>
+          <div class="kv-row"><span style="color: var(--text-secondary);">Vulkan Compute Parity</span><span style="font-family: var(--font-mono); color: var(--accent-green);">0.0190 RMSE</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+  function setActiveNav(el) {
+    document.querySelectorAll('#top-nav .nav-pill').forEach(b => b.classList.remove('active'));
+    el.classList.add('active');
+  }
+
+  function setPillGroup(el) {
+    el.parentElement.querySelectorAll('.nav-pill').forEach(b => b.classList.remove('active'));
+    el.classList.add('active');
+  }
+
+  function setSeg(el) {
+    el.parentElement.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+    el.classList.add('active');
+  }
+
+  function setSubTab(el) {
+    el.parentElement.querySelectorAll('span').forEach(s => {
+      s.style.color = 'var(--text-secondary)';
+      s.style.borderBottom = 'none';
+    });
+    el.style.color = 'var(--text-primary)';
+    el.style.borderBottom = '1.5px solid #fff';
+  }
+
+  function bumpKpi(id, delta) {
+    const el = document.getElementById(id);
+    el.textContent = Math.max(0, parseInt(el.textContent, 10) + delta);
+  }
+
+  function cycleLabel(btn, list) {
+    const span = btn.querySelector('span');
+    const idx = (list.indexOf(span.textContent) + 1) % list.length;
+    span.textContent = list[idx];
+  }
+
+  let budgetIdx = 0;
+  const budgets = [['3.37 / 4.00 MB', '84%'], ['2.10 / 4.00 MB', '52%'], ['3.85 / 4.00 MB', '96%']];
+  function cycleBudget() {
+    budgetIdx = (budgetIdx + 1) % budgets.length;
+    document.getElementById('budget-txt').textContent = budgets[budgetIdx][0];
+    document.getElementById('budget-bar').style.width = budgets[budgetIdx][1];
+  }
+
+  let spp = 96;
+  function stepSpp(delta) {
+    spp = Math.max(16, Math.min(256, spp + delta));
+    document.getElementById('spp-val').textContent = spp + ' SPP';
+  }
+
+  function pickSwatch(el) {
+    el.parentElement.querySelectorAll('span[onclick]').forEach(s => s.style.borderColor = 'transparent');
+    el.style.borderColor = '#ffffff';
+    const rgb = getComputedStyle(el).backgroundColor.match(/\d+/g);
+    const hex = '#' + rgb.slice(0,3).map(x => Number(x).toString(16).padStart(2,'0').toUpperCase()).join('');
+    document.getElementById('swatch-hex').textContent = hex;
+  }
+
+  let gaugeIdx = 0;
+  const gauges = [[74, 30], [92, 9], [48, 59]];
+  function cycleGauge() {
+    gaugeIdx = (gaugeIdx + 1) % gauges.length;
+    document.getElementById('gauge-val').innerHTML = gauges[gaugeIdx][0] + '<span class="kpi-unit">%</span>';
+    document.getElementById('gauge-arc').setAttribute('stroke-dashoffset', gauges[gaugeIdx][1]);
+  }
+
+  function setQuality(btn, label) {
+    setSeg(btn);
+    document.getElementById('quality-badge').textContent = 'Tier: ' + label;
+  }
+
+  function togglePenumbraMenu() {
+    const menu = document.getElementById('penumbra-menu');
+    menu.style.display = (menu.style.display === 'none') ? 'flex' : 'none';
+  }
+
+  function selectPenumbra(el, name, width, rmse) {
+    document.querySelectorAll('#penumbra-menu .dropdown-item').forEach(i => {
+      i.classList.remove('selected');
+      if (i.children.length > 1) i.removeChild(i.lastElementChild);
+    });
+    el.classList.add('selected');
+    const check = document.createElement('span');
+    check.textContent = '✓';
+    el.appendChild(check);
+    document.getElementById('penumbra-selected').textContent = name;
+    document.getElementById('telemetry-mode').textContent = name;
+    document.getElementById('telemetry-penumbra').innerHTML = width + '<span class="kpi-unit">m</span>';
+    document.getElementById('telemetry-rmse').textContent = rmse;
+  }
+
+  // Interactive Operational Efficiency Chart (Reference-accurate)
+  (function buildChart() {
+    const svg = document.getElementById('eff-svg');
+    const wrap = document.getElementById('eff-chart-wrap');
+    const tip = document.getElementById('eff-tooltip');
+    const readout = document.getElementById('eff-readout');
+
+    const W = 420, H = 110, padR = 34, padB = 18;
+    const plotW = W - padR, plotH = H - padB;
+
+    // 72 organic samples from 06:00 to 21:00
+    const pts = [];
+    for (let i = 0; i < 72; i++) {
+      const t = i / 71;
+      let v = 54 + 22 * t + Math.sin(i * 0.45) * 6 + Math.cos(i * 1.3) * 4;
+      if (i >= 5 && i <= 9) v -= 14;   // amber dip
+      if (i >= 28 && i <= 34) v += 16; // peak 1
+      if (i >= 52 && i <= 57) v += 12; // peak 2
+      v = Math.max(25, Math.min(98, v));
+      pts.push({ x: (t * plotW), y: plotH - ((v - 25) / 75) * (plotH - 8) - 4, v: v.toFixed(1) });
+    }
+
+    const ns = 'http://www.w3.org/2000/svg';
+    const add = (tag, attrs) => {
+      const el = document.createElementNS(ns, tag);
+      for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+      svg.appendChild(el);
+      return el;
+    };
+
+    // Shaded peak columns
+    add('rect', { x: pts[28].x, y: 8, width: pts[34].x - pts[28].x, height: plotH - 8, fill: 'rgba(255,255,255,0.05)' });
+    add('rect', { x: pts[52].x, y: 8, width: pts[57].x - pts[52].x, height: plotH - 8, fill: 'rgba(255,255,255,0.05)' });
+
+    // Target >80% dashed line
+    const targetY = plotH - ((80 - 25) / 75) * (plotH - 8) - 4;
+    add('line', { x1: 0, y1: targetY, x2: plotW, y2: targetY, stroke: 'rgba(255,255,255,0.18)', 'stroke-dasharray': '4 4' });
+
+    // Y-axis labels
+    [['100%', 12], ['75%', 36], ['50%', 60], ['25%', 84]].forEach(([lbl, y]) => {
+      const t = add('text', { x: W - 2, y, fill: '#555b63', 'font-size': '9', 'text-anchor': 'end', 'font-family': 'monospace' });
+      t.textContent = lbl;
+    });
+
+    // X-axis time labels
+    ['06:00', '09:00', '12:00', '15:00', '18:00', '21:00'].forEach((lbl, idx) => {
+      const t = add('text', { x: (idx / 5) * (plotW - 24) + 12, y: H - 3, fill: '#555b63', 'font-size': '9', 'text-anchor': 'middle', 'font-family': 'monospace' });
+      t.textContent = lbl;
+    });
+
+    // Base curve
+    add('polyline', {
+      points: pts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' '),
+      fill: 'none', stroke: '#555b63', 'stroke-width': '1.3'
+    });
+
+    // Peak & dip highlights
+    add('polyline', { points: pts.slice(28, 35).map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' '), fill: 'none', stroke: '#ffffff', 'stroke-width': '1.8' });
+    add('polyline', { points: pts.slice(52, 58).map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' '), fill: 'none', stroke: '#ffffff', 'stroke-width': '1.8' });
+    add('polyline', { points: pts.slice(5, 10).map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' '), fill: 'none', stroke: '#f59e0b', 'stroke-width': '1.8' });
+
+    [pts[7], pts[31], pts[54]].forEach((p, i) => {
+      add('circle', { cx: p.x, cy: p.y, r: '2.5', fill: i === 0 ? '#f59e0b' : '#ffffff' });
+    });
+
+    const cursorLine = add('line', { x1: 0, y1: 0, x2: 0, y2: plotH, stroke: 'rgba(255,255,255,0.35)', 'stroke-width': '1', opacity: '0' });
+    const cursorDot = add('circle', { cx: 0, cy: 0, r: '3.5', fill: '#ffffff', opacity: '0' });
+
+    wrap.addEventListener('mousemove', (e) => {
+      const rect = svg.getBoundingClientRect();
+      const relX = Math.max(0, Math.min(1, (e.clientX - rect.left) / (rect.width * (plotW / W))));
+      const idx = Math.round(relX * (pts.length - 1));
+      const p = pts[idx];
+      const mins = Math.round((idx / 71) * 15 * 60) + 6 * 60;
+      const hh = String(Math.floor(mins / 60)).padStart(2, '0');
+      const mm = String(mins % 60).padStart(2, '0');
+
+      cursorLine.setAttribute('x1', p.x); cursorLine.setAttribute('x2', p.x); cursorLine.setAttribute('opacity', '1');
+      cursorDot.setAttribute('cx', p.x); cursorDot.setAttribute('cy', p.y); cursorDot.setAttribute('opacity', '1');
+      tip.textContent = `${hh}:${mm} · ${p.v}%`;
+      tip.style.left = Math.min(rect.width - 95, Math.max(4, e.clientX - rect.left + 10)) + 'px';
+      tip.style.opacity = '1';
+
+      const [whole, dec] = p.v.split('.');
+      readout.innerHTML = `${whole}<span class="muted">.${dec}</span><span class="kpi-unit">%</span>`;
+    });
+
+    wrap.addEventListener('mouseleave', () => {
+      cursorLine.setAttribute('opacity', '0');
+      cursorDot.setAttribute('opacity', '0');
+      tip.style.opacity = '0';
+      readout.innerHTML = `78<span class="muted">.3</span><span class="kpi-unit">%</span>`;
+    });
+  })();
+</script>
+</body>
+</html>

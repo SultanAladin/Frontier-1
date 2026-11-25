@@ -1,0 +1,322 @@
+{
+  "Summary": {
+    "1": {
+      "FrameMilliseconds": 593,
+      "Frames": {
+        "1": "6.288 / 5.031",
+        "2": "5.04 / 4.444",
+        "4": "3.176 / 3.075",
+        "8": "2.115 / 2.098",
+        "16": "1.671 / 1.679",
+        "64": "0.714 / 0.714"
+      }
+    },
+    "2": {
+      "FrameMilliseconds": 180.8,
+      "Frames": {
+        "1": "6.084 / 5.892",
+        "2": "6.057 / 5.829",
+        "4": "4.824 / 4.231",
+        "8": "3.811 / 3.036",
+        "16": "3.066 / 3.12",
+        "64": "1.978 / 1.96"
+      }
+    },
+    "4": {
+      "FrameMilliseconds": 47.8,
+      "Frames": {
+        "1": "7.788 / 7.571",
+        "2": "7.787 / 7.389",
+        "4": "6.812 / 6.32",
+        "8": "6.284 / 5.349",
+        "16": "5.75 / 3.776",
+        "64": "3.603 / 3.113"
+      }
+    }
+  },
+  "Width": 160,
+  "Height": 90,
+  "ReferenceSamples": 256,
+  "Scales": {
+    "1": {
+      "FrameMilliseconds": 593,
+      "Curve": [
+        {
+          "Frames": 1,
+          "PixelSamples": 1,
+          "Upsampled": {
+            "RelativeRms": 0.34666,
+            "MeanAbsoluteLevels": 6.288,
+            "PixelsOffBy8": 0.17
+          },
+          "Denoised": {
+            "RelativeRms": 0.22207,
+            "MeanAbsoluteLevels": 5.031,
+            "PixelsOffBy8": 0.1582
+          }
+        },
+        {
+          "Frames": 2,
+          "PixelSamples": 2,
+          "Upsampled": {
+            "RelativeRms": 0.15863,
+            "MeanAbsoluteLevels": 5.04,
+            "PixelsOffBy8": 0.131
+          },
+          "Denoised": {
+            "RelativeRms": 0.12463,
+            "MeanAbsoluteLevels": 4.444,
+            "PixelsOffBy8": 0.1192
+          }
+        },
+        {
+          "Frames": 4,
+          "PixelSamples": 4,
+          "Upsampled": {
+            "RelativeRms": 0.08235,
+            "MeanAbsoluteLevels": 3.176,
+            "PixelsOffBy8": 0.0875
+          },
+          "Denoised": {
+            "RelativeRms": 0.08089,
+            "MeanAbsoluteLevels": 3.075,
+            "PixelsOffBy8": 0.0855
+          }
+        },
+        {
+          "Frames": 8,
+          "PixelSamples": 8,
+          "Upsampled": {
+            "RelativeRms": 0.05559,
+            "MeanAbsoluteLevels": 2.115,
+            "PixelsOffBy8": 0.0639
+          },
+          "Denoised": {
+            "RelativeRms": 0.05511,
+            "MeanAbsoluteLevels": 2.098,
+            "PixelsOffBy8": 0.0638
+          }
+        },
+        {
+          "Frames": 16,
+          "PixelSamples": 16,
+          "Upsampled": {
+            "RelativeRms": 0.03586,
+            "MeanAbsoluteLevels": 1.671,
+            "PixelsOffBy8": 0.0524
+          },
+          "Denoised": {
+            "RelativeRms": 0.03585,
+            "MeanAbsoluteLevels": 1.679,
+            "PixelsOffBy8": 0.052
+          }
+        },
+        {
+          "Frames": 64,
+          "PixelSamples": 64,
+          "Upsampled": {
+            "RelativeRms": 0.0144,
+            "MeanAbsoluteLevels": 0.714,
+            "PixelsOffBy8": 0.0186
+          },
+          "Denoised": {
+            "RelativeRms": 0.0144,
+            "MeanAbsoluteLevels": 0.714,
+            "PixelsOffBy8": 0.0186
+          }
+        }
+      ]
+    },
+    "2": {
+      "FrameMilliseconds": 180.8,
+      "Curve": [
+        {
+          "Frames": 1,
+          "PixelSamples": 0.25,
+          "Upsampled": {
+            "RelativeRms": 0.22505,
+            "MeanAbsoluteLevels": 6.084,
+            "PixelsOffBy8": 0.1693
+          },
+          "Denoised": {
+            "RelativeRms": 0.21636,
+            "MeanAbsoluteLevels": 5.892,
+            "PixelsOffBy8": 0.1658
+          }
+        },
+        {
+          "Frames": 2,
+          "PixelSamples": 0.5,
+          "Upsampled": {
+            "RelativeRms": 0.21373,
+            "MeanAbsoluteLevels": 6.057,
+            "PixelsOffBy8": 0.1571
+          },
+          "Denoised": {
+            "RelativeRms": 0.22358,
+            "MeanAbsoluteLevels": 5.829,
+            "PixelsOffBy8": 0.1499
+          }
+        },
+        {
+          "Frames": 4,
+          "PixelSamples": 1,
+          "Upsampled": {
+            "RelativeRms": 0.19293,
+            "MeanAbsoluteLevels": 4.824,
+            "PixelsOffBy8": 0.1334
+          },
+          "Denoised": {
+            "RelativeRms": 0.21106,
+            "MeanAbsoluteLevels": 4.231,
+            "PixelsOffBy8": 0.1217
+          }
+        },
+        {
+          "Frames": 8,
+          "PixelSamples": 2,
+          "Upsampled": {
+            "RelativeRms": 0.11833,
+            "MeanAbsoluteLevels": 3.811,
+            "PixelsOffBy8": 0.112
+          },
+          "Denoised": {
+            "RelativeRms": 0.13133,
+            "MeanAbsoluteLevels": 3.036,
+            "PixelsOffBy8": 0.0931
+          }
+        },
+        {
+          "Frames": 16,
+          "PixelSamples": 4,
+          "Upsampled": {
+            "RelativeRms": 0.1027,
+            "MeanAbsoluteLevels": 3.066,
+            "PixelsOffBy8": 0.0867
+          },
+          "Denoised": {
+            "RelativeRms": 0.11707,
+            "MeanAbsoluteLevels": 3.12,
+            "PixelsOffBy8": 0.0853
+          }
+        },
+        {
+          "Frames": 64,
+          "PixelSamples": 16,
+          "Upsampled": {
+            "RelativeRms": 0.04021,
+            "MeanAbsoluteLevels": 1.978,
+            "PixelsOffBy8": 0.0612
+          },
+          "Denoised": {
+            "RelativeRms": 0.04003,
+            "MeanAbsoluteLevels": 1.96,
+            "PixelsOffBy8": 0.0603
+          }
+        }
+      ]
+    },
+    "4": {
+      "FrameMilliseconds": 47.8,
+      "Curve": [
+        {
+          "Frames": 1,
+          "PixelSamples": 0.0625,
+          "Upsampled": {
+            "RelativeRms": 0.35126,
+            "MeanAbsoluteLevels": 7.788,
+            "PixelsOffBy8": 0.1903
+          },
+          "Denoised": {
+            "RelativeRms": 0.30616,
+            "MeanAbsoluteLevels": 7.571,
+            "PixelsOffBy8": 0.1894
+          }
+        },
+        {
+          "Frames": 2,
+          "PixelSamples": 0.125,
+          "Upsampled": {
+            "RelativeRms": 0.26869,
+            "MeanAbsoluteLevels": 7.787,
+            "PixelsOffBy8": 0.1904
+          },
+          "Denoised": {
+            "RelativeRms": 0.25836,
+            "MeanAbsoluteLevels": 7.389,
+            "PixelsOffBy8": 0.1854
+          }
+        },
+        {
+          "Frames": 4,
+          "PixelSamples": 0.25,
+          "Upsampled": {
+            "RelativeRms": 0.23137,
+            "MeanAbsoluteLevels": 6.812,
+            "PixelsOffBy8": 0.1669
+          },
+          "Denoised": {
+            "RelativeRms": 0.23054,
+            "MeanAbsoluteLevels": 6.32,
+            "PixelsOffBy8": 0.1602
+          }
+        },
+        {
+          "Frames": 8,
+          "PixelSamples": 0.5,
+          "Upsampled": {
+            "RelativeRms": 0.21835,
+            "MeanAbsoluteLevels": 6.284,
+            "PixelsOffBy8": 0.1558
+          },
+          "Denoised": {
+            "RelativeRms": 0.21293,
+            "MeanAbsoluteLevels": 5.349,
+            "PixelsOffBy8": 0.1409
+          }
+        },
+        {
+          "Frames": 16,
+          "PixelSamples": 1,
+          "Upsampled": {
+            "RelativeRms": 0.18577,
+            "MeanAbsoluteLevels": 5.75,
+            "PixelsOffBy8": 0.1425
+          },
+          "Denoised": {
+            "RelativeRms": 0.18008,
+            "MeanAbsoluteLevels": 3.776,
+            "PixelsOffBy8": 0.1047
+          }
+        },
+        {
+          "Frames": 64,
+          "PixelSamples": 4,
+          "Upsampled": {
+            "RelativeRms": 0.09563,
+            "MeanAbsoluteLevels": 3.603,
+            "PixelsOffBy8": 0.1099
+          },
+          "Denoised": {
+            "RelativeRms": 0.0944,
+            "MeanAbsoluteLevels": 3.113,
+            "PixelsOffBy8": 0.0958
+          }
+        }
+      ]
+    }
+  },
+  "Determinism": {
+    "Scale2SumDigests": [
+      "0fabd869",
+      "0fabd869"
+    ],
+    "Scale2DisplayDigests": [
+      "1bf04933",
+      "1bf04933"
+    ],
+    "FullResolutionDigest4": "af302d24",
+    "BitIdentical": true
+  },
+  "Note": "Errors are vs the full-resolution 256-spp reference: mean |Δ| in 8-bit display levels (upsampled / denoised). SwiftShader timings."
+}
