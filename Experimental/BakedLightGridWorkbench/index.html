@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Spatial-Directional Baked Light Grid Workbench · Nanite Light LOD &amp; Residual Optimization</title>
+    <style>
+        @font-face {
+            font-family: "DM Sans";
+            src: url("./Fonts/dm-sans-latin-400-normal.woff2") format("woff2");
+            font-weight: 400;
+            font-style: normal;
+            font-display: swap;
+        }
+        @font-face {
+            font-family: "DM Sans";
+            src: url("./Fonts/dm-sans-latin-500-normal.woff2") format("woff2");
+            font-weight: 500;
+            font-style: normal;
+            font-display: swap;
+        }
+
+        :root {
+            --bg-deep: #090c12;
+            --bg-panel: #101520;
+            --bg-section: #151c2a;
+            --bg-button: #1b2436;
+            --bg-button-hover: #243048;
+            --border-subtle: rgba(140, 168, 214, 0.16);
+            --border-strong: rgba(112, 196, 255, 0.42);
+            --text-primary: #edf2fa;
+            --text-secondary: #9fb0cc;
+            --text-muted: #6d7f9e;
+            --accent-emerald: #24e58a;
+            --accent-cyan: #36b9ff;
+            --accent-amber: #ffb838;
+            --accent-crimson: #ff4d5e;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: var(--bg-deep);
+            color: var(--text-primary);
+            font-family: "DM Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+            font-size: 13px;
+            line-height: 1.4;
+            font-variant-numeric: tabular-nums;
+            user-select: none;
+        }
+
+        .workbench-layout {
+            display: grid;
+            grid-template-rows: 54px 1fr;
+            grid-template-columns: 1fr 376px;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        .top-bar {
+            grid-column: 1 / 3;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+            padding: 0 16px;
+            background: var(--bg-panel);
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .brand-block {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 0;
+        }
+
+        .brand-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--accent-emerald);
+            box-shadow: 0 0 10px rgba(36, 229, 138, 0.65);
+            flex-shrink: 0;
+        }
+
+        .brand-title {
+            font-size: 14px;
+            font-weight: 500;
+            letter-spacing: -0.01em;
+            white-space: nowrap;
+        }
+
+        .brand-subtitle {
+            font-size: 12px;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .preset-strip, .split-strip {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        button {
+            font-family: inherit;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            background: var(--bg-button);
+            border: 1px solid var(--border-subtle);
+            border-radius: 6px;
+            padding: 6px 10px;
+            cursor: pointer;
+            transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+        }
+
+        button:hover {
+            background: var(--bg-button-hover);
+            color: var(--text-primary);
+        }
+
+        button.selected-cyan {
+            background: rgba(54, 185, 255, 0.16);
+            color: #dff4ff;
+            border-color: var(--accent-cyan);
+        }
+
+        button.selected-emerald {
+            background: rgba(36, 229, 138, 0.16);
+            color: #dcffef;
+            border-color: var(--accent-emerald);
+        }
+
+        button.selected-amber {
+            background: rgba(255, 184, 56, 0.16);
+            color: #fff2d6;
+            border-color: var(--accent-amber);
+        }
+
+        button.selected-crimson {
+            background: rgba(255, 77, 94, 0.18);
+            color: #ffe0e3;
+            border-color: var(--accent-crimson);
+        }
+
+        .viewport-zone {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #06080d;
+        }
+
+        #glViewportCanvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            cursor: grab;
+        }
+
+        #glViewportCanvas:active {
+            cursor: grabbing;
+        }
+
+        .pane-captions {
+            position: absolute;
+            top: 12px;
+            left: 0;
+            right: 0;
+            pointer-events: none;
+            display: flex;
+            width: 100%;
+            padding: 0 12px;
+            gap: 12px;
+        }
+
+        .pane-tag {
+            background: rgba(11, 15, 24, 0.84);
+            backdrop-filter: blur(8px);
+            border: 1px solid var(--border-subtle);
+            border-radius: 6px;
+            padding: 6px 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .pane-tag-heading {
+            font-size: 11.5px;
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+
+        .pane-tag-sub {
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+
+        .split-divider {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 1px;
+            background: rgba(160, 195, 245, 0.28);
+            pointer-events: none;
+        }
+
+        .camera-bar {
+            position: absolute;
+            left: 12px;
+            bottom: 12px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 6px;
+            background: rgba(12, 16, 26, 0.86);
+            backdrop-filter: blur(8px);
+            border: 1px solid var(--border-subtle);
+            border-radius: 8px;
+            padding: 6px 8px;
+        }
+
+        .legend-bar {
+            position: absolute;
+            right: 12px;
+            bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: rgba(12, 16, 26, 0.86);
+            backdrop-filter: blur(8px);
+            border: 1px solid var(--border-subtle);
+            border-radius: 8px;
+            padding: 6px 10px;
+            font-size: 11px;
+            color: var(--text-secondary);
+            pointer-events: none;
+        }
+
+        .swatch {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 2px;
+            margin-right: 5px;
+        }
+
+        .inspector-column {
+            background: var(--bg-panel);
+            border-left: 1px solid var(--border-subtle);
+            padding: 12px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 11px;
+        }
+
+        .panel-box {
+            background: var(--bg-section);
+            border: 1px solid var(--border-subtle);
+            border-radius: 8px;
+            padding: 10px 11px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .section-heading {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-primary);
+            letter-spacing: 0.01em;
+        }
+
+        .section-note {
+            font-size: 11.5px;
+            color: var(--text-secondary);
+            line-height: 1.38;
+        }
+
+        .mode-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .mode-btn {
+            text-align: left;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 7px 9px;
+        }
+
+        .metrics-strip {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 6px;
+        }
+
+        .metric-tile {
+            background: rgba(8, 11, 18, 0.65);
+            border: 1px solid var(--border-subtle);
+            border-radius: 6px;
+            padding: 6px 7px;
+        }
+
+        .metric-label {
+            font-size: 10.5px;
+            color: var(--text-muted);
+        }
+
+        .metric-number {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-primary);
+            margin-top: 1px;
+        }
+
+        .comparison-grid {
+            display: grid;
+            grid-template-columns: 1.35fr 0.85fr 0.85fr 0.7fr;
+            gap: 4px 6px;
+            font-size: 11px;
+            align-items: center;
+            padding-top: 2px;
+        }
+
+        .comparison-header {
+            color: var(--text-muted);
+            font-size: 10.5px;
+            border-bottom: 1px solid var(--border-subtle);
+            padding-bottom: 3px;
+        }
+
+        .optimizer-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+        }
+
+        .optimizer-buttons button.full-span {
+            grid-column: 1 / 3;
+        }
+
+        .toggle-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+        }
+
+        .slider-row {
+            display: grid;
+            grid-template-columns: 108px 1fr 44px;
+            align-items: center;
+            gap: 8px;
+            font-size: 11.5px;
+            color: var(--text-secondary);
+        }
+
+        input[type="range"] {
+            width: 100%;
+            accent-color: var(--accent-cyan);
+            cursor: pointer;
+        }
+
+        .canvas-pair {
+            display: grid;
+            grid-template-columns: 1fr 126px;
+            gap: 8px;
+            align-items: start;
+        }
+
+        .diag-canvas {
+            width: 100%;
+            background: #080b12;
+            border: 1px solid var(--border-subtle);
+            border-radius: 6px;
+            display: block;
+        }
+
+        .small-caption {
+            font-size: 10.5px;
+            color: var(--text-muted);
+            margin-top: 3px;
+        }
+    </style>
+</head>
+<body>
+    <div class="workbench-layout">
+        <header class="top-bar">
+            <div class="brand-block">
+                <span class="brand-dot"></span>
+                <div>
+                    <div class="brand-title">Spatial-Directional Baked Light Grid Workbench</div>
+                    <div class="brand-subtitle" id="statusBannerText">Initializing 8×4×4 Spatial Light Grid &amp; ControlVehicle surfaces...</div>
+                </div>
+            </div>
+
+            <div class="preset-strip">
+                <button id="btnPresetHeadlamps" class="selected-cyan" title="Isolated 5-lamp automotive front cluster with empty center voxels [2..5]">1 · Dual Headlamps (Empty Center)</button>
+                <button id="btnPresetFivePanels" title="Isolated 5-direction radiant luminaire combined into 1 Baked Grid">2 · 5-Direction Luminaire → 1 Grid</button>
+                <button id="btnPresetNaniteHall" title="12 multi-light clusters (60 raw lights) with continuous Nanite Distance-LOD">3 · 12-Cluster Nanite LOD Hall</button>
+            </div>
+
+            <div class="split-strip">
+                <button id="btnViewTriSplit" class="selected-emerald">3-Way (GT | Grid | Error)</button>
+                <button id="btnViewDualSplit">2-Way (GT | Grid)</button>
+                <button id="btnViewGridOnly">Baked Grid</button>
+                <button id="btnViewGtOnly">Ground Truth</button>
+                <button id="btnViewLodDiag">Nanite LOD Tiers</button>
+            </div>
+        </header>
+
+        <main class="viewport-zone" id="viewportZone">
+            <canvas id="glViewportCanvas"></canvas>
+
+            <div class="split-divider" id="dividerLeft" style="left: 36%;"></div>
+            <div class="split-divider" id="dividerRight" style="left: 72%;"></div>
+
+            <div class="pane-captions" id="paneCaptionsRow"></div>
+
+            <div class="camera-bar">
+                <span style="font-size:11px; color:var(--text-muted); padding:0 4px;">Camera:</span>
+                <button id="btnCamHero">3/4 Hero Orbit</button>
+                <button id="btnCamBumper">Close Bumper Parallax</button>
+                <button id="btnCamTopGrid">Top-Down 3D Grid</button>
+                <button id="btnCamFarHall">Far Nanite LOD Sweep</button>
+            </div>
+
+            <div class="legend-bar">
+                <span><i class="swatch" style="background:#36c7f5;"></i>8×4×4 Grid Bounds</span>
+                <span><i class="swatch" style="background:#24e58a;"></i>Active Spatial Cell + Anchor</span>
+                <span><i class="swatch" style="background:#ffb838;"></i>Raw Light Cones</span>
+                <span><i class="swatch" style="background:#ff4d5e;"></i>Error / Cutoff</span>
+            </div>
+        </main>
+
+        <aside class="inspector-column">
+            <!-- 1. Grid Baking Mode Selector (Exposes Naive Center-Averaging vs. Non-Averaged Spatial vs. Error-Optimized!) -->
+            <section class="panel-box">
+                <div class="section-heading">
+                    <span>1 · Grid Light Baking Architecture</span>
+                    <span id="activeLookupsLabel" style="color:var(--accent-cyan); font-size:11px;">5 cells active</span>
+                </div>
+                <div class="mode-stack">
+                    <button id="btnModeNaive" class="mode-btn">
+                        <span>🔴 Naive Center-Averaged (1 Origin)</span>
+                        <span id="tagNaiveErr">--%</span>
+                    </button>
+                    <button id="btnModeUnopt" class="mode-btn">
+                        <span>🚩 8×4×4 Spatial Grid (Raw Voxels)</span>
+                        <span id="tagUnoptErr">--%</span>
+                    </button>
+                    <button id="btnModeOpt" class="mode-btn selected-emerald">
+                        <span>🟢 8×4×4 Residual-Error Optimized</span>
+                        <span id="tagOptErr">--%</span>
+                    </button>
+                </div>
+                <div class="section-note" id="modeExplanationNote">
+                    Separates left/right lamps into occupied 8×4×4 voxels (center cells [2..5] stay empty!) and optimizes sub-voxel optical anchors + deconvolved 16×16 octahedral tiles.
+                </div>
+            </section>
+
+            <!-- 2. Measured Ground-Truth vs. Grid Radiometric Error & Live Optimizer -->
+            <section class="panel-box">
+                <div class="section-heading">
+                    <span>2 · Residual-Error Optimizer</span>
+                    <span id="optStepCounter" style="color:var(--accent-emerald); font-size:11px;">Step 25</span>
+                </div>
+
+                <div class="metrics-strip">
+                    <div class="metric-tile">
+                        <div class="metric-label">RelRMSE vs GT</div>
+                        <div class="metric-number" id="metricRelRmse">--%</div>
+                    </div>
+                    <div class="metric-tile">
+                        <div class="metric-label">PSNR Quality</div>
+                        <div class="metric-number" id="metricPsnr">-- dB</div>
+                    </div>
+                    <div class="metric-tile">
+                        <div class="metric-label">Peak Pixel Err</div>
+                        <div class="metric-number" id="metricMaxErr">--</div>
+                    </div>
+                </div>
+
+                <div class="comparison-grid">
+                    <div class="comparison-header">Method</div>
+                    <div class="comparison-header">RelRMSE</div>
+                    <div class="comparison-header">PSNR</div>
+                    <div class="comparison-header">Taps</div>
+
+                    <div style="color:#ff7b88;">Naive Merged</div>
+                    <div id="rowNaiveRmse">--</div>
+                    <div id="rowNaivePsnr">--</div>
+                    <div id="rowNaiveTaps">1</div>
+
+                    <div style="color:#ffd075;">8×4×4 Raw</div>
+                    <div id="rowUnoptRmse">--</div>
+                    <div id="rowUnoptPsnr">--</div>
+                    <div id="rowUnoptTaps">--</div>
+
+                    <div style="color:#4df2a4; font-weight:500;">8×4×4 Opt</div>
+                    <div id="rowOptRmse" style="color:#4df2a4; font-weight:500;">--</div>
+                    <div id="rowOptPsnr" style="color:#4df2a4; font-weight:500;">--</div>
+                    <div id="rowOptTaps">--</div>
+                </div>
+
+                <canvas id="convergencePlotCanvas" class="diag-canvas" width="330" height="86"></canvas>
+
+                <div class="optimizer-buttons">
+                    <button id="btnResetOpt" title="Reset active cluster back to unoptimized raw voxel centers &amp; blurred tiles">Reset to Raw (Step 0)</button>
+                    <button id="btnStepOnce" title="Measure L_exact - L_grid residual and apply 1 optimization iteration">+1 Residual Step</button>
+                    <button id="btnAnimateOpt" class="full-span selected-emerald" title="Reset to Step 0 and watch 25 Residual-Error Optimization steps converge live in 3D!">⭐ Watch Live 25-Step Error Optimization</button>
+                </div>
+            </section>
+
+            <!-- 3. 3D Visual Debug Overlays & Nanite Distance-LOD Controls -->
+            <section class="panel-box">
+                <div class="section-heading">
+                    <span>3 · 3D Debug Gizmos &amp; Nanite Light LOD</span>
+                    <span id="camDistReadout" style="color:var(--text-secondary); font-size:11px;">d = -- m</span>
+                </div>
+
+                <div class="toggle-grid">
+                    <button id="btnToggle3dGrid" class="selected-cyan">✔️ 3D 8×4×4 Grid</button>
+                    <button id="btnToggleRawLights" class="selected-amber">✔️ Raw Light Cones</button>
+                    <button id="btnToggleLodRings" class="selected-cyan">✔️ 3D LOD Rings</button>
+                    <button id="btnToggleDistLod" class="selected-emerald">✔️ Nanite Dist-LOD</button>
+                </div>
+
+                <div class="slider-row">
+                    <span>Error Gain</span>
+                    <input type="range" id="sliderErrorGain" min="1" max="20" step="0.5" value="6.0" />
+                    <span id="readoutErrorGain">6.0×</span>
+                </div>
+                <div class="slider-row">
+                    <span>Nanite LOD Bias</span>
+                    <input type="range" id="sliderLodBias" min="-1.0" max="2.5" step="0.05" value="0.0" />
+                    <span id="readoutLodBias">+0.00</span>
+                </div>
+                <div class="slider-row">
+                    <span>Exposure</span>
+                    <input type="range" id="sliderExposure" min="0.4" max="3.0" step="0.05" value="1.35" />
+                    <span id="readoutExposure">1.35</span>
+                </div>
+            </section>
+
+            <!-- 4. 8x4 Spatial Voxel Occupancy & Selected Cell 16x16 Octahedral Tile Inspector -->
+            <section class="panel-box">
+                <div class="section-heading">
+                    <span>4 · Spatial Cells &amp; Octahedral Tile</span>
+                    <span id="selectedCellReadout" style="color:var(--accent-emerald); font-size:11px;">Cell [0]</span>
+                </div>
+                <div class="canvas-pair">
+                    <div>
+                        <canvas id="spatialPlanCanvas" class="diag-canvas" width="196" height="108" title="Click an occupied cell to inspect its 16×16 octahedral directional tile"></canvas>
+                        <div class="small-caption">Top-down 8×4 (X,Z) voxels · Click cell</div>
+                    </div>
+                    <div>
+                        <canvas id="octTileCanvas" class="diag-canvas" width="118" height="108"></canvas>
+                        <div class="small-caption">4π Octahedral (−Y pole)</div>
+                    </div>
+                </div>
+            </section>
+        </aside>
+    </div>
+
+    <script type="module" src="./BakedLightGridWorkbench.js"></script>
+</body>
+</html>
