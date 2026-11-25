@@ -417,7 +417,7 @@
             <div class="TopTelemetryBar">
                 <div class="TelemetryCluster">
                     <span class="RuntimeTag" id="RuntimeTag">🔍 Loading ControlVehicle...</span>
-                    <span class="MetricChip">Loft VRAM <strong id="TelLoftVram">--</strong></span>
+                    <span class="MetricChip">Surface VRAM <strong id="TelLoftVram">--</strong></span>
                     <span class="MetricChip">Voxel VRAM <strong id="TelVoxVram">--</strong></span>
                     <span class="MetricChip">Compression <strong id="TelVramRatio">--</strong></span>
                 </div>
@@ -428,30 +428,32 @@
             </div>
 
             <div class="SplitBanner" id="SplitBanner">
-                <div class="SplitPaneHeader LeftLoft" id="SplitLeftLabel">LEFT · Bi-Directional Lofted Curve SDF</div>
+                <div class="SplitPaneHeader LeftLoft" id="SplitLeftLabel">LEFT · Closed 4-Corner C² Quad-Patch SDF</div>
                 <div class="SplitPaneHeader RightVox" id="SplitRightLabel">RIGHT · Uniform 3D Voxel Grid SDF</div>
             </div>
 
             <div class="BottomViewportBar">
                 <div class="CameraBtnRow">
                     <button class="ViewportBtn" id="CamHeroBtn" type="button">3/4 Hero</button>
+                    <button class="ViewportBtn" id="CamNoseQuadsBtn" type="button">Front Bumper Quads</button>
                     <button class="ViewportBtn" id="CamFenderBtn" type="button">Fender &amp; Wheel Arch</button>
                     <button class="ViewportBtn" id="CamProfileBtn" type="button">Side Aero Loft</button>
                     <button class="ViewportBtn" id="CamShadowBtn" type="button">Long Shadow</button>
-                    <button class="ViewportBtn" id="CamTopRibsBtn" type="button">Overhead Rib × Rail</button>
+                    <button class="ViewportBtn" id="CamTopRibsBtn" type="button">Overhead Quad Grid</button>
                 </div>
                 <div class="SplineLegendRow">
-                    <span><i class="LegendSwatch" style="background:#3cd4f8;"></i>Transverse Ribs (M)</span>
-                    <span><i class="LegendSwatch" style="background:#f7be45;"></i>Longitudinal Loft Rails (K)</span>
-                    <span><i class="LegendSwatch" style="background:#42db92;"></i>Revolved Wheel Lofts</span>
+                    <span><i class="LegendSwatch" style="background:#f7be45;"></i>Buttock Loops</span>
+                    <span><i class="LegendSwatch" style="background:#3cd4f8;"></i>Transverse Ribs</span>
+                    <span><i class="LegendSwatch" style="background:#80f5dc;"></i>Beltline Loops</span>
+                    <span><i class="LegendSwatch" style="background:#42db92;"></i>Wheel Lofts</span>
                 </div>
             </div>
         </div>
 
         <aside class="SidebarPane">
             <div class="HeaderBlock">
-                <h1>🧩 Lofted Surface-Curve SDF vs. 3D Voxel SDF</h1>
-                <p>Frontier <strong>Controlled Integrator</strong> (12,572 verts · 25,068 triangles) · Bi-Directional Bicubic Ferguson–Hermite Rib × Rail Lofting vs. Trilinear 3D Voxels</p>
+                <h1>🧩 Closed 4-Corner Surface-Patch SDF vs. Voxel SDF</h1>
+                <p>Frontier <strong>Controlled Integrator</strong> (12,572 verts · 25,068 triangles) · Pole-Free 6-Chart C² Coons–Spline 4-Corner Quad Patches vs. Polar-Fan Loft &amp; 3D Voxels</p>
             </div>
 
             <div class="ControlSection">
@@ -465,15 +467,25 @@
                 </div>
                 <label class="ToggleLine">
                     <input type="checkbox" id="SplitCompareToggle" />
-                    <span><strong>Split Viewport:</strong> Lofted Curve (Left) vs. Voxel Grid (Right)</span>
+                    <span><strong>Split Viewport:</strong> 4-Corner Quad-Patch (Left) vs. Right Reference</span>
                 </label>
+                <div class="FieldRow">
+                    <div class="FieldHeader">
+                        <span>Split Right-Half Reference</span>
+                        <span id="SplitRightModeReadout">3D Voxel Grid</span>
+                    </div>
+                    <select id="SplitRightModeSelect">
+                        <option value="2" selected>Right: Uniform 3D Voxel Grid SDF (C⁰ Staircase)</option>
+                        <option value="1">Right: Cylindrical Tube Loft SDF (Polar Endcap Fan)</option>
+                    </select>
+                </div>
                 <label class="ToggleLine">
                     <input type="checkbox" id="ZebraInspectToggle" />
                     <span>Class-A Zebra Reflection Stripes (in Pure d(x)=0 SDF view)</span>
                 </label>
                 <label class="ToggleLine">
                     <input type="checkbox" id="LoftCageToggle" checked />
-                    <span>Overlay 3D Bi-Directional Rib × Rail Spline Cage</span>
+                    <span>Overlay 3D Closed 4-Corner Quad-Patch / Loft Spline Cage</span>
                 </label>
                 <label class="ToggleLine">
                     <input type="checkbox" id="VoxelCageToggle" />
@@ -483,21 +495,34 @@
 
             <div class="ControlSection">
                 <div class="SectionTitle">
-                    <span>2 · SDF Resolution Scaling (O(M·K) vs. O(N³))</span>
+                    <span>2 · SDF Paradigm &amp; Patch Density (O(6·N²) vs. O(N³))</span>
                 </div>
                 <div class="FieldRow">
                     <div class="FieldHeader">
                         <span>Single-View Active SDF</span>
-                        <span id="ActiveParadigmReadout">Lofted Curve</span>
+                        <span id="ActiveParadigmReadout">4-Corner Quad-Patch</span>
                     </div>
                     <select id="ActiveParadigmSelect">
-                        <option value="0" selected>Bi-Directional Lofted Curve SDF — O(M · K) Manifold</option>
-                        <option value="1">Uniform 3D Voxel Grid SDF — O(N³) Volume</option>
+                        <option value="0" selected>Closed 4-Corner Quad-Patch SDF — C² 6-Chart Coons–Spline (0 Poles)</option>
+                        <option value="1">Cylindrical Tube Loft SDF — C¹ Rib × Rail (Polar Endcap Fan)</option>
+                        <option value="2">Uniform 3D Voxel Grid SDF — O(N³) Trilinear Volume</option>
                     </select>
                 </div>
                 <div class="FieldRow">
                     <div class="FieldHeader">
-                        <span>Loft Curve Density (M Ribs × K Rails)</span>
+                        <span>Closed 4-Corner Quad-Patch Density (6 × N²)</span>
+                        <span id="QuadPatchPresetReadout">6 × 16²</span>
+                    </div>
+                    <select id="QuadPatchPresetSelect">
+                        <option value="quad-6x6">6 × (6 × 6) · 216 4-Corner Patches (0.62 KB compact / 3.89 KB GPU)</option>
+                        <option value="quad-10x10">6 × (10 × 10) · 600 4-Corner Patches (1.48 KB compact / 8.05 KB GPU)</option>
+                        <option value="quad-16x16" selected>6 × (16 × 16) · 1,536 4-Corner Patches (3.48 KB compact / 17.11 KB GPU)</option>
+                        <option value="quad-24x24">6 × (24 × 24) · 3,456 4-Corner Patches (7.45 KB compact / 34.42 KB GPU)</option>
+                    </select>
+                </div>
+                <div class="FieldRow">
+                    <div class="FieldHeader">
+                        <span>Cylindrical Polar-Fan Loft Density (M × K)</span>
                         <span id="LoftPresetReadout">32 × 36</span>
                     </div>
                     <select id="LoftPresetSelect">
@@ -581,7 +606,7 @@
                 </div>
                 <div class="BenchmarkGrid">
                     <span class="BenchColHead" style="color:var(--text-muted);">Metric</span>
-                    <span class="BenchColHead LoftCol" id="BenchHeadLoft">Loft 32×36</span>
+                    <span class="BenchColHead LoftCol" id="BenchHeadLoft">Quad 6×16²</span>
                     <span class="BenchColHead VoxCol" id="BenchHeadVox">Voxel 32³</span>
 
                     <span class="BenchMetricName">Compact / r16f VRAM</span>
@@ -608,12 +633,12 @@
                     <span class="BenchCellLoft" id="BenchLoftUs">--</span>
                     <span class="BenchCellVox" id="BenchVoxUs">--</span>
 
-                    <span class="BenchMetricName">Normal Continuity</span>
-                    <span class="BenchCellLoft">C¹ Smooth</span>
-                    <span class="BenchCellVox">C⁰ Staircase</span>
+                    <span class="BenchMetricName">Patch Grid &amp; Continuity</span>
+                    <span class="BenchCellLoft" id="BenchLoftContinuity">C² · 0 Poles</span>
+                    <span class="BenchCellVox" id="BenchVoxContinuity">C⁰ Staircase</span>
                 </div>
                 <div class="InsightNote" id="LiveSummaryNote">
-                    💡 Switch to <strong>Pure d(x)=0 SDF</strong> + <strong>Split Viewport</strong> + <strong>Zebra Stripes</strong> to inspect C¹ bicubic Hermite surface continuity vs. trilinear voxel grid terracing.
+                    💡 Closed 6-Chart 4-Corner C² Coons–Spline patches wrap front fascia, hood, roof, flanks, and rear tail with zero polar fan pinch-points.
                 </div>
             </div>
         </aside>

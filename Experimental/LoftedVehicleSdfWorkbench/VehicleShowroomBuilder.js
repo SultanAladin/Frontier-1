@@ -5,7 +5,8 @@
 
 import {
     VehicleWheelMounts,
-    EvalBicubicLoftSurface
+    EvalBicubicLoftSurface,
+    EvalBicubicQuadChartSurface
 } from "./LoftedVehicleSdfCompiler.js";
 
 export const ShowroomVertexFloats = 11;
@@ -555,3 +556,135 @@ export function BuildVoxelCageBuffers(VoxelSdf)
         VertexCount: Arr.length / CageLineVertexFloats
     };
 }
+
+// Builds the Closed 6-Chart 4-Corner C² Quad-Patch Wireframe Overlay (ZERO polar fan singularities!):
+//   - Longitudinal Buttock Quad-Loops (Solar Gold): continuous Front -> Hood -> Roof -> Rear -> Underbody
+//   - Transverse Station Rib Quad-Loops (Electric Cyan): continuous Left Flank -> Roof -> Right Flank -> Underbody
+//   - Horizontal Beltline / Grille Quad-Loops (Luminous Aqua): continuous Front Grille -> Left Door -> Rear -> Right Door
+//   - 4 Revolved Wheel Profile Curves (Emerald Mint)
+export function BuildQuadPatchCageBuffers(QuadPatchSdf)
+{
+    const Lines = [];
+    const GridN = QuadPatchSdf.GridN;
+    const SegsPerPatch = GridN <= 8 ? 6 : (GridN <= 16 ? 4 : 3);
+    const TotalSteps   = GridN * SegsPerPatch;
+
+    function PushSeg(Ax, Ay, Az, Bx, By, Bz, Cr, Cg, Cb, Alpha)
+    {
+        Lines.push(
+            Ax, Ay, Az, Cr, Cg, Cb, Alpha,
+            Bx, By, Bz, Cr, Cg, Cb, Alpha
+        );
+    }
+
+    function EvalOffsetChartPoint(ChartIdx, Xi, Eta, LiftM)
+    {
+        const S = EvalBicubicQuadChartSurface(QuadPatchSdf, ChartIdx, Xi, Eta);
+        const Nx = S.Sxi[1] * S.Seta[2] - S.Sxi[2] * S.Seta[1];
+        const Ny = S.Sxi[2] * S.Seta[0] - S.Sxi[0] * S.Seta[2];
+        const Nz = S.Sxi[0] * S.Seta[1] - S.Sxi[1] * S.Seta[0];
+        const Q  = S.UnitQ;
+        const Flip = (Nx * Q[0] + Ny * Q[1] + Nz * Q[2]) < 0.0 ? -1.0 : 1.0;
+        const Len  = Math.hypot(Nx, Ny, Nz) || 1.0;
+        return [
+            S.Pos[0] + (Nx / Len) * Flip * LiftM,
+            S.Pos[1] + (Ny / Len) * Flip * LiftM,
+            S.Pos[2] + (Nz / Len) * Flip * LiftM
+        ];
+    }
+
+    // Color tints for the 3 mutually orthogonal closed great-circle loop sets:
+    const ColGold = [0.98, 0.75, 0.26]; // Longitudinal Buttock Loops (Top, Bottom, Front, Rear constant-Xi)
+    const ColCyan = [0.24, 0.86, 0.98]; // Transverse Rib Loops (Top, Bottom constant-Eta + Left, Right constant-Xi)
+    const ColAqua = [0.50, 0.96, 0.86]; // Horizontal Beltline Loops (Left, Right, Front, Rear constant-Eta)
+
+    for (let ChartIdx = 0; ChartIdx < 6; ++ChartIdx)
+    {
+        // Deduplicate the 12 shared cube-seam edges so every boundary curve is emitted once!
+        const IStart = (ChartIdx === 0 || ChartIdx === 1) ? 1 : 0;
+        const IEnd   = (ChartIdx === 0 || ChartIdx === 1) ? (GridN - 1) : GridN;
+        const JStart = (ChartIdx === 2 || ChartIdx === 3) ? 0 : 1;
+        const JEnd   = (ChartIdx === 2 || ChartIdx === 3) ? GridN : (GridN - 1);
+
+        // Constant-Xi curves (sweeping Eta in [-1, +1]):
+        //   Charts 0, 1 (Right/Left Flanks) -> Transverse Rib loops (Cyan)
+        //   Charts 2, 3, 4, 5 (Top/Bottom/Front/Rear) -> Longitudinal Buttock loops (Gold)
+        const XiCol = (ChartIdx === 0 || ChartIdx === 1) ? ColCyan : ColGold;
+        for (let I = IStart; I <= IEnd; ++I)
+        {
+            const Xi = -1.0 + (2.0 * I) / GridN;
+            let Prev = EvalOffsetChartPoint(ChartIdx, Xi, -1.0, 0.0048);
+            let PrevCarved = InsideCarvedWheelArch(Prev[0], Prev[1], Prev[2]);
+            for (let S = 1; S <= TotalSteps; ++S)
+            {
+                const Eta  = -1.0 + (2.0 * S) / TotalSteps;
+                const Curr = EvalOffsetChartPoint(ChartIdx, Xi, Eta, 0.0048);
+                const CurrCarved = InsideCarvedWheelArch(Curr[0], Curr[1], Curr[2]);
+                if (!PrevCarved && !CurrCarved)
+                {
+                    PushSeg(Prev[0], Prev[1], Prev[2], Curr[0], Curr[1], Curr[2], XiCol[0], XiCol[1], XiCol[2], 0.90);
+                }
+                Prev = Curr;
+                PrevCarved = CurrCarved;
+            }
+        }
+
+        // Constant-Eta curves (sweeping Xi in [-1, +1]):
+        //   Charts 2, 3 (Top/Bottom) -> Transverse Rib loops (Cyan)
+        //   Charts 0, 1, 4, 5 (Right/Left/Front/Rear) -> Horizontal Beltline / Grille loops (Aqua)
+        const EtaCol = (ChartIdx === 2 || ChartIdx === 3) ? ColCyan : ColAqua;
+        for (let J = JStart; J <= JEnd; ++J)
+        {
+            const Eta = -1.0 + (2.0 * J) / GridN;
+            let Prev = EvalOffsetChartPoint(ChartIdx, -1.0, Eta, 0.0048);
+            let PrevCarved = InsideCarvedWheelArch(Prev[0], Prev[1], Prev[2]);
+            for (let S = 1; S <= TotalSteps; ++S)
+            {
+                const Xi   = -1.0 + (2.0 * S) / TotalSteps;
+                const Curr = EvalOffsetChartPoint(ChartIdx, Xi, Eta, 0.0048);
+                const CurrCarved = InsideCarvedWheelArch(Curr[0], Curr[1], Curr[2]);
+                if (!PrevCarved && !CurrCarved)
+                {
+                    PushSeg(Prev[0], Prev[1], Prev[2], Curr[0], Curr[1], Curr[2], EtaCol[0], EtaCol[1], EtaCol[2], 0.90);
+                }
+                Prev = Curr;
+                PrevCarved = CurrCarved;
+            }
+        }
+    }
+
+    // 4 Revolved Wheel Profile Curves (Emerald Mint)
+    const WheelRingSteps = 48;
+    const Hw = QuadPatchSdf.WheelHalfWidth;
+    for (let W = 0; W < 4; ++W)
+    {
+        const Mount = VehicleWheelMounts[W];
+        const Flip  = Mount.MirrorX ? -1.0 : 1.0;
+        const RingCount = Math.min(6, QuadPatchSdf.WheelSamples);
+        for (let R = 0; R < RingCount; ++R)
+        {
+            const Frac = R / (RingCount - 1);
+            const SampleIdx = Math.min(QuadPatchSdf.WheelSamples - 1, Math.round(Frac * (QuadPatchSdf.WheelSamples - 1)));
+            const Rad = QuadPatchSdf.WheelOuterProfile[SampleIdx] + 0.004;
+            const Wx  = Mount.Center[0] + (-Hw + 2.0 * Hw * Frac) * Flip;
+
+            for (let S = 0; S < WheelRingSteps; ++S)
+            {
+                const A0 = (S / WheelRingSteps) * Math.PI * 2.0;
+                const A1 = ((S + 1) / WheelRingSteps) * Math.PI * 2.0;
+                PushSeg(
+                    Wx, Mount.Center[1] + Math.sin(A0) * Rad, Mount.Center[2] + Math.cos(A0) * Rad,
+                    Wx, Mount.Center[1] + Math.sin(A1) * Rad, Mount.Center[2] + Math.cos(A1) * Rad,
+                    0.28, 0.92, 0.62, 0.90
+                );
+            }
+        }
+    }
+
+    const Arr = new Float32Array(Lines);
+    return {
+        Vertices: Arr,
+        VertexCount: Arr.length / CageLineVertexFloats
+    };
+}
+

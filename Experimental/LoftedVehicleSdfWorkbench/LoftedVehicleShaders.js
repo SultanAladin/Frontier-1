@@ -13,18 +13,20 @@ struct SceneUniforms {
     InvViewProj : mat4x4<f32>,
     Params0     : vec4<f32>, // xyz = CamPos, w = ViewportW
     Params1     : vec4<f32>, // xyz = SunDir, w = ViewportH
-    Params2     : vec4<f32>, // x = ActiveSdfMode (0=Loft,1=Vox), y = SplitToggle, z = DisplayMode, w = ZebraToggle
+    Params2     : vec4<f32>, // x = ActiveSdfMode (0=QuadPatch, 1=CylLoft, 2=Vox), y = SplitToggle, z = DisplayMode, w = ZebraToggle
     Params3     : vec4<f32>, // x = RibsM, y = RailsK, z = WheelSamples, w = WheelHalfWidth
     Params4     : vec4<f32>, // x = LoftZMin, y = LoftZMax, z = LoftZSpan, w = CutCoord
     Params5     : vec4<f32>, // xyz = VoxMin, w = CutAxisMode (0=Z, 1=X)
     Params6     : vec4<f32>, // xyz = VoxMax, w = VoxelRes
     Params7     : vec4<f32>, // x = ShadowSoftness, y = FloorReflect, z = CutClipToggle, w = ElapsedSec
+    Params8     : vec4<f32>, // x = QuadKnotSpan, y = QuadHaloLimit, z = SplitRightMode (2=Vox, 1=CylLoft), w = QuadWheelSamples
 };
 
 @group(0) @binding(0) var<uniform> Uni : SceneUniforms;
 @group(0) @binding(1) var LoftTex      : texture_2d<f32>;
 @group(0) @binding(2) var VoxelTex     : texture_3d<f32>;
 @group(0) @binding(3) var LinearSamp   : sampler;
+@group(0) @binding(4) var QuadTex      : texture_2d<f32>;
 
 fn FractPositive(X : f32) -> f32 {
     return X - floor(X);
@@ -287,6 +289,311 @@ fn EvalLoftVehicleSdf(P : vec3<f32>) -> f32 {
     return min(DBody, min(DwFront, DwRear));
 }
 
+//============================================================================================================================================
+//      CLOSED 6-CHART 4-CORNER C² COONS-SPLINE QUAD-PATCH SDF (ZERO POLAR FAN SINGULARITIES!)
+//============================================================================================================================================
+
+struct QuadUnitRay {
+    Q    : vec3<f32>,
+    Qxi  : vec3<f32>,
+    Qeta : vec3<f32>,
+};
+
+fn EvalQuadChartUnitQ(ChartIdx : i32, Xi : f32, Eta : f32) -> QuadUnitRay {
+    let QuarterPi = 0.7853981634;
+    let Cx  = cos(Xi * QuarterPi);
+    let Cy  = cos(Eta * QuarterPi);
+    let Tx  = sin(Xi * QuarterPi) / Cx;
+    let Ty  = sin(Eta * QuarterPi) / Cy;
+    let DTx = QuarterPi / (Cx * Cx);
+    let DTy = QuarterPi / (Cy * Cy);
+
+    var U    = vec3<f32>(0.0);
+    var Dxi  = vec3<f32>(0.0);
+    var Deta = vec3<f32>(0.0);
+
+    if (ChartIdx == 0) {
+        U = vec3<f32>(1.0, Ty, -Tx);
+        Dxi = vec3<f32>(0.0, 0.0, -DTx);
+        Deta = vec3<f32>(0.0, DTy, 0.0);
+    } else if (ChartIdx == 1) {
+        U = vec3<f32>(-1.0, Ty, Tx);
+        Dxi = vec3<f32>(0.0, 0.0, DTx);
+        Deta = vec3<f32>(0.0, DTy, 0.0);
+    } else if (ChartIdx == 2) {
+        U = vec3<f32>(Tx, 1.0, -Ty);
+        Dxi = vec3<f32>(DTx, 0.0, 0.0);
+        Deta = vec3<f32>(0.0, 0.0, -DTy);
+    } else if (ChartIdx == 3) {
+        U = vec3<f32>(Tx, -1.0, Ty);
+        Dxi = vec3<f32>(DTx, 0.0, 0.0);
+        Deta = vec3<f32>(0.0, 0.0, DTy);
+    } else if (ChartIdx == 4) {
+        U = vec3<f32>(Tx, Ty, 1.0);
+        Dxi = vec3<f32>(DTx, 0.0, 0.0);
+        Deta = vec3<f32>(0.0, DTy, 0.0);
+    } else {
+        U = vec3<f32>(-Tx, Ty, -1.0);
+        Dxi = vec3<f32>(-DTx, 0.0, 0.0);
+        Deta = vec3<f32>(0.0, DTy, 0.0);
+    }
+
+    let InvL = inverseSqrt(max(dot(U, U), 1e-12));
+    let Q    = U * InvL;
+    var Out  : QuadUnitRay;
+    Out.Q    = Q;
+    Out.Qxi  = (Dxi  - Q * dot(Q, Dxi))  * InvL;
+    Out.Qeta = (Deta - Q * dot(Q, Deta)) * InvL;
+    return Out;
+}
+
+struct ConfocalSeed {
+    ChartIdx : i32,
+    Xi       : f32,
+    Eta      : f32,
+    RPt      : f32,
+};
+
+fn WorldToConfocalSeed(P : vec3<f32>) -> ConfocalSeed {
+    let Ax = 0.28;
+    let Ay = 0.14;
+    let Az = 2.48;
+    let Y0 = 0.78;
+    let Dx = P.x;
+    let Dy = P.y - Y0;
+    let Dz = P.z;
+
+    var R = max(0.05, length(vec3<f32>(Dx / (Ax + 0.65), Dy / (Ay + 0.65), Dz / (Az + 0.65))) * 0.65);
+    for (var It = 0; It < 4; It = It + 1) {
+        let Rx = Ax + R;
+        let Ry = Ay + R;
+        let Rz = Az + R;
+        let Ux = Dx / Rx;
+        let Uy = Dy / Ry;
+        let Uz = Dz / Rz;
+        let Res = Ux * Ux + Uy * Uy + Uz * Uz - 1.0;
+        let Der = -2.0 * (Ux * Ux / Rx + Uy * Uy / Ry + Uz * Uz / Rz);
+        R = max(-0.12, R - Res / min(Der, -1e-6));
+    }
+
+    let Rx = max(0.02, Ax + R);
+    let Ry = max(0.02, Ay + R);
+    let Rz = max(0.02, Az + R);
+    let Q  = normalize(vec3<f32>(Dx / Rx, Dy / Ry, Dz / Rz));
+    let Aq = abs(Q);
+
+    var ChartIdx = 0;
+    var Tx = 0.0;
+    var Ty = 0.0;
+    if (Aq.x >= Aq.y && Aq.x >= Aq.z) {
+        let Inv = 1.0 / max(Aq.x, 1e-8);
+        if (Q.x >= 0.0) { ChartIdx = 0; Tx = -Q.z * Inv; Ty = Q.y * Inv; }
+        else            { ChartIdx = 1; Tx =  Q.z * Inv; Ty = Q.y * Inv; }
+    } else if (Aq.y >= Aq.x && Aq.y >= Aq.z) {
+        let Inv = 1.0 / max(Aq.y, 1e-8);
+        if (Q.y >= 0.0) { ChartIdx = 2; Tx = Q.x * Inv; Ty = -Q.z * Inv; }
+        else            { ChartIdx = 3; Tx = Q.x * Inv; Ty =  Q.z * Inv; }
+    } else {
+        let Inv = 1.0 / max(Aq.z, 1e-8);
+        if (Q.z >= 0.0) { ChartIdx = 4; Tx =  Q.x * Inv; Ty = Q.y * Inv; }
+        else            { ChartIdx = 5; Tx = -Q.x * Inv; Ty = Q.y * Inv; }
+    }
+
+    var Out : ConfocalSeed;
+    Out.ChartIdx = ChartIdx;
+    Out.Xi       = atan(Tx) * 1.2732395447;
+    Out.Eta      = atan(Ty) * 1.2732395447;
+    Out.RPt      = R;
+    return Out;
+}
+
+fn EvalQuadRadiusOnly(ChartIdx : i32, XiIn : f32, EtaIn : f32) -> f32 {
+    let KSpan = i32(Uni.Params8.x);
+    let HLim  = Uni.Params8.y;
+    let Xi    = clamp(XiIn,  -HLim, HLim);
+    let Eta   = clamp(EtaIn, -HLim, HLim);
+
+    let Su = ((Xi  + HLim) / (2.0 * HLim)) * f32(KSpan - 1);
+    let Sv = ((Eta + HLim) / (2.0 * HLim)) * f32(KSpan - 1);
+    let I0 = min(KSpan - 2, max(0, i32(floor(Su))));
+    let J0 = min(KSpan - 2, max(0, i32(floor(Sv))));
+    let Hu = HermiteWeights(Su - f32(I0));
+    let Hv = HermiteWeights(Sv - f32(J0));
+
+    let Row0 = ChartIdx * KSpan + J0;
+    let C00  = textureLoad(QuadTex, vec2<i32>(I0,     Row0),     0);
+    let C10  = textureLoad(QuadTex, vec2<i32>(I0 + 1, Row0),     0);
+    let C01  = textureLoad(QuadTex, vec2<i32>(I0,     Row0 + 1), 0);
+    let C11  = textureLoad(QuadTex, vec2<i32>(I0 + 1, Row0 + 1), 0);
+
+    let R0  = Hu.x * C00.x + Hu.y * C00.y + Hu.z * C10.x + Hu.w * C10.y;
+    let Rv0 = Hu.x * C00.z + Hu.y * C00.w + Hu.z * C10.z + Hu.w * C10.w;
+    let R1  = Hu.x * C01.x + Hu.y * C01.y + Hu.z * C11.x + Hu.w * C11.y;
+    let Rv1 = Hu.x * C01.z + Hu.y * C01.w + Hu.z * C11.z + Hu.w * C11.w;
+    return Hv.x * R0 + Hv.y * Rv0 + Hv.z * R1 + Hv.w * Rv1;
+}
+
+fn EvalQuadPatchFull(ChartIdx : i32, XiIn : f32, EtaIn : f32) -> LoftPatchHit {
+    let KSpan = i32(Uni.Params8.x);
+    let HLim  = Uni.Params8.y;
+    let Xi    = clamp(XiIn,  -HLim, HLim);
+    let Eta   = clamp(EtaIn, -HLim, HLim);
+
+    let Su  = ((Xi  + HLim) / (2.0 * HLim)) * f32(KSpan - 1);
+    let Sv  = ((Eta + HLim) / (2.0 * HLim)) * f32(KSpan - 1);
+    let I0  = min(KSpan - 2, max(0, i32(floor(Su))));
+    let J0  = min(KSpan - 2, max(0, i32(floor(Sv))));
+    let Tu  = Su - f32(I0);
+    let Tv  = Sv - f32(J0);
+    let Hu  = HermiteWeights(Tu);
+    let Dhu = HermiteDerivWeights(Tu);
+    let Hv  = HermiteWeights(Tv);
+    let Dhv = HermiteDerivWeights(Tv);
+
+    let Row0 = ChartIdx * KSpan + J0;
+    let C00  = textureLoad(QuadTex, vec2<i32>(I0,     Row0),     0);
+    let C10  = textureLoad(QuadTex, vec2<i32>(I0 + 1, Row0),     0);
+    let C01  = textureLoad(QuadTex, vec2<i32>(I0,     Row0 + 1), 0);
+    let C11  = textureLoad(QuadTex, vec2<i32>(I0 + 1, Row0 + 1), 0);
+
+    let R0    = Hu.x  * C00.x + Hu.y  * C00.y + Hu.z  * C10.x + Hu.w  * C10.y;
+    let DRu0  = Dhu.x * C00.x + Dhu.y * C00.y + Dhu.z * C10.x + Dhu.w * C10.y;
+    let Rv0   = Hu.x  * C00.z + Hu.y  * C00.w + Hu.z  * C10.z + Hu.w  * C10.w;
+    let DRuv0 = Dhu.x * C00.z + Dhu.y * C00.w + Dhu.z * C10.z + Dhu.w * C10.w;
+
+    let R1    = Hu.x  * C01.x + Hu.y  * C01.y + Hu.z  * C11.x + Hu.w  * C11.y;
+    let DRu1  = Dhu.x * C01.x + Dhu.y * C01.y + Dhu.z * C11.x + Dhu.w * C11.y;
+    let Rv1   = Hu.x  * C01.z + Hu.y  * C01.w + Hu.z  * C11.z + Hu.w  * C11.w;
+    let DRuv1 = Dhu.x * C01.z + Dhu.y * C01.w + Dhu.z * C11.z + Dhu.w * C11.w;
+
+    let DerivScale = f32(KSpan - 1) / (2.0 * HLim);
+    let R    = Hv.x * R0 + Hv.y * Rv0 + Hv.z * R1 + Hv.w * Rv1;
+    let Rxi  = (Hv.x * DRu0 + Hv.y * DRuv0 + Hv.z * DRu1 + Hv.w * DRuv1) * DerivScale;
+    let Reta = (Dhv.x * R0  + Dhv.y * Rv0  + Dhv.z * R1  + Dhv.w * Rv1)  * DerivScale;
+
+    let Ray = EvalQuadChartUnitQ(ChartIdx, Xi, Eta);
+    let RadVec = vec3<f32>(0.28 + R, 0.14 + R, 2.48 + R);
+
+    var Out : LoftPatchHit;
+    Out.Pos = vec3<f32>(RadVec.x * Ray.Q.x, 0.78 + RadVec.y * Ray.Q.y, RadVec.z * Ray.Q.z);
+    Out.Su  = Rxi  * Ray.Q + RadVec * Ray.Qxi;
+    Out.Sv  = Reta * Ray.Q + RadVec * Ray.Qeta;
+    return Out;
+}
+
+fn EvalQuadWheelPairSdf(P : vec3<f32>, AxleZ : f32) -> f32 {
+    let Dx  = 1.0475 - abs(P.x);
+    let Dy  = P.y - 0.5086;
+    let Dz  = P.z - AxleZ;
+    let Rho = length(vec2<f32>(Dy, Dz));
+    let Hw  = Uni.Params3.w;
+
+    if (abs(Dx) > Hw + 0.35 && Rho > 0.86) {
+        return length(vec2<f32>(abs(Dx) - Hw, max(0.0, Rho - 0.51)));
+    }
+
+    let WSamp = i32(Uni.Params8.w);
+    let WheelRow = 6 * i32(Uni.Params8.x);
+    let ClampedX = clamp(Dx, -Hw, Hw);
+    let NormS = ((ClampedX + Hw) / (2.0 * Hw)) * f32(WSamp - 1);
+    let I0 = min(WSamp - 2, max(0, i32(floor(NormS))));
+    let T  = NormS - f32(I0);
+
+    let H  = HermiteWeights(T);
+    let W0 = textureLoad(QuadTex, vec2<i32>(I0, WheelRow), 0);
+    let W1 = textureLoad(QuadTex, vec2<i32>(I0 + 1, WheelRow), 0);
+    let ROuter = H.x * W0.x + H.y * W0.y + H.z * W1.x + H.w * W1.y;
+
+    let DRad = Rho - ROuter;
+    let DAx  = abs(Dx) - Hw;
+
+    var DishRecess = 0.0;
+    if (Rho < 0.31 && Dx < -Hw + 0.06) {
+        let CenterDist = abs(Rho - 0.14);
+        DishRecess = 0.032 * (1.0 - clamp(CenterDist / 0.19, 0.0, 1.0));
+    }
+    let EffAx = max(DAx, -(Hw + DishRecess) - Dx);
+    let Outside = length(vec2<f32>(max(DRad, 0.0), max(EffAx, 0.0)));
+    let Inside  = min(max(DRad, EffAx), 0.0);
+    return Outside + Inside;
+}
+
+fn EvalQuadPatchVehicleSdf(P : vec3<f32>) -> f32 {
+    let BMin = vec3<f32>(-1.250, 0.000, -3.110);
+    let BMax = vec3<f32>( 1.250, 1.769,  3.110);
+    let BoxDelta = max(max(BMin - P, vec3<f32>(0.0)), P - BMax);
+    let BoxDist  = length(BoxDelta);
+    if (BoxDist > 0.65) {
+        return BoxDist + 0.03;
+    }
+
+    let Seed = WorldToConfocalSeed(P);
+    let ChartIdx = Seed.ChartIdx;
+    let HLim = Uni.Params8.y;
+
+    var BestXi  = Seed.Xi;
+    var BestEta = Seed.Eta;
+    var BestSq  = 1e9;
+    var DXiSeeds  = array<f32, 5>(0.0, -0.07, 0.07, 0.0, 0.0);
+    var DEtaSeeds = array<f32, 5>(0.0, 0.0, 0.0, -0.07, 0.07);
+
+    for (var S = 0; S < 5; S = S + 1) {
+        let Cxi  = clamp(Seed.Xi  + DXiSeeds[S],  -HLim, HLim);
+        let Ceta = clamp(Seed.Eta + DEtaSeeds[S], -HLim, HLim);
+        let R    = EvalQuadRadiusOnly(ChartIdx, Cxi, Ceta);
+        let Q    = EvalQuadChartUnitQ(ChartIdx, Cxi, Ceta).Q;
+        let Sp   = vec3<f32>((0.28 + R) * Q.x, 0.78 + (0.14 + R) * Q.y, (2.48 + R) * Q.z);
+        let Diff = P - Sp;
+        let Sq   = dot(Diff, Diff);
+        if (Sq < BestSq) {
+            BestSq  = Sq;
+            BestXi  = Cxi;
+            BestEta = Ceta;
+        }
+    }
+
+    var Xi  = BestXi;
+    var Eta = BestEta;
+    for (var Step = 0; Step < 3; Step = Step + 1) {
+        let Hit = EvalQuadPatchFull(ChartIdx, Xi, Eta);
+        let Res = P - Hit.Pos;
+        let G1  = dot(Res, Hit.Su);
+        let G2  = dot(Res, Hit.Sv);
+        let A11 = dot(Hit.Su, Hit.Su) + 0.002;
+        let A12 = dot(Hit.Su, Hit.Sv);
+        let A22 = dot(Hit.Sv, Hit.Sv) + 0.002;
+        let Det = A11 * A22 - A12 * A12;
+        if (Det > 1e-6) {
+            let DXi  = clamp(( A22 * G1 - A12 * G2) / Det, -0.16, 0.16);
+            let DEta = clamp((-A12 * G1 + A11 * G2) / Det, -0.16, 0.16);
+            Xi  = clamp(Xi  + DXi,  -HLim, HLim);
+            Eta = clamp(Eta + DEta, -HLim, HLim);
+        }
+    }
+
+    let FinalHit = EvalQuadPatchFull(ChartIdx, Xi, Eta);
+    let SkinDist = length(P - FinalHit.Pos);
+    let RSurf    = EvalQuadRadiusOnly(ChartIdx, Seed.Xi, Seed.Eta);
+    var DBody    = select(SkinDist, -SkinDist, Seed.RPt <= RSurf);
+
+    let AbsX = abs(P.x);
+    let RhoFront = length(vec2<f32>(P.y - 0.5086, P.z - 1.7274));
+    let DfRad = RhoFront - 0.560;
+    let DfAx  = max(0.750 - AbsX, AbsX - 1.35);
+    let DArchFront = length(vec2<f32>(max(DfRad, 0.0), max(DfAx, 0.0))) + min(max(DfRad, DfAx), 0.0);
+    DBody = max(DBody, -DArchFront);
+
+    let RhoRear = length(vec2<f32>(P.y - 0.5086, P.z + 1.6686));
+    let DrRad = RhoRear - 0.562;
+    let DrAx  = max(0.885 - AbsX, AbsX - 1.35);
+    let DArchRear = length(vec2<f32>(max(DrRad, 0.0), max(DrAx, 0.0))) + min(max(DrRad, DrAx), 0.0);
+    DBody = max(DBody, -DArchRear);
+
+    let DwFront = EvalQuadWheelPairSdf(P,  1.7274);
+    let DwRear  = EvalQuadWheelPairSdf(P, -1.6686);
+    return min(DBody, min(DwFront, DwRear));
+}
+
 fn EvalVoxelVehicleSdf(P : vec3<f32>) -> f32 {
     let BMin = Uni.Params5.xyz;
     let BMax = Uni.Params6.xyz;
@@ -299,25 +606,31 @@ fn EvalVoxelVehicleSdf(P : vec3<f32>) -> f32 {
     return textureSampleLevel(VoxelTex, LinearSamp, Uvw, 0.0).r + ExtDist;
 }
 
-fn SelectVoxelForScreenX(FragX : f32) -> bool {
+fn ResolveSdfModeForScreenX(FragX : f32) -> i32 {
     if (Uni.Params2.y > 0.5) {
-        return FragX >= (Uni.Params0.w * 0.5);
+        if (FragX >= (Uni.Params0.w * 0.5)) {
+            return i32(round(Uni.Params8.z));
+        }
+        return 0;
     }
-    return Uni.Params2.x > 0.5;
+    return i32(round(Uni.Params2.x));
 }
 
-fn EvalSelectedSdf(P : vec3<f32>, UseVoxel : bool) -> f32 {
-    if (UseVoxel) {
+fn EvalSelectedSdf(P : vec3<f32>, SdfMode : i32) -> f32 {
+    if (SdfMode == 2) {
         return EvalVoxelVehicleSdf(P);
     }
-    return EvalLoftVehicleSdf(P);
+    if (SdfMode == 1) {
+        return EvalLoftVehicleSdf(P);
+    }
+    return EvalQuadPatchVehicleSdf(P);
 }
 
-fn EvalSdfGradientNormal(P : vec3<f32>, UseVoxel : bool) -> vec3<f32> {
-    let Eps = select(0.0045, 0.014, UseVoxel);
-    let Dx = EvalSelectedSdf(P + vec3<f32>(Eps, 0.0, 0.0), UseVoxel) - EvalSelectedSdf(P - vec3<f32>(Eps, 0.0, 0.0), UseVoxel);
-    let Dy = EvalSelectedSdf(P + vec3<f32>(0.0, Eps, 0.0), UseVoxel) - EvalSelectedSdf(P - vec3<f32>(0.0, Eps, 0.0), UseVoxel);
-    let Dz = EvalSelectedSdf(P + vec3<f32>(0.0, 0.0, Eps), UseVoxel) - EvalSelectedSdf(P - vec3<f32>(0.0, 0.0, Eps), UseVoxel);
+fn EvalSdfGradientNormal(P : vec3<f32>, SdfMode : i32) -> vec3<f32> {
+    let Eps = select(0.0045, 0.014, SdfMode == 2);
+    let Dx = EvalSelectedSdf(P + vec3<f32>(Eps, 0.0, 0.0), SdfMode) - EvalSelectedSdf(P - vec3<f32>(Eps, 0.0, 0.0), SdfMode);
+    let Dy = EvalSelectedSdf(P + vec3<f32>(0.0, Eps, 0.0), SdfMode) - EvalSelectedSdf(P - vec3<f32>(0.0, Eps, 0.0), SdfMode);
+    let Dz = EvalSelectedSdf(P + vec3<f32>(0.0, 0.0, Eps), SdfMode) - EvalSelectedSdf(P - vec3<f32>(0.0, 0.0, Eps), SdfMode);
     return normalize(vec3<f32>(Dx, Dy, Dz) + vec3<f32>(1e-7));
 }
 
@@ -335,7 +648,7 @@ fn IntersectCarAabb(Ro : vec3<f32>, Rd : vec3<f32>) -> vec2<f32> {
     return vec2<f32>(TEnter, TExit);
 }
 
-fn EvalSdfSoftShadow(Origin : vec3<f32>, RayDir : vec3<f32>, UseVoxel : bool) -> f32 {
+fn EvalSdfSoftShadow(Origin : vec3<f32>, RayDir : vec3<f32>, SdfMode : i32) -> f32 {
     let HitBox = IntersectCarAabb(Origin, RayDir);
     if (HitBox.x >= HitBox.y) {
         return 1.0;
@@ -347,7 +660,7 @@ fn EvalSdfSoftShadow(Origin : vec3<f32>, RayDir : vec3<f32>, UseVoxel : bool) ->
         if (T > HitBox.y) {
             break;
         }
-        let D = EvalSelectedSdf(Origin + RayDir * T, UseVoxel);
+        let D = EvalSelectedSdf(Origin + RayDir * T, SdfMode);
         if (D < 0.002) {
             return 0.0;
         }
@@ -357,7 +670,7 @@ fn EvalSdfSoftShadow(Origin : vec3<f32>, RayDir : vec3<f32>, UseVoxel : bool) ->
     return clamp(Vis, 0.0, 1.0);
 }
 
-fn EvalSdfUnderbodyAo(WorldPos : vec3<f32>, WorldN : vec3<f32>, UseVoxel : bool) -> f32 {
+fn EvalSdfUnderbodyAo(WorldPos : vec3<f32>, WorldN : vec3<f32>, SdfMode : i32) -> f32 {
     if (abs(WorldPos.x) > 1.85 || abs(WorldPos.z) > 3.65 || WorldPos.y > 1.95) {
         return 1.0;
     }
@@ -366,7 +679,7 @@ fn EvalSdfUnderbodyAo(WorldPos : vec3<f32>, WorldN : vec3<f32>, UseVoxel : bool)
     var TapDist = array<f32, 4>(0.08, 0.20, 0.38, 0.62);
     for (var K = 0; K < 4; K = K + 1) {
         let H = TapDist[K];
-        let D = EvalSelectedSdf(WorldPos + WorldN * H, UseVoxel);
+        let D = EvalSelectedSdf(WorldPos + WorldN * H, SdfMode);
         Occ = Occ + max(0.0, H - D) * Weight;
         Weight = Weight * 0.62;
     }
@@ -414,7 +727,7 @@ fn VsMain(In : VsIn) -> VsOut {
 @fragment
 fn FsMain(In : VsOut) -> @location(0) vec4<f32> {
     let Tag = In.Props.y;
-    let UseVoxel = SelectVoxelForScreenX(In.ClipPos.x);
+    let SdfMode = ResolveSdfModeForScreenX(In.ClipPos.x);
 
     // Optional cutaway clipping of vehicle triangles (Tag >= 1.0 && Tag <= 5.5) when CutClipToggle is active
     if (Uni.Params7.z > 0.5 && Tag > 0.5 && Tag < 5.6) {
@@ -433,7 +746,7 @@ fn FsMain(In : VsOut) -> @location(0) vec4<f32> {
 
     // Tag 7.0 = Interactive 3D Signed Distance Cross-Section Isoline Inspection Plane!
     if (Tag > 6.5) {
-        let Sd = EvalSelectedSdf(In.WorldPos, UseVoxel);
+        let Sd = EvalSelectedSdf(In.WorldPos, SdfMode);
         let Wave = 0.5 + 0.5 * cos(Sd * 58.0);
         let MajorBand = smoothstep(0.92, 0.995, Wave);
         let ZeroIso   = 1.0 - smoothstep(0.002, 0.011, abs(Sd));
@@ -468,8 +781,8 @@ fn FsMain(In : VsOut) -> @location(0) vec4<f32> {
     var Ao     = 1.0;
     if (Tag < 0.5 || Tag > 5.5) {
         // Showroom Floor & Backdrop receive live SDF Soft Shadows + SDF Underbody Contact AO!
-        Shadow = EvalSdfSoftShadow(In.WorldPos + N * 0.018, L, UseVoxel);
-        Ao     = EvalSdfUnderbodyAo(In.WorldPos, N, UseVoxel);
+        Shadow = EvalSdfSoftShadow(In.WorldPos + N * 0.018, L, SdfMode);
+        Ao     = EvalSdfUnderbodyAo(In.WorldPos, N, SdfMode);
     } else {
         Ao = clamp(0.55 + 0.45 * N.y, 0.35, 1.0);
     }
@@ -509,7 +822,7 @@ fn FsMain(In : VsOut) -> @location(0) vec4<f32> {
                 var HitCar = false;
                 for (var Step = 0; Step < 18; Step = Step + 1) {
                     if (Rt > BoxHit.y) { break; }
-                    let Rd = EvalSelectedSdf(In.WorldPos + RDir * Rt, UseVoxel);
+                    let Rd = EvalSelectedSdf(In.WorldPos + RDir * Rt, SdfMode);
                     if (Rd < 0.008) {
                         HitCar = true;
                         break;
@@ -518,7 +831,7 @@ fn FsMain(In : VsOut) -> @location(0) vec4<f32> {
                 }
                 if (HitCar) {
                     let HitP = In.WorldPos + RDir * Rt;
-                    let HitN = EvalSdfGradientNormal(HitP, UseVoxel);
+                    let HitN = EvalSdfGradientNormal(HitP, SdfMode);
                     let CarCoat = select(vec3<f32>(0.045, 0.26, 0.56), vec3<f32>(0.04, 0.045, 0.055), HitP.y < 0.56);
                     let ReflLit = CarCoat * (0.28 + 0.95 * max(dot(HitN, L), 0.0)) + vec3<f32>(0.18, 0.24, 0.32) * max(HitN.y, 0.0);
                     let DistAtten = exp(-Rt * 0.42);
@@ -564,8 +877,8 @@ fn FsMain(In : IsoVsOut) -> IsoFsOut {
     let FarWorld = FarH.xyz / FarH.w;
     let RayDir = normalize(FarWorld - CamPos);
 
-    let UseVoxel = SelectVoxelForScreenX(In.ClipPos.x);
-    let BoxHit   = IntersectCarAabb(CamPos, RayDir);
+    let SdfMode = ResolveSdfModeForScreenX(In.ClipPos.x);
+    let BoxHit  = IntersectCarAabb(CamPos, RayDir);
     if (BoxHit.x >= BoxHit.y) {
         discard;
     }
@@ -578,7 +891,7 @@ fn FsMain(In : IsoVsOut) -> IsoFsOut {
     for (var Step = 0; Step < 46; Step = Step + 1) {
         if (T > BoxHit.y) { break; }
         let P = CamPos + RayDir * T;
-        let D = EvalSelectedSdf(P, UseVoxel);
+        let D = EvalSelectedSdf(P, SdfMode);
         if (D < 0.0022) {
             // Linear secant refinement for crisp sub-millimeter zero-crossing
             let Denom = PrevD - D;
@@ -609,7 +922,7 @@ fn FsMain(In : IsoVsOut) -> IsoFsOut {
         }
     }
 
-    let N = EvalSdfGradientNormal(HitPos, UseVoxel);
+    let N = EvalSdfGradientNormal(HitPos, SdfMode);
     let V = -RayDir;
     let L = normalize(Uni.Params1.xyz);
     let H = normalize(V + L);
@@ -631,7 +944,12 @@ fn FsMain(In : IsoVsOut) -> IsoFsOut {
         let Refl = reflect(-V, N);
         let Stripe = smoothstep(-0.12, 0.12, sin(Refl.y * 28.0 + Refl.x * 7.0 + Refl.z * 3.0));
         let LitShade = 0.22 + 0.78 * max(dot(N, L), 0.0);
-        let TintBand = select(vec3<f32>(0.10, 0.78, 0.96), vec3<f32>(0.96, 0.56, 0.28), UseVoxel);
+        var TintBand = vec3<f32>(0.10, 0.80, 0.98); // Cyan = Closed 4-Corner C² Quad-Patch
+        if (SdfMode == 1) {
+            TintBand = vec3<f32>(0.96, 0.74, 0.24); // Gold = Cylindrical Polar-Fan Loft
+        } else if (SdfMode == 2) {
+            TintBand = vec3<f32>(0.96, 0.52, 0.28); // Coral = Uniform 3D Voxel Grid
+        }
         Hdr = mix(vec3<f32>(0.025, 0.032, 0.044), TintBand * 1.55, Stripe) * LitShade;
     } else {
         let Rough = select(0.11, 0.55, TouchWheel);
@@ -674,6 +992,7 @@ struct SceneUniforms {
     Params5     : vec4<f32>,
     Params6     : vec4<f32>,
     Params7     : vec4<f32>,
+    Params8     : vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> Uni : SceneUniforms;
@@ -711,9 +1030,10 @@ fn FsMain(In : LineVsOut) -> @location(0) vec4<f32> {
 const SharedGlslSdfLibrary = /* glsl */ `
 uniform mat4 uViewProj;
 uniform mat4 uInvViewProj;
-uniform vec4 uParams[8];
+uniform vec4 uParams[9];
 uniform highp sampler2D uLoftTex;
 uniform highp sampler3D uVoxelTex;
+uniform highp sampler2D uQuadTex;
 
 float FractPositive(float X) {
     return X - floor(X);
@@ -964,6 +1284,307 @@ float EvalLoftVehicleSdf(vec3 P) {
     return min(DBody, min(DwFront, DwRear));
 }
 
+struct QuadUnitRay {
+    vec3 Q;
+    vec3 Qxi;
+    vec3 Qeta;
+};
+
+QuadUnitRay EvalQuadChartUnitQ(int ChartIdx, float Xi, float Eta) {
+    float QuarterPi = 0.7853981634;
+    float Cx  = cos(Xi * QuarterPi);
+    float Cy  = cos(Eta * QuarterPi);
+    float Tx  = sin(Xi * QuarterPi) / Cx;
+    float Ty  = sin(Eta * QuarterPi) / Cy;
+    float DTx = QuarterPi / (Cx * Cx);
+    float DTy = QuarterPi / (Cy * Cy);
+
+    vec3 U    = vec3(0.0);
+    vec3 Dxi  = vec3(0.0);
+    vec3 Deta = vec3(0.0);
+
+    if (ChartIdx == 0) {
+        U = vec3(1.0, Ty, -Tx);
+        Dxi = vec3(0.0, 0.0, -DTx);
+        Deta = vec3(0.0, DTy, 0.0);
+    } else if (ChartIdx == 1) {
+        U = vec3(-1.0, Ty, Tx);
+        Dxi = vec3(0.0, 0.0, DTx);
+        Deta = vec3(0.0, DTy, 0.0);
+    } else if (ChartIdx == 2) {
+        U = vec3(Tx, 1.0, -Ty);
+        Dxi = vec3(DTx, 0.0, 0.0);
+        Deta = vec3(0.0, 0.0, -DTy);
+    } else if (ChartIdx == 3) {
+        U = vec3(Tx, -1.0, Ty);
+        Dxi = vec3(DTx, 0.0, 0.0);
+        Deta = vec3(0.0, 0.0, DTy);
+    } else if (ChartIdx == 4) {
+        U = vec3(Tx, Ty, 1.0);
+        Dxi = vec3(DTx, 0.0, 0.0);
+        Deta = vec3(0.0, DTy, 0.0);
+    } else {
+        U = vec3(-Tx, Ty, -1.0);
+        Dxi = vec3(-DTx, 0.0, 0.0);
+        Deta = vec3(0.0, DTy, 0.0);
+    }
+
+    float InvL = inversesqrt(max(dot(U, U), 1e-12));
+    vec3 Q     = U * InvL;
+    QuadUnitRay Out;
+    Out.Q    = Q;
+    Out.Qxi  = (Dxi  - Q * dot(Q, Dxi))  * InvL;
+    Out.Qeta = (Deta - Q * dot(Q, Deta)) * InvL;
+    return Out;
+}
+
+struct ConfocalSeed {
+    int   ChartIdx;
+    float Xi;
+    float Eta;
+    float RPt;
+};
+
+ConfocalSeed WorldToConfocalSeed(vec3 P) {
+    float Ax = 0.28;
+    float Ay = 0.14;
+    float Az = 2.48;
+    float Y0 = 0.78;
+    float Dx = P.x;
+    float Dy = P.y - Y0;
+    float Dz = P.z;
+
+    float R = max(0.05, length(vec3(Dx / (Ax + 0.65), Dy / (Ay + 0.65), Dz / (Az + 0.65))) * 0.65);
+    for (int It = 0; It < 4; ++It) {
+        float Rx = Ax + R;
+        float Ry = Ay + R;
+        float Rz = Az + R;
+        float Ux = Dx / Rx;
+        float Uy = Dy / Ry;
+        float Uz = Dz / Rz;
+        float Res = Ux * Ux + Uy * Uy + Uz * Uz - 1.0;
+        float Der = -2.0 * (Ux * Ux / Rx + Uy * Uy / Ry + Uz * Uz / Rz);
+        R = max(-0.12, R - Res / min(Der, -1e-6));
+    }
+
+    float Rx = max(0.02, Ax + R);
+    float Ry = max(0.02, Ay + R);
+    float Rz = max(0.02, Az + R);
+    vec3 Q   = normalize(vec3(Dx / Rx, Dy / Ry, Dz / Rz));
+    vec3 Aq  = abs(Q);
+
+    int ChartIdx = 0;
+    float Tx = 0.0;
+    float Ty = 0.0;
+    if (Aq.x >= Aq.y && Aq.x >= Aq.z) {
+        float Inv = 1.0 / max(Aq.x, 1e-8);
+        if (Q.x >= 0.0) { ChartIdx = 0; Tx = -Q.z * Inv; Ty = Q.y * Inv; }
+        else            { ChartIdx = 1; Tx =  Q.z * Inv; Ty = Q.y * Inv; }
+    } else if (Aq.y >= Aq.x && Aq.y >= Aq.z) {
+        float Inv = 1.0 / max(Aq.y, 1e-8);
+        if (Q.y >= 0.0) { ChartIdx = 2; Tx = Q.x * Inv; Ty = -Q.z * Inv; }
+        else            { ChartIdx = 3; Tx = Q.x * Inv; Ty =  Q.z * Inv; }
+    } else {
+        float Inv = 1.0 / max(Aq.z, 1e-8);
+        if (Q.z >= 0.0) { ChartIdx = 4; Tx =  Q.x * Inv; Ty = Q.y * Inv; }
+        else            { ChartIdx = 5; Tx = -Q.x * Inv; Ty = Q.y * Inv; }
+    }
+
+    ConfocalSeed Out;
+    Out.ChartIdx = ChartIdx;
+    Out.Xi       = atan(Tx) * 1.2732395447;
+    Out.Eta      = atan(Ty) * 1.2732395447;
+    Out.RPt      = R;
+    return Out;
+}
+
+float EvalQuadRadiusOnly(int ChartIdx, float XiIn, float EtaIn) {
+    int KSpan  = int(uParams[8].x);
+    float HLim = uParams[8].y;
+    float Xi   = clamp(XiIn,  -HLim, HLim);
+    float Eta  = clamp(EtaIn, -HLim, HLim);
+
+    float Su = ((Xi  + HLim) / (2.0 * HLim)) * float(KSpan - 1);
+    float Sv = ((Eta + HLim) / (2.0 * HLim)) * float(KSpan - 1);
+    int I0   = min(KSpan - 2, max(0, int(floor(Su))));
+    int J0   = min(KSpan - 2, max(0, int(floor(Sv))));
+    vec4 Hu  = HermiteWeights(Su - float(I0));
+    vec4 Hv  = HermiteWeights(Sv - float(J0));
+
+    int Row0 = ChartIdx * KSpan + J0;
+    vec4 C00 = texelFetch(uQuadTex, ivec2(I0,     Row0),     0);
+    vec4 C10 = texelFetch(uQuadTex, ivec2(I0 + 1, Row0),     0);
+    vec4 C01 = texelFetch(uQuadTex, ivec2(I0,     Row0 + 1), 0);
+    vec4 C11 = texelFetch(uQuadTex, ivec2(I0 + 1, Row0 + 1), 0);
+
+    float R0  = Hu.x * C00.x + Hu.y * C00.y + Hu.z * C10.x + Hu.w * C10.y;
+    float Rv0 = Hu.x * C00.z + Hu.y * C00.w + Hu.z * C10.z + Hu.w * C10.w;
+    float R1  = Hu.x * C01.x + Hu.y * C01.y + Hu.z * C11.x + Hu.w * C11.y;
+    float Rv1 = Hu.x * C01.z + Hu.y * C01.w + Hu.z * C11.z + Hu.w * C11.w;
+    return Hv.x * R0 + Hv.y * Rv0 + Hv.z * R1 + Hv.w * Rv1;
+}
+
+LoftPatchHit EvalQuadPatchFull(int ChartIdx, float XiIn, float EtaIn) {
+    int KSpan  = int(uParams[8].x);
+    float HLim = uParams[8].y;
+    float Xi   = clamp(XiIn,  -HLim, HLim);
+    float Eta  = clamp(EtaIn, -HLim, HLim);
+
+    float Su  = ((Xi  + HLim) / (2.0 * HLim)) * float(KSpan - 1);
+    float Sv  = ((Eta + HLim) / (2.0 * HLim)) * float(KSpan - 1);
+    int I0    = min(KSpan - 2, max(0, int(floor(Su))));
+    int J0    = min(KSpan - 2, max(0, int(floor(Sv))));
+    float Tu  = Su - float(I0);
+    float Tv  = Sv - float(J0);
+    vec4 Hu   = HermiteWeights(Tu);
+    vec4 Dhu  = HermiteDerivWeights(Tu);
+    vec4 Hv   = HermiteWeights(Tv);
+    vec4 Dhv  = HermiteDerivWeights(Tv);
+
+    int Row0 = ChartIdx * KSpan + J0;
+    vec4 C00 = texelFetch(uQuadTex, ivec2(I0,     Row0),     0);
+    vec4 C10 = texelFetch(uQuadTex, ivec2(I0 + 1, Row0),     0);
+    vec4 C01 = texelFetch(uQuadTex, ivec2(I0,     Row0 + 1), 0);
+    vec4 C11 = texelFetch(uQuadTex, ivec2(I0 + 1, Row0 + 1), 0);
+
+    float R0    = Hu.x  * C00.x + Hu.y  * C00.y + Hu.z  * C10.x + Hu.w  * C10.y;
+    float DRu0  = Dhu.x * C00.x + Dhu.y * C00.y + Dhu.z * C10.x + Dhu.w * C10.y;
+    float Rv0   = Hu.x  * C00.z + Hu.y  * C00.w + Hu.z  * C10.z + Hu.w  * C10.w;
+    float DRuv0 = Dhu.x * C00.z + Dhu.y * C00.w + Dhu.z * C10.z + Dhu.w * C10.w;
+
+    float R1    = Hu.x  * C01.x + Hu.y  * C01.y + Hu.z  * C11.x + Hu.w  * C11.y;
+    float DRu1  = Dhu.x * C01.x + Dhu.y * C01.y + Dhu.z * C11.x + Dhu.w * C11.y;
+    float Rv1   = Hu.x  * C01.z + Hu.y  * C01.w + Hu.z  * C11.z + Hu.w  * C11.w;
+    float DRuv1 = Dhu.x * C01.z + Dhu.y * C01.w + Dhu.z * C11.z + Dhu.w * C11.w;
+
+    float DerivScale = float(KSpan - 1) / (2.0 * HLim);
+    float R    = Hv.x * R0 + Hv.y * Rv0 + Hv.z * R1 + Hv.w * Rv1;
+    float Rxi  = (Hv.x * DRu0 + Hv.y * DRuv0 + Hv.z * DRu1 + Hv.w * DRuv1) * DerivScale;
+    float Reta = (Dhv.x * R0  + Dhv.y * Rv0  + Dhv.z * R1  + Dhv.w * Rv1)  * DerivScale;
+
+    QuadUnitRay Ray = EvalQuadChartUnitQ(ChartIdx, Xi, Eta);
+    vec3 RadVec = vec3(0.28 + R, 0.14 + R, 2.48 + R);
+
+    LoftPatchHit Out;
+    Out.Pos = vec3(RadVec.x * Ray.Q.x, 0.78 + RadVec.y * Ray.Q.y, RadVec.z * Ray.Q.z);
+    Out.Su  = Rxi  * Ray.Q + RadVec * Ray.Qxi;
+    Out.Sv  = Reta * Ray.Q + RadVec * Ray.Qeta;
+    return Out;
+}
+
+float EvalQuadWheelPairSdf(vec3 P, float AxleZ) {
+    float Dx  = 1.0475 - abs(P.x);
+    float Dy  = P.y - 0.5086;
+    float Dz  = P.z - AxleZ;
+    float Rho = length(vec2(Dy, Dz));
+    float Hw  = uParams[3].w;
+
+    if (abs(Dx) > Hw + 0.35 && Rho > 0.86) {
+        return length(vec2(abs(Dx) - Hw, max(0.0, Rho - 0.51)));
+    }
+
+    int WSamp = int(uParams[8].w);
+    int WheelRow = 6 * int(uParams[8].x);
+    float ClampedX = clamp(Dx, -Hw, Hw);
+    float NormS = ((ClampedX + Hw) / (2.0 * Hw)) * float(WSamp - 1);
+    int I0 = min(WSamp - 2, max(0, int(floor(NormS))));
+    float T = NormS - float(I0);
+
+    vec4 H  = HermiteWeights(T);
+    vec4 W0 = texelFetch(uQuadTex, ivec2(I0, WheelRow), 0);
+    vec4 W1 = texelFetch(uQuadTex, ivec2(I0 + 1, WheelRow), 0);
+    float ROuter = H.x * W0.x + H.y * W0.y + H.z * W1.x + H.w * W1.y;
+
+    float DRad = Rho - ROuter;
+    float DAx  = abs(Dx) - Hw;
+
+    float DishRecess = 0.0;
+    if (Rho < 0.31 && Dx < -Hw + 0.06) {
+        float CenterDist = abs(Rho - 0.14);
+        DishRecess = 0.032 * (1.0 - clamp(CenterDist / 0.19, 0.0, 1.0));
+    }
+    float EffAx = max(DAx, -(Hw + DishRecess) - Dx);
+    float Outside = length(vec2(max(DRad, 0.0), max(EffAx, 0.0)));
+    float Inside  = min(max(DRad, EffAx), 0.0);
+    return Outside + Inside;
+}
+
+float EvalQuadPatchVehicleSdf(vec3 P) {
+    vec3 BMin = vec3(-1.250, 0.000, -3.110);
+    vec3 BMax = vec3( 1.250, 1.769,  3.110);
+    vec3 BoxDelta = max(max(BMin - P, vec3(0.0)), P - BMax);
+    float BoxDist = length(BoxDelta);
+    if (BoxDist > 0.65) {
+        return BoxDist + 0.03;
+    }
+
+    ConfocalSeed Seed = WorldToConfocalSeed(P);
+    int ChartIdx = Seed.ChartIdx;
+    float HLim   = uParams[8].y;
+
+    float BestXi  = Seed.Xi;
+    float BestEta = Seed.Eta;
+    float BestSq  = 1e9;
+    float DXiSeeds[5]  = float[5](0.0, -0.07, 0.07, 0.0, 0.0);
+    float DEtaSeeds[5] = float[5](0.0, 0.0, 0.0, -0.07, 0.07);
+
+    for (int S = 0; S < 5; ++S) {
+        float Cxi  = clamp(Seed.Xi  + DXiSeeds[S],  -HLim, HLim);
+        float Ceta = clamp(Seed.Eta + DEtaSeeds[S], -HLim, HLim);
+        float R    = EvalQuadRadiusOnly(ChartIdx, Cxi, Ceta);
+        vec3 Q     = EvalQuadChartUnitQ(ChartIdx, Cxi, Ceta).Q;
+        vec3 Sp    = vec3((0.28 + R) * Q.x, 0.78 + (0.14 + R) * Q.y, (2.48 + R) * Q.z);
+        vec3 Diff  = P - Sp;
+        float Sq   = dot(Diff, Diff);
+        if (Sq < BestSq) {
+            BestSq  = Sq;
+            BestXi  = Cxi;
+            BestEta = Ceta;
+        }
+    }
+
+    float Xi  = BestXi;
+    float Eta = BestEta;
+    for (int Step = 0; Step < 3; ++Step) {
+        LoftPatchHit Hit = EvalQuadPatchFull(ChartIdx, Xi, Eta);
+        vec3 Res  = P - Hit.Pos;
+        float G1  = dot(Res, Hit.Su);
+        float G2  = dot(Res, Hit.Sv);
+        float A11 = dot(Hit.Su, Hit.Su) + 0.002;
+        float A12 = dot(Hit.Su, Hit.Sv);
+        float A22 = dot(Hit.Sv, Hit.Sv) + 0.002;
+        float Det = A11 * A22 - A12 * A12;
+        if (Det > 1e-6) {
+            float DXi  = clamp(( A22 * G1 - A12 * G2) / Det, -0.16, 0.16);
+            float DEta = clamp((-A12 * G1 + A11 * G2) / Det, -0.16, 0.16);
+            Xi  = clamp(Xi  + DXi,  -HLim, HLim);
+            Eta = clamp(Eta + DEta, -HLim, HLim);
+        }
+    }
+
+    LoftPatchHit FinalHit = EvalQuadPatchFull(ChartIdx, Xi, Eta);
+    float SkinDist = length(P - FinalHit.Pos);
+    float RSurf    = EvalQuadRadiusOnly(ChartIdx, Seed.Xi, Seed.Eta);
+    float DBody    = (Seed.RPt <= RSurf) ? -SkinDist : SkinDist;
+
+    float AbsX = abs(P.x);
+    float RhoFront = length(vec2(P.y - 0.5086, P.z - 1.7274));
+    float DfRad = RhoFront - 0.560;
+    float DfAx  = max(0.750 - AbsX, AbsX - 1.35);
+    float DArchFront = length(vec2(max(DfRad, 0.0), max(DfAx, 0.0))) + min(max(DfRad, DfAx), 0.0);
+    DBody = max(DBody, -DArchFront);
+
+    float RhoRear = length(vec2(P.y - 0.5086, P.z + 1.6686));
+    float DrRad = RhoRear - 0.562;
+    float DrAx  = max(0.885 - AbsX, AbsX - 1.35);
+    float DArchRear = length(vec2(max(DrRad, 0.0), max(DrAx, 0.0))) + min(max(DrRad, DrAx), 0.0);
+    DBody = max(DBody, -DArchRear);
+
+    float DwFront = EvalQuadWheelPairSdf(P,  1.7274);
+    float DwRear  = EvalQuadWheelPairSdf(P, -1.6686);
+    return min(DBody, min(DwFront, DwRear));
+}
+
 float EvalVoxelVehicleSdf(vec3 P) {
     vec3 BMin = uParams[5].xyz;
     vec3 BMax = uParams[6].xyz;
@@ -976,22 +1597,24 @@ float EvalVoxelVehicleSdf(vec3 P) {
     return textureLod(uVoxelTex, Uvw, 0.0).r + ExtDist;
 }
 
-bool SelectVoxelForScreenX(float FragX) {
+int ResolveSdfModeForScreenX(float FragX) {
     if (uParams[2].y > 0.5) {
-        return FragX >= (uParams[0].w * 0.5);
+        return (FragX >= (uParams[0].w * 0.5)) ? int(round(uParams[8].z)) : 0;
     }
-    return uParams[2].x > 0.5;
+    return int(round(uParams[2].x));
 }
 
-float EvalSelectedSdf(vec3 P, bool UseVoxel) {
-    return UseVoxel ? EvalVoxelVehicleSdf(P) : EvalLoftVehicleSdf(P);
+float EvalSelectedSdf(vec3 P, int SdfMode) {
+    if (SdfMode == 2) return EvalVoxelVehicleSdf(P);
+    if (SdfMode == 1) return EvalLoftVehicleSdf(P);
+    return EvalQuadPatchVehicleSdf(P);
 }
 
-vec3 EvalSdfGradientNormal(vec3 P, bool UseVoxel) {
-    float Eps = UseVoxel ? 0.014 : 0.0045;
-    float Dx = EvalSelectedSdf(P + vec3(Eps, 0.0, 0.0), UseVoxel) - EvalSelectedSdf(P - vec3(Eps, 0.0, 0.0), UseVoxel);
-    float Dy = EvalSelectedSdf(P + vec3(0.0, Eps, 0.0), UseVoxel) - EvalSelectedSdf(P - vec3(0.0, Eps, 0.0), UseVoxel);
-    float Dz = EvalSelectedSdf(P + vec3(0.0, 0.0, Eps), UseVoxel) - EvalSelectedSdf(P - vec3(0.0, 0.0, Eps), UseVoxel);
+vec3 EvalSdfGradientNormal(vec3 P, int SdfMode) {
+    float Eps = (SdfMode == 2) ? 0.014 : 0.0045;
+    float Dx = EvalSelectedSdf(P + vec3(Eps, 0.0, 0.0), SdfMode) - EvalSelectedSdf(P - vec3(Eps, 0.0, 0.0), SdfMode);
+    float Dy = EvalSelectedSdf(P + vec3(0.0, Eps, 0.0), SdfMode) - EvalSelectedSdf(P - vec3(0.0, Eps, 0.0), SdfMode);
+    float Dz = EvalSelectedSdf(P + vec3(0.0, 0.0, Eps), SdfMode) - EvalSelectedSdf(P - vec3(0.0, 0.0, Eps), SdfMode);
     return normalize(vec3(Dx, Dy, Dz) + vec3(1e-7));
 }
 
@@ -1013,7 +1636,7 @@ vec2 IntersectCarAabb(vec3 Ro, vec3 Rd) {
     return vec2(TEnter, TExit);
 }
 
-float EvalSdfSoftShadow(vec3 Origin, vec3 RayDir, bool UseVoxel) {
+float EvalSdfSoftShadow(vec3 Origin, vec3 RayDir, int SdfMode) {
     vec2 HitBox = IntersectCarAabb(Origin, RayDir);
     if (HitBox.x >= HitBox.y) return 1.0;
     float KSoft = max(2.0, uParams[7].x);
@@ -1021,7 +1644,7 @@ float EvalSdfSoftShadow(vec3 Origin, vec3 RayDir, bool UseVoxel) {
     float Vis = 1.0;
     for (int Step = 0; Step < 22; ++Step) {
         if (T > HitBox.y) break;
-        float D = EvalSelectedSdf(Origin + RayDir * T, UseVoxel);
+        float D = EvalSelectedSdf(Origin + RayDir * T, SdfMode);
         if (D < 0.002) return 0.0;
         Vis = min(Vis, KSoft * D / max(T, 0.12));
         T += clamp(D, 0.025, 0.35);
@@ -1029,14 +1652,14 @@ float EvalSdfSoftShadow(vec3 Origin, vec3 RayDir, bool UseVoxel) {
     return clamp(Vis, 0.0, 1.0);
 }
 
-float EvalSdfUnderbodyAo(vec3 WorldPos, vec3 WorldN, bool UseVoxel) {
+float EvalSdfUnderbodyAo(vec3 WorldPos, vec3 WorldN, int SdfMode) {
     if (abs(WorldPos.x) > 1.85 || abs(WorldPos.z) > 3.65 || WorldPos.y > 1.95) return 1.0;
     float Occ = 0.0;
     float Weight = 1.0;
     float TapDist[4] = float[4](0.08, 0.20, 0.38, 0.62);
     for (int K = 0; K < 4; ++K) {
         float H = TapDist[K];
-        float D = EvalSelectedSdf(WorldPos + WorldN * H, UseVoxel);
+        float D = EvalSelectedSdf(WorldPos + WorldN * H, SdfMode);
         Occ += max(0.0, H - D) * Weight;
         Weight *= 0.62;
     }
@@ -1091,7 +1714,7 @@ out vec4 oFragColor;
 ` + SharedGlslSdfLibrary + /* glsl */ `
 void main() {
     float Tag = vProps.y;
-    bool UseVoxel = SelectVoxelForScreenX(gl_FragCoord.x);
+    int SdfMode = ResolveSdfModeForScreenX(gl_FragCoord.x);
 
     if (uParams[7].z > 0.5 && Tag > 0.5 && Tag < 5.6) {
         float CutCoord = uParams[4].w;
@@ -1108,7 +1731,7 @@ void main() {
     }
 
     if (Tag > 6.5) {
-        float Sd = EvalSelectedSdf(vWorldPos, UseVoxel);
+        float Sd = EvalSelectedSdf(vWorldPos, SdfMode);
         float Wave = 0.5 + 0.5 * cos(Sd * 58.0);
         float MajorBand = smoothstep(0.92, 0.995, Wave);
         float ZeroIso   = 1.0 - smoothstep(0.002, 0.011, abs(Sd));
@@ -1143,8 +1766,8 @@ void main() {
     float Shadow = 1.0;
     float Ao     = 1.0;
     if (Tag < 0.5 || Tag > 5.5) {
-        Shadow = EvalSdfSoftShadow(vWorldPos + N * 0.018, L, UseVoxel);
-        Ao     = EvalSdfUnderbodyAo(vWorldPos, N, UseVoxel);
+        Shadow = EvalSdfSoftShadow(vWorldPos + N * 0.018, L, SdfMode);
+        Ao     = EvalSdfUnderbodyAo(vWorldPos, N, SdfMode);
     } else {
         Ao = clamp(0.55 + 0.45 * N.y, 0.35, 1.0);
     }
@@ -1181,7 +1804,7 @@ void main() {
                 bool HitCar = false;
                 for (int Step = 0; Step < 18; ++Step) {
                     if (Rt > BoxHit.y) break;
-                    float Rd = EvalSelectedSdf(vWorldPos + RDir * Rt, UseVoxel);
+                    float Rd = EvalSelectedSdf(vWorldPos + RDir * Rt, SdfMode);
                     if (Rd < 0.008) {
                         HitCar = true;
                         break;
@@ -1190,7 +1813,7 @@ void main() {
                 }
                 if (HitCar) {
                     vec3 HitP = vWorldPos + RDir * Rt;
-                    vec3 HitN = EvalSdfGradientNormal(HitP, UseVoxel);
+                    vec3 HitN = EvalSdfGradientNormal(HitP, SdfMode);
                     vec3 CarCoat = (HitP.y < 0.56) ? vec3(0.04, 0.045, 0.055) : vec3(0.045, 0.26, 0.56);
                     vec3 ReflLit = CarCoat * (0.28 + 0.95 * max(dot(HitN, L), 0.0)) + vec3(0.18, 0.24, 0.32) * max(HitN.y, 0.0);
                     float DistAtten = exp(-Rt * 0.42);
@@ -1229,8 +1852,8 @@ void main() {
     vec3 FarWorld = FarH.xyz / FarH.w;
     vec3 RayDir = normalize(FarWorld - CamPos);
 
-    bool UseVoxel = SelectVoxelForScreenX(gl_FragCoord.x);
-    vec2 BoxHit   = IntersectCarAabb(CamPos, RayDir);
+    int SdfMode = ResolveSdfModeForScreenX(gl_FragCoord.x);
+    vec2 BoxHit = IntersectCarAabb(CamPos, RayDir);
     if (BoxHit.x >= BoxHit.y) discard;
 
     float T = max(0.05, BoxHit.x);
@@ -1241,7 +1864,7 @@ void main() {
     for (int Step = 0; Step < 46; ++Step) {
         if (T > BoxHit.y) break;
         vec3 P = CamPos + RayDir * T;
-        float D = EvalSelectedSdf(P, UseVoxel);
+        float D = EvalSelectedSdf(P, SdfMode);
         if (D < 0.0022) {
             float Denom = PrevD - D;
             if (Step > 0 && abs(Denom) > 1e-6) {
@@ -1267,7 +1890,7 @@ void main() {
         }
     }
 
-    vec3 N = EvalSdfGradientNormal(HitPos, UseVoxel);
+    vec3 N = EvalSdfGradientNormal(HitPos, SdfMode);
     vec3 V = -RayDir;
     vec3 L = normalize(uParams[1].xyz);
     vec3 H = normalize(V + L);
@@ -1290,7 +1913,9 @@ void main() {
         vec3 Refl = reflect(-V, N);
         float Stripe = smoothstep(-0.12, 0.12, sin(Refl.y * 28.0 + Refl.x * 7.0 + Refl.z * 3.0));
         float LitShade = 0.22 + 0.78 * max(dot(N, L), 0.0);
-        vec3 TintBand = UseVoxel ? vec3(0.96, 0.56, 0.28) : vec3(0.10, 0.78, 0.96);
+        vec3 TintBand = vec3(0.10, 0.80, 0.98);
+        if (SdfMode == 1) TintBand = vec3(0.96, 0.74, 0.24);
+        else if (SdfMode == 2) TintBand = vec3(0.96, 0.52, 0.28);
         Hdr = mix(vec3(0.025, 0.032, 0.044), TintBand * 1.55, Stripe) * LitShade;
     } else {
         float Rough = TouchWheel ? 0.55 : 0.11;

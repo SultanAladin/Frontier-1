@@ -4,14 +4,17 @@
 //    against Uniform 3D Voxel Grid SDFs (16^3, 32^3, 64^3) on the 25,068-triangle ControlVehicle.
 
 import {
+    QuadPatchResolutionPresets,
     LoftResolutionPresets,
     VoxelResolutionPresets,
     EncodeFloat16Bits,
     ParseFct1VehicleBinary,
     AssembleCompleteControlVehicle,
     BuildTriangleBvhAccelerator,
+    CompileQuadPatchVehicleSdf,
     CompileLoftedVehicleSdf,
     CompileUniformVoxelVehicleSdf,
+    BenchmarkQuadPatchVsVoxelSdf,
     BenchmarkLoftVsVoxelSdf
 } from "./LoftedVehicleSdfCompiler.js";
 
@@ -20,6 +23,7 @@ import {
     CageLineVertexBytes,
     BuildShowroomSceneBuffers,
     BuildCutawayPlaneBuffers,
+    BuildQuadPatchCageBuffers,
     BuildLoftCurveCageBuffers,
     BuildVoxelCageBuffers
 } from "./VehicleShowroomBuilder.js";
@@ -37,11 +41,12 @@ import {
 } from "./LoftedVehicleShaders.js";
 
 const CameraBookmarks = Object.freeze({
-    Hero:    { Target: [ 0.00, 0.66,  0.10], Yaw:  0.64, Pitch: 0.27, Dist: 5.35 },
-    Fender:  { Target: [-0.82, 0.60,  1.58], Yaw: -0.94, Pitch: 0.22, Dist: 2.35 },
-    Profile: { Target: [ 0.00, 0.66,  0.05], Yaw: -1.52, Pitch: 0.14, Dist: 5.75 },
-    Shadow:  { Target: [-0.85, 0.52, -0.55], Yaw:  0.78, Pitch: 0.46, Dist: 6.40 },
-    TopRibs: { Target: [ 0.00, 0.65,  0.00], Yaw:  0.32, Pitch: 1.22, Dist: 6.10 }
+    Hero:      { Target: [ 0.00, 0.66,  0.10], Yaw:  0.64, Pitch: 0.27, Dist: 5.35 },
+    NoseQuads: { Target: [ 0.00, 0.72,  2.22], Yaw:  0.34, Pitch: 0.24, Dist: 2.65 },
+    Fender:    { Target: [-0.82, 0.60,  1.58], Yaw: -0.94, Pitch: 0.22, Dist: 2.35 },
+    Profile:   { Target: [ 0.00, 0.66,  0.05], Yaw: -1.52, Pitch: 0.14, Dist: 5.75 },
+    Shadow:    { Target: [-0.85, 0.52, -0.55], Yaw:  0.78, Pitch: 0.46, Dist: 6.40 },
+    TopRibs:   { Target: [ 0.00, 0.65,  0.00], Yaw:  0.32, Pitch: 1.22, Dist: 6.10 }
 });
 
 //============================================================================================================================================
@@ -182,6 +187,36 @@ function PackLoftRgba16Texture(LoftSdf)
     return { Texels: Out, Width: TexW, Height: TexH };
 }
 
+// Packs 6 x (KnotSpan x KnotSpan) C² 4-corner patch knots + 1 wheel profile row into a 2D rgba16float image
+function PackQuadPatchRgba16Texture(QuadPatchSdf)
+{
+    const KSpan = QuadPatchSdf.KnotSpan;
+    const TexW  = Math.max(KSpan, QuadPatchSdf.WheelSamples);
+    const TexH  = 6 * KSpan + 1;
+    const Out   = new Uint16Array(TexW * TexH * 4);
+    const Src   = QuadPatchSdf.HermiteKnotsRgba16;
+
+    const TotalChartRows = 6 * KSpan;
+    for (let Row = 0; Row < TotalChartRows; ++Row)
+    {
+        const SrcOff = Row * KSpan * 4;
+        const DstOff = Row * TexW * 4;
+        Out.set(Src.subarray(SrcOff, SrcOff + KSpan * 4), DstOff);
+    }
+
+    const WheelRowStart = TotalChartRows * TexW * 4;
+    const Wf = QuadPatchSdf.WheelGpuFloats;
+    for (let S = 0; S < QuadPatchSdf.WheelSamples; ++S)
+    {
+        const Dst = WheelRowStart + S * 4;
+        Out[Dst + 0] = EncodeFloat16Bits(Wf[S * 4 + 0]);
+        Out[Dst + 1] = EncodeFloat16Bits(Wf[S * 4 + 1]);
+        Out[Dst + 2] = EncodeFloat16Bits(Wf[S * 4 + 2]);
+        Out[Dst + 3] = 0;
+    }
+    return { Texels: Out, Width: TexW, Height: TexH };
+}
+
 //============================================================================================================================================
 //                                            2. WEBGPU RENDERER IMPLEMENTATION
 //============================================================================================================================================
@@ -221,7 +256,7 @@ async function TryInitializeWebGpuRenderer(Canvas, ShowroomBuffers)
     }
 
     const UniformBuffer = Device.createBuffer({
-        size: 256,
+        size: 272,
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
     });
 
@@ -238,7 +273,8 @@ async function TryInitializeWebGpuRenderer(Canvas, ShowroomBuffers)
             { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: "uniform" } },
             { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "float", viewDimension: "2d" } },
             { binding: 2, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "float", viewDimension: "3d" } },
-            { binding: 3, visibility: GPUShaderStage.FRAGMENT, sampler: { type: "filtering" } }
+            { binding: 3, visibility: GPUShaderStage.FRAGMENT, sampler: { type: "filtering" } },
+            { binding: 4, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "float", viewDimension: "2d" } }
         ]
     });
 
@@ -366,8 +402,11 @@ async function TryInitializeWebGpuRenderer(Canvas, ShowroomBuffers)
 
     let LoftTexObj  = null;
     let VoxelTexObj = null;
+    let QuadTexObj  = null;
     let SharedGroup = null;
 
+    let QuadCageBuf = null;
+    let QuadCageVertCount = 0;
     let LoftCageBuf = null;
     let LoftCageVertCount = 0;
     let VoxelCageBuf = null;
@@ -378,14 +417,15 @@ async function TryInitializeWebGpuRenderer(Canvas, ShowroomBuffers)
 
     function RebuildSharedGroup()
     {
-        if (!LoftTexObj || !VoxelTexObj) return;
+        if (!LoftTexObj || !VoxelTexObj || !QuadTexObj) return;
         SharedGroup = Device.createBindGroup({
             layout: SharedLayout,
             entries: [
                 { binding: 0, resource: { buffer: UniformBuffer } },
                 { binding: 1, resource: LoftTexObj.createView({ dimension: "2d" }) },
                 { binding: 2, resource: VoxelTexObj.createView({ dimension: "3d" }) },
-                { binding: 3, resource: LinearSampler }
+                { binding: 3, resource: LinearSampler },
+                { binding: 4, resource: QuadTexObj.createView({ dimension: "2d" }) }
             ]
         });
     }
@@ -393,6 +433,29 @@ async function TryInitializeWebGpuRenderer(Canvas, ShowroomBuffers)
     return {
         RuntimeLabel: "WebGPU",
         ZeroToOneClip: true,
+
+        SyncQuadPatchResources(QuadPatchSdf, CageBuffers)
+        {
+            if (QuadTexObj) QuadTexObj.destroy();
+            const Packed = PackQuadPatchRgba16Texture(QuadPatchSdf);
+            QuadTexObj = Device.createTexture({
+                size: [Packed.Width, Packed.Height, 1],
+                dimension: "2d",
+                format: "rgba16float",
+                usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST
+            });
+            Device.queue.writeTexture(
+                { texture: QuadTexObj },
+                Packed.Texels,
+                { bytesPerRow: Packed.Width * 8, rowsPerImage: Packed.Height },
+                [Packed.Width, Packed.Height, 1]
+            );
+
+            if (QuadCageBuf) QuadCageBuf.destroy();
+            QuadCageBuf = UploadBuffer(CageBuffers.Vertices, GPUBufferUsage.VERTEX);
+            QuadCageVertCount = CageBuffers.VertexCount;
+            RebuildSharedGroup();
+        },
 
         SyncLoftResources(LoftSdf, CageBuffers)
         {
@@ -502,19 +565,53 @@ async function TryInitializeWebGpuRenderer(Canvas, ShowroomBuffers)
                 Enc.drawIndexed(ShowroomBuffers.EnvIndexCount + ShowroomBuffers.VehicleIndexCount, 1, 0, 0, 0);
             }
 
-            if ((Opts.ShowLoftCage && LoftCageVertCount > 0) || (Opts.ShowVoxelCage && VoxelCageVertCount > 0))
+            if (Opts.ShowLoftCage || Opts.ShowVoxelCage)
             {
                 Enc.setPipeline(CageLinePipe);
                 Enc.setBindGroup(0, LineGroup);
-                if (Opts.ShowLoftCage && LoftCageVertCount > 0)
+
+                if (Opts.SplitCompare && W >= 4)
                 {
-                    Enc.setVertexBuffer(0, LoftCageBuf);
-                    Enc.draw(LoftCageVertCount, 1, 0, 0);
+                    const MidW = Math.max(1, Math.min(W - 1, Math.floor(W * 0.5)));
+                    if (Opts.ShowLoftCage && QuadCageVertCount > 0)
+                    {
+                        Enc.setScissorRect(0, 0, MidW, H);
+                        Enc.setVertexBuffer(0, QuadCageBuf);
+                        Enc.draw(QuadCageVertCount, 1, 0, 0);
+                    }
+                    Enc.setScissorRect(MidW, 0, Math.max(1, W - MidW), H);
+                    if (Opts.SplitRightMode === 1 && Opts.ShowLoftCage && LoftCageVertCount > 0)
+                    {
+                        Enc.setVertexBuffer(0, LoftCageBuf);
+                        Enc.draw(LoftCageVertCount, 1, 0, 0);
+                    }
+                    if (Opts.ShowVoxelCage && VoxelCageVertCount > 0)
+                    {
+                        Enc.setVertexBuffer(0, VoxelCageBuf);
+                        Enc.draw(VoxelCageVertCount, 1, 0, 0);
+                    }
+                    Enc.setScissorRect(0, 0, W, H);
                 }
-                if (Opts.ShowVoxelCage && VoxelCageVertCount > 0)
+                else
                 {
-                    Enc.setVertexBuffer(0, VoxelCageBuf);
-                    Enc.draw(VoxelCageVertCount, 1, 0, 0);
+                    if (Opts.ShowLoftCage)
+                    {
+                        if (Opts.ActiveParadigm === 1 && LoftCageVertCount > 0)
+                        {
+                            Enc.setVertexBuffer(0, LoftCageBuf);
+                            Enc.draw(LoftCageVertCount, 1, 0, 0);
+                        }
+                        else if (QuadCageVertCount > 0)
+                        {
+                            Enc.setVertexBuffer(0, QuadCageBuf);
+                            Enc.draw(QuadCageVertCount, 1, 0, 0);
+                        }
+                    }
+                    if (Opts.ShowVoxelCage && VoxelCageVertCount > 0)
+                    {
+                        Enc.setVertexBuffer(0, VoxelCageBuf);
+                        Enc.draw(VoxelCageVertCount, 1, 0, 0);
+                    }
                 }
             }
 
@@ -585,7 +682,8 @@ function InitializeWebGl2Renderer(Canvas, ShowroomBuffers)
             InvViewProj: Gl.getUniformLocation(Prog, "uInvViewProj"),
             Params:      Gl.getUniformLocation(Prog, "uParams[0]"),
             LoftTex:     Gl.getUniformLocation(Prog, "uLoftTex"),
-            VoxelTex:    Gl.getUniformLocation(Prog, "uVoxelTex")
+            VoxelTex:    Gl.getUniformLocation(Prog, "uVoxelTex"),
+            QuadTex:     Gl.getUniformLocation(Prog, "uQuadTex")
         };
     }
 
@@ -645,7 +743,10 @@ function InitializeWebGl2Renderer(Canvas, ShowroomBuffers)
 
     let LoftTexObj  = null;
     let VoxelTexObj = null;
+    let QuadTexObj  = null;
 
+    let QuadCageGpu = null;
+    let QuadCageVertCount = 0;
     let LoftCageGpu = null;
     let LoftCageVertCount = 0;
     let VoxelCageGpu = null;
@@ -658,14 +759,36 @@ function InitializeWebGl2Renderer(Canvas, ShowroomBuffers)
         Gl.useProgram(Prog);
         Gl.uniformMatrix4fv(Locs.ViewProj, false, UniformFloats.subarray(0, 16));
         Gl.uniformMatrix4fv(Locs.InvViewProj, false, UniformFloats.subarray(16, 32));
-        Gl.uniform4fv(Locs.Params, UniformFloats.subarray(32, 64));
+        Gl.uniform4fv(Locs.Params, UniformFloats.subarray(32, 68));
         Gl.uniform1i(Locs.LoftTex, 0);
         Gl.uniform1i(Locs.VoxelTex, 1);
+        Gl.uniform1i(Locs.QuadTex, 2);
     }
 
     return {
         RuntimeLabel: "WebGL2",
         ZeroToOneClip: false,
+
+        SyncQuadPatchResources(QuadPatchSdf, CageBuffers)
+        {
+            if (QuadTexObj) Gl.deleteTexture(QuadTexObj);
+            const Packed = PackQuadPatchRgba16Texture(QuadPatchSdf);
+            QuadTexObj = Gl.createTexture();
+            Gl.bindTexture(Gl.TEXTURE_2D, QuadTexObj);
+            Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, Gl.NEAREST);
+            Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MAG_FILTER, Gl.NEAREST);
+            Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_S, Gl.CLAMP_TO_EDGE);
+            Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_T, Gl.CLAMP_TO_EDGE);
+            Gl.texImage2D(Gl.TEXTURE_2D, 0, Gl.RGBA16F, Packed.Width, Packed.Height, 0, Gl.RGBA, Gl.HALF_FLOAT, Packed.Texels);
+
+            if (QuadCageGpu)
+            {
+                Gl.deleteBuffer(QuadCageGpu.Vbo);
+                Gl.deleteVertexArray(QuadCageGpu.Vao);
+            }
+            QuadCageGpu = CreateLineVao(CageBuffers.Vertices);
+            QuadCageVertCount = CageBuffers.VertexCount;
+        },
 
         SyncLoftResources(LoftSdf, CageBuffers)
         {
@@ -724,8 +847,10 @@ function InitializeWebGl2Renderer(Canvas, ShowroomBuffers)
 
         RenderTick(UniformFloats, Opts)
         {
-            if (!LoftTexObj || !VoxelTexObj) return;
-            Gl.viewport(0, 0, Canvas.width, Canvas.height);
+            if (!LoftTexObj || !VoxelTexObj || !QuadTexObj) return;
+            const W = Canvas.width;
+            const H = Canvas.height;
+            Gl.viewport(0, 0, W, H);
             Gl.clearColor(0.038, 0.056, 0.084, 1.0);
             Gl.clearDepth(1.0);
             Gl.depthMask(true);
@@ -740,6 +865,8 @@ function InitializeWebGl2Renderer(Canvas, ShowroomBuffers)
             Gl.bindTexture(Gl.TEXTURE_2D, LoftTexObj);
             Gl.activeTexture(Gl.TEXTURE1);
             Gl.bindTexture(Gl.TEXTURE_3D, VoxelTexObj);
+            Gl.activeTexture(Gl.TEXTURE2);
+            Gl.bindTexture(Gl.TEXTURE_2D, QuadTexObj);
 
             ApplySharedUniforms(ShowroomProg, ShowroomUni, UniformFloats);
             Gl.bindVertexArray(ShowroomGpu.Vao);
@@ -756,7 +883,7 @@ function InitializeWebGl2Renderer(Canvas, ShowroomBuffers)
                 Gl.drawElements(Gl.TRIANGLES, ShowroomBuffers.EnvIndexCount + ShowroomBuffers.VehicleIndexCount, Gl.UNSIGNED_INT, 0);
             }
 
-            if ((Opts.ShowLoftCage && LoftCageVertCount > 0) || (Opts.ShowVoxelCage && VoxelCageVertCount > 0))
+            if (Opts.ShowLoftCage || Opts.ShowVoxelCage)
             {
                 Gl.enable(Gl.BLEND);
                 Gl.blendFunc(Gl.SRC_ALPHA, Gl.ONE_MINUS_SRC_ALPHA);
@@ -764,15 +891,49 @@ function InitializeWebGl2Renderer(Canvas, ShowroomBuffers)
                 Gl.useProgram(CageProg);
                 Gl.uniformMatrix4fv(CageViewProjLoc, false, UniformFloats.subarray(0, 16));
 
-                if (Opts.ShowLoftCage && LoftCageVertCount > 0)
+                if (Opts.SplitCompare && W >= 4)
                 {
-                    Gl.bindVertexArray(LoftCageGpu.Vao);
-                    Gl.drawArrays(Gl.LINES, 0, LoftCageVertCount);
+                    const MidW = Math.max(1, Math.min(W - 1, Math.floor(W * 0.5)));
+                    Gl.enable(Gl.SCISSOR_TEST);
+                    if (Opts.ShowLoftCage && QuadCageVertCount > 0)
+                    {
+                        Gl.scissor(0, 0, MidW, H);
+                        Gl.bindVertexArray(QuadCageGpu.Vao);
+                        Gl.drawArrays(Gl.LINES, 0, QuadCageVertCount);
+                    }
+                    Gl.scissor(MidW, 0, Math.max(1, W - MidW), H);
+                    if (Opts.SplitRightMode === 1 && Opts.ShowLoftCage && LoftCageVertCount > 0)
+                    {
+                        Gl.bindVertexArray(LoftCageGpu.Vao);
+                        Gl.drawArrays(Gl.LINES, 0, LoftCageVertCount);
+                    }
+                    if (Opts.ShowVoxelCage && VoxelCageVertCount > 0)
+                    {
+                        Gl.bindVertexArray(VoxelCageGpu.Vao);
+                        Gl.drawArrays(Gl.LINES, 0, VoxelCageVertCount);
+                    }
+                    Gl.disable(Gl.SCISSOR_TEST);
                 }
-                if (Opts.ShowVoxelCage && VoxelCageVertCount > 0)
+                else
                 {
-                    Gl.bindVertexArray(VoxelCageGpu.Vao);
-                    Gl.drawArrays(Gl.LINES, 0, VoxelCageVertCount);
+                    if (Opts.ShowLoftCage)
+                    {
+                        if (Opts.ActiveParadigm === 1 && LoftCageVertCount > 0)
+                        {
+                            Gl.bindVertexArray(LoftCageGpu.Vao);
+                            Gl.drawArrays(Gl.LINES, 0, LoftCageVertCount);
+                        }
+                        else if (QuadCageVertCount > 0)
+                        {
+                            Gl.bindVertexArray(QuadCageGpu.Vao);
+                            Gl.drawArrays(Gl.LINES, 0, QuadCageVertCount);
+                        }
+                    }
+                    if (Opts.ShowVoxelCage && VoxelCageVertCount > 0)
+                    {
+                        Gl.bindVertexArray(VoxelCageGpu.Vao);
+                        Gl.drawArrays(Gl.LINES, 0, VoxelCageVertCount);
+                    }
                 }
                 Gl.depthMask(true);
                 Gl.disable(Gl.BLEND);
@@ -825,10 +986,24 @@ async function LaunchLoftedVehicleWorkbench()
     const RimBin  = ParseFct1VehicleBinary(RimBuf);
     const TyreBin = ParseFct1VehicleBinary(TyreBuf);
     const AssembledCar = AssembleCompleteControlVehicle(BodyBin, RimBin, TyreBin);
+    const BodyBvh  = BuildTriangleBvhAccelerator(AssembledCar.BodyPart.Positions, AssembledCar.BodyPart.Indices, AssembledCar.BodyPart.FaceCount);
     const ExactBvh = BuildTriangleBvhAccelerator(AssembledCar.Positions, AssembledCar.Indices, AssembledCar.TotalFaces);
     const ShowroomBuffers = BuildShowroomSceneBuffers(AssembledCar);
 
-    // 2. Compile all 4 Lofted Curve SDF presets (~12 ms total!) + Voxel 16^3 & 32^3 upfront (Voxel 64^3 compiled lazily)
+    // 2. Compile all 4 Closed 4-Corner C² Quad-Patch presets (~24 ms total!) + all 4 Cylindrical Loft presets + Voxel 16³ & 32³ upfront
+    const CompiledQuads  = Object.create(null);
+    const QuadCages      = Object.create(null);
+    const QuadFitTimesMs = Object.create(null);
+
+    for (const Preset of QuadPatchResolutionPresets)
+    {
+        const T0 = performance.now();
+        const QuadSdf = CompileQuadPatchVehicleSdf(AssembledCar, Preset.GridN, Preset.WheelSamples, BodyBvh);
+        QuadFitTimesMs[Preset.PresetKey] = performance.now() - T0;
+        CompiledQuads[Preset.PresetKey]  = QuadSdf;
+        QuadCages[Preset.PresetKey]      = BuildQuadPatchCageBuffers(QuadSdf);
+    }
+
     const CompiledLofts  = Object.create(null);
     const LoftCages      = Object.create(null);
     const LoftFitTimesMs = Object.create(null);
@@ -842,17 +1017,17 @@ async function LaunchLoftedVehicleWorkbench()
         LoftCages[Preset.PresetKey]      = BuildLoftCurveCageBuffers(LoftSdf);
     }
 
-    const CompiledVoxels  = Object.create(null);
-    const VoxelCages      = Object.create(null);
+    const CompiledVoxels   = Object.create(null);
+    const VoxelCages       = Object.create(null);
     const VoxelBakeTimesMs = Object.create(null);
-    const SignRefLoft = CompiledLofts["loft-32x36"];
+    const SignRefHull = CompiledQuads["quad-16x16"];
 
     function EnsureVoxelPresetReady(PresetKey)
     {
         if (CompiledVoxels[PresetKey]) return CompiledVoxels[PresetKey];
         const Entry = VoxelResolutionPresets.find((P) => P.PresetKey === PresetKey);
         const T0 = performance.now();
-        const Vox = CompileUniformVoxelVehicleSdf(AssembledCar, ExactBvh, Entry.Res, SignRefLoft);
+        const Vox = CompileUniformVoxelVehicleSdf(AssembledCar, ExactBvh, Entry.Res, SignRefHull);
         VoxelBakeTimesMs[PresetKey] = performance.now() - T0;
         CompiledVoxels[PresetKey]   = Vox;
         VoxelCages[PresetKey]       = BuildVoxelCageBuffers(Vox);
@@ -881,19 +1056,21 @@ async function LaunchLoftedVehicleWorkbench()
 
     // 4. Active Workbench Controls & Camera Orbit
     const ActiveSettings = {
-        DisplayMode:      0,           // 0 = Showroom + SDF, 1 = Pure d(x)=0 IsoSurface, 2 = 3D Cutaway
-        ActiveParadigm:   0,           // 0 = Lofted Curve SDF, 1 = Uniform Voxel SDF
+        DisplayMode:      0,             // 0 = Showroom + SDF, 1 = Pure d(x)=0 IsoSurface, 2 = 3D Cutaway
+        ActiveParadigm:   0,             // 0 = Closed 4-Corner C² Quad-Patch, 1 = Cylindrical Polar-Fan Loft, 2 = Uniform Voxel Grid
         SplitCompare:     false,
+        SplitRightMode:   2,             // 2 = Uniform 3D Voxel Grid, 1 = Cylindrical Polar-Fan Loft
         ZebraInspect:     false,
         ShowLoftCage:     true,
         ShowVoxelCage:    false,
+        QuadKey:          "quad-16x16",
         LoftKey:          "loft-32x36",
         VoxelKey:         "vox-32",
         SunAzimuthDeg:    42.0,
         SunElevationDeg:  26.0,
         ShadowSoftness:   14.0,
         FloorReflectPct:  65.0,
-        CutAxisMode:      0,           // 0 = Z transverse, 1 = X longitudinal
+        CutAxisMode:      0,             // 0 = Z transverse, 1 = X longitudinal
         CutCoord:         0.35,
         CutClipCar:       false
     };
@@ -929,17 +1106,21 @@ async function LaunchLoftedVehicleWorkbench()
     const ModeBtnIsoSurface = document.getElementById("ModeBtnIsoSurface");
     const ModeBtnCutaway    = document.getElementById("ModeBtnCutaway");
 
-    const SplitCompareToggle = document.getElementById("SplitCompareToggle");
-    const ZebraInspectToggle = document.getElementById("ZebraInspectToggle");
-    const LoftCageToggle     = document.getElementById("LoftCageToggle");
-    const VoxelCageToggle    = document.getElementById("VoxelCageToggle");
+    const SplitCompareToggle    = document.getElementById("SplitCompareToggle");
+    const SplitRightModeSelect  = document.getElementById("SplitRightModeSelect");
+    const SplitRightModeReadout = document.getElementById("SplitRightModeReadout");
+    const ZebraInspectToggle    = document.getElementById("ZebraInspectToggle");
+    const LoftCageToggle        = document.getElementById("LoftCageToggle");
+    const VoxelCageToggle       = document.getElementById("VoxelCageToggle");
 
-    const ActiveParadigmSelect  = document.getElementById("ActiveParadigmSelect");
-    const ActiveParadigmReadout = document.getElementById("ActiveParadigmReadout");
-    const LoftPresetSelect      = document.getElementById("LoftPresetSelect");
-    const LoftPresetReadout     = document.getElementById("LoftPresetReadout");
-    const VoxelPresetSelect     = document.getElementById("VoxelPresetSelect");
-    const VoxelPresetReadout    = document.getElementById("VoxelPresetReadout");
+    const ActiveParadigmSelect   = document.getElementById("ActiveParadigmSelect");
+    const ActiveParadigmReadout  = document.getElementById("ActiveParadigmReadout");
+    const QuadPatchPresetSelect  = document.getElementById("QuadPatchPresetSelect");
+    const QuadPatchPresetReadout = document.getElementById("QuadPatchPresetReadout");
+    const LoftPresetSelect       = document.getElementById("LoftPresetSelect");
+    const LoftPresetReadout      = document.getElementById("LoftPresetReadout");
+    const VoxelPresetSelect      = document.getElementById("VoxelPresetSelect");
+    const VoxelPresetReadout     = document.getElementById("VoxelPresetReadout");
 
     const SunAzimuthSlider      = document.getElementById("SunAzimuthSlider");
     const SunAzimuthReadout     = document.getElementById("SunAzimuthReadout");
@@ -955,71 +1136,93 @@ async function LaunchLoftedVehicleWorkbench()
     const CutCoordReadout       = document.getElementById("CutCoordReadout");
     const CutClipCarToggle      = document.getElementById("CutClipCarToggle");
 
-    const BenchHeadLoft    = document.getElementById("BenchHeadLoft");
-    const BenchHeadVox     = document.getElementById("BenchHeadVox");
-    const BenchLoftCompact = document.getElementById("BenchLoftCompact");
-    const BenchVoxFp16     = document.getElementById("BenchVoxFp16");
-    const BenchLoftGpu     = document.getElementById("BenchLoftGpu");
-    const BenchVoxRgba16   = document.getElementById("BenchVoxRgba16");
-    const BenchLoftFitMs   = document.getElementById("BenchLoftFitMs");
-    const BenchVoxBakeMs   = document.getElementById("BenchVoxBakeMs");
-    const BenchLoftMedMm   = document.getElementById("BenchLoftMedMm");
-    const BenchVoxMedMm    = document.getElementById("BenchVoxMedMm");
-    const BenchLoftP90Mm   = document.getElementById("BenchLoftP90Mm");
-    const BenchVoxP90Mm    = document.getElementById("BenchVoxP90Mm");
-    const BenchLoftUs      = document.getElementById("BenchLoftUs");
-    const BenchVoxUs       = document.getElementById("BenchVoxUs");
-    const LiveSummaryNote  = document.getElementById("LiveSummaryNote");
+    const BenchHeadLoft       = document.getElementById("BenchHeadLoft");
+    const BenchHeadVox        = document.getElementById("BenchHeadVox");
+    const BenchLoftCompact    = document.getElementById("BenchLoftCompact");
+    const BenchVoxFp16        = document.getElementById("BenchVoxFp16");
+    const BenchLoftGpu        = document.getElementById("BenchLoftGpu");
+    const BenchVoxRgba16      = document.getElementById("BenchVoxRgba16");
+    const BenchLoftFitMs      = document.getElementById("BenchLoftFitMs");
+    const BenchVoxBakeMs      = document.getElementById("BenchVoxBakeMs");
+    const BenchLoftMedMm      = document.getElementById("BenchLoftMedMm");
+    const BenchVoxMedMm       = document.getElementById("BenchVoxMedMm");
+    const BenchLoftP90Mm      = document.getElementById("BenchLoftP90Mm");
+    const BenchVoxP90Mm       = document.getElementById("BenchVoxP90Mm");
+    const BenchLoftUs         = document.getElementById("BenchLoftUs");
+    const BenchVoxUs          = document.getElementById("BenchVoxUs");
+    const BenchLoftContinuity = document.getElementById("BenchLoftContinuity");
+    const BenchVoxContinuity  = document.getElementById("BenchVoxContinuity");
+    const LiveSummaryNote     = document.getElementById("LiveSummaryNote");
 
     const BenchmarkPairResults = Object.create(null);
 
     function RefreshQuantitativeTelemetry()
     {
+        const QuadSdf  = CompiledQuads[ActiveSettings.QuadKey];
         const LoftSdf  = CompiledLofts[ActiveSettings.LoftKey];
         const VoxelSdf = EnsureVoxelPresetReady(ActiveSettings.VoxelKey);
-        const PairKey  = `${ActiveSettings.LoftKey}|${ActiveSettings.VoxelKey}`;
+
+        const InspectCylLoft = (!ActiveSettings.SplitCompare && ActiveSettings.ActiveParadigm === 1);
+        const SurfKey = InspectCylLoft ? ActiveSettings.LoftKey : ActiveSettings.QuadKey;
+        const PairKey = `${SurfKey}|${ActiveSettings.VoxelKey}`;
 
         let Bench = BenchmarkPairResults[PairKey];
         if (!Bench)
         {
-            Bench = BenchmarkLoftVsVoxelSdf(AssembledCar, ExactBvh, LoftSdf, VoxelSdf);
+            Bench = InspectCylLoft
+                ? BenchmarkLoftVsVoxelSdf(AssembledCar, ExactBvh, LoftSdf, VoxelSdf)
+                : BenchmarkQuadPatchVsVoxelSdf(AssembledCar, ExactBvh, QuadSdf, VoxelSdf);
             BenchmarkPairResults[PairKey] = Bench;
         }
 
         const CompactRatio = Bench.VoxFp16Kb / Math.max(Bench.LoftCompactKb, 0.01);
         const GpuRatio     = Bench.VoxRgba16Kb / Math.max(Bench.LoftGpuKb, 0.01);
+        const SurfTitle    = InspectCylLoft ? `Loft ${LoftSdf.RibsM}×${LoftSdf.RailsK}` : `Quad 6×${QuadSdf.GridN}²`;
+        const FitTimeMs    = InspectCylLoft ? LoftFitTimesMs[ActiveSettings.LoftKey] : QuadFitTimesMs[ActiveSettings.QuadKey];
 
         TelLoftVram.textContent  = `${Bench.LoftCompactKb.toFixed(2)} KB (${Bench.LoftGpuKb.toFixed(2)} KB GPU)`;
         TelVoxVram.textContent   = `${Bench.VoxFp16Kb.toFixed(1)} KB (${Bench.VoxRgba16Kb.toFixed(0)} KB GPU)`;
         TelVramRatio.textContent = `${CompactRatio.toFixed(1)}× smaller`;
-        TelSkinErr.textContent   = `Loft ${Bench.LoftMedianMm.toFixed(1)} mm med (${Bench.LoftP90Mm.toFixed(1)} P90) · Vox ${Bench.VoxP90Mm.toFixed(1)} mm P90`;
+        TelSkinErr.textContent   = `${SurfTitle}: ${Bench.LoftMedianMm.toFixed(1)} mm med (${Bench.LoftP90Mm.toFixed(1)} P90) · Vox ${Bench.VoxP90Mm.toFixed(1)} mm P90`;
 
-        SplitLeftLbl.textContent  = `LEFT · Lofted Curve SDF (${LoftSdf.RibsM} × ${LoftSdf.RailsK} · ${Bench.LoftCompactKb.toFixed(2)} KB compact)`;
-        SplitRightLbl.textContent = `RIGHT · Uniform 3D Voxel SDF (${VoxelSdf.Res}³ · ${Bench.VoxFp16Kb.toFixed(1)} KB r16f)`;
+        const QuadCompactKb = QuadSdf.CompactKnotBytes / 1024.0;
+        const LoftCompactKb = LoftSdf.CompactKnotBytes / 1024.0;
+        SplitLeftLbl.textContent = `LEFT · Closed 4-Corner C² Quad-Patch (6 × ${QuadSdf.GridN}² = ${QuadSdf.PatchCount} patches · ${QuadCompactKb.toFixed(2)} KB)`;
+        if (ActiveSettings.SplitRightMode === 1)
+        {
+            SplitRightLbl.textContent = `RIGHT · Cylindrical Polar-Fan Loft (${LoftSdf.RibsM} × ${LoftSdf.RailsK} · ${LoftCompactKb.toFixed(2)} KB · 2 Pole Fans)`;
+        }
+        else
+        {
+            SplitRightLbl.textContent = `RIGHT · Uniform 3D Voxel SDF (${VoxelSdf.Res}³ · ${Bench.VoxFp16Kb.toFixed(1)} KB r16f · C⁰ Staircase)`;
+        }
 
-        LoftPresetReadout.textContent  = `${LoftSdf.RibsM} × ${LoftSdf.RailsK}`;
-        VoxelPresetReadout.textContent = `${VoxelSdf.Res}³`;
-        BenchHeadLoft.textContent      = `Loft ${LoftSdf.RibsM}×${LoftSdf.RailsK}`;
-        BenchHeadVox.textContent       = `Voxel ${VoxelSdf.Res}³`;
+        QuadPatchPresetReadout.textContent = `6 × ${QuadSdf.GridN}²`;
+        LoftPresetReadout.textContent      = `${LoftSdf.RibsM} × ${LoftSdf.RailsK}`;
+        VoxelPresetReadout.textContent     = `${VoxelSdf.Res}³`;
+        BenchHeadLoft.textContent          = SurfTitle;
+        BenchHeadVox.textContent           = `Voxel ${VoxelSdf.Res}³`;
 
-        BenchLoftCompact.textContent = `${Bench.LoftCompactKb.toFixed(2)} KB`;
-        BenchVoxFp16.textContent     = `${Bench.VoxFp16Kb.toFixed(1)} KB`;
-        BenchLoftGpu.textContent     = `${Bench.LoftGpuKb.toFixed(2)} KB`;
-        BenchVoxRgba16.textContent   = `${Bench.VoxRgba16Kb.toFixed(0)} KB`;
-        BenchLoftFitMs.textContent   = `${LoftFitTimesMs[ActiveSettings.LoftKey].toFixed(1)} ms`;
-        BenchVoxBakeMs.textContent   = `${VoxelBakeTimesMs[ActiveSettings.VoxelKey].toFixed(0)} ms`;
-        BenchLoftMedMm.textContent   = `${Bench.LoftMedianMm.toFixed(2)} mm`;
-        BenchVoxMedMm.textContent    = `${Bench.VoxMedianMm.toFixed(2)} mm`;
-        BenchLoftP90Mm.textContent   = `${Bench.LoftP90Mm.toFixed(2)} mm`;
-        BenchVoxP90Mm.textContent    = `${Bench.VoxP90Mm.toFixed(2)} mm`;
-        BenchLoftUs.textContent      = `${Bench.LoftUsPerEval.toFixed(2)} µs`;
-        BenchVoxUs.textContent       = `${Bench.VoxUsPerEval.toFixed(3)} µs`;
+        BenchLoftCompact.textContent    = `${Bench.LoftCompactKb.toFixed(2)} KB`;
+        BenchVoxFp16.textContent        = `${Bench.VoxFp16Kb.toFixed(1)} KB`;
+        BenchLoftGpu.textContent        = `${Bench.LoftGpuKb.toFixed(2)} KB`;
+        BenchVoxRgba16.textContent      = `${Bench.VoxRgba16Kb.toFixed(0)} KB`;
+        BenchLoftFitMs.textContent      = `${FitTimeMs.toFixed(1)} ms`;
+        BenchVoxBakeMs.textContent      = `${VoxelBakeTimesMs[ActiveSettings.VoxelKey].toFixed(0)} ms`;
+        BenchLoftMedMm.textContent      = `${Bench.LoftMedianMm.toFixed(2)} mm`;
+        BenchVoxMedMm.textContent       = `${Bench.VoxMedianMm.toFixed(2)} mm`;
+        BenchLoftP90Mm.textContent      = `${Bench.LoftP90Mm.toFixed(2)} mm`;
+        BenchVoxP90Mm.textContent       = `${Bench.VoxP90Mm.toFixed(2)} mm`;
+        BenchLoftUs.textContent         = `${Bench.LoftUsPerEval.toFixed(2)} µs`;
+        BenchVoxUs.textContent          = `${Bench.VoxUsPerEval.toFixed(3)} µs`;
+        BenchLoftContinuity.textContent = InspectCylLoft ? "C¹ · 2 Pole Fans" : "C² · 0 Poles";
+        BenchVoxContinuity.textContent  = "C⁰ Staircase";
 
         LiveSummaryNote.innerHTML =
-            `💡 <strong>Loft ${LoftSdf.RibsM}×${LoftSdf.RailsK}</strong> uses <strong>${CompactRatio.toFixed(1)}×</strong> less compact VRAM ` +
-            `(<strong>${GpuRatio.toFixed(1)}×</strong> less GPU rgba16f VRAM) than <strong>Voxel ${VoxelSdf.Res}³</strong> and compiles in ` +
-            `<strong>${LoftFitTimesMs[ActiveSettings.LoftKey].toFixed(1)} ms</strong> vs. <strong>${VoxelBakeTimesMs[ActiveSettings.VoxelKey].toFixed(0)} ms</strong>, ` +
-            `trading ~${Math.max(1, Math.round(Bench.LoftUsPerEval / Math.max(Bench.VoxUsPerEval, 0.02)))}× more ALU per point query for C¹-smooth normals.`;
+            `💡 <strong>${SurfTitle}</strong> uses <strong>${CompactRatio.toFixed(1)}×</strong> less compact VRAM ` +
+            `(<strong>${GpuRatio.toFixed(1)}×</strong> less GPU rgba16f VRAM) than <strong>Voxel ${VoxelSdf.Res}³</strong>, compiles in ` +
+            `<strong>${FitTimeMs.toFixed(1)} ms</strong> vs. <strong>${VoxelBakeTimesMs[ActiveSettings.VoxelKey].toFixed(0)} ms</strong>, ` +
+            `and wraps every panel in closed 4-corner C² patches with zero polar fan singularities.`;
     }
 
     function SyncDisplayModeButtons()
@@ -1042,6 +1245,7 @@ async function LaunchLoftedVehicleWorkbench()
     }
 
     // Initial resource upload
+    GpuDriver.SyncQuadPatchResources(CompiledQuads[ActiveSettings.QuadKey], QuadCages[ActiveSettings.QuadKey]);
     GpuDriver.SyncLoftResources(CompiledLofts[ActiveSettings.LoftKey], LoftCages[ActiveSettings.LoftKey]);
     GpuDriver.SyncVoxelResources(CompiledVoxels[ActiveSettings.VoxelKey], VoxelCages[ActiveSettings.VoxelKey]);
     GpuDriver.SyncCutawayPlane(BuildCutawayPlaneBuffers(ActiveSettings.CutAxisMode, ActiveSettings.CutCoord));
@@ -1056,6 +1260,19 @@ async function LaunchLoftedVehicleWorkbench()
     SplitCompareToggle.addEventListener("change", () => {
         ActiveSettings.SplitCompare = SplitCompareToggle.checked;
         SyncDisplayModeButtons();
+        RefreshQuantitativeTelemetry();
+    });
+
+    SplitRightModeSelect.addEventListener("change", () => {
+        ActiveSettings.SplitRightMode = Number(SplitRightModeSelect.value);
+        SplitRightModeReadout.textContent = ActiveSettings.SplitRightMode === 1 ? "Polar-Fan Loft" : "3D Voxel Grid";
+        if (!ActiveSettings.SplitCompare)
+        {
+            ActiveSettings.SplitCompare = true;
+            SplitCompareToggle.checked = true;
+            SyncDisplayModeButtons();
+        }
+        RefreshQuantitativeTelemetry();
     });
 
     ZebraInspectToggle.addEventListener("change", () => {
@@ -1076,7 +1293,15 @@ async function LaunchLoftedVehicleWorkbench()
 
     ActiveParadigmSelect.addEventListener("change", () => {
         ActiveSettings.ActiveParadigm = Number(ActiveParadigmSelect.value);
-        ActiveParadigmReadout.textContent = ActiveSettings.ActiveParadigm === 0 ? "Lofted Curve" : "Voxel Grid";
+        const Labels = ["4-Corner Quad-Patch", "Polar-Fan Loft", "3D Voxel Grid"];
+        ActiveParadigmReadout.textContent = Labels[ActiveSettings.ActiveParadigm] || "4-Corner Quad-Patch";
+        RefreshQuantitativeTelemetry();
+    });
+
+    QuadPatchPresetSelect.addEventListener("change", () => {
+        ActiveSettings.QuadKey = QuadPatchPresetSelect.value;
+        GpuDriver.SyncQuadPatchResources(CompiledQuads[ActiveSettings.QuadKey], QuadCages[ActiveSettings.QuadKey]);
+        RefreshQuantitativeTelemetry();
     });
 
     LoftPresetSelect.addEventListener("change", () => {
@@ -1133,11 +1358,12 @@ async function LaunchLoftedVehicleWorkbench()
         ActiveSettings.CutClipCar = CutClipCarToggle.checked;
     });
 
-    document.getElementById("CamHeroBtn").addEventListener("click",    () => ApplyCameraBookmark("Hero"));
-    document.getElementById("CamFenderBtn").addEventListener("click",  () => ApplyCameraBookmark("Fender"));
-    document.getElementById("CamProfileBtn").addEventListener("click", () => ApplyCameraBookmark("Profile"));
-    document.getElementById("CamShadowBtn").addEventListener("click",  () => ApplyCameraBookmark("Shadow"));
-    document.getElementById("CamTopRibsBtn").addEventListener("click", () => ApplyCameraBookmark("TopRibs"));
+    document.getElementById("CamHeroBtn").addEventListener("click",      () => ApplyCameraBookmark("Hero"));
+    document.getElementById("CamNoseQuadsBtn").addEventListener("click", () => ApplyCameraBookmark("NoseQuads"));
+    document.getElementById("CamFenderBtn").addEventListener("click",    () => ApplyCameraBookmark("Fender"));
+    document.getElementById("CamProfileBtn").addEventListener("click",   () => ApplyCameraBookmark("Profile"));
+    document.getElementById("CamShadowBtn").addEventListener("click",    () => ApplyCameraBookmark("Shadow"));
+    document.getElementById("CamTopRibsBtn").addEventListener("click",   () => ApplyCameraBookmark("TopRibs"));
 
     // 7. Pointer Camera Orbit, Pan & Wheel Zoom
     let DragActive = false;
@@ -1180,7 +1406,7 @@ async function LaunchLoftedVehicleWorkbench()
     }, { passive: false });
 
     // 8. Continuous 60 FPS Render Loop
-    const UniformFloats = new Float32Array(64);
+    const UniformFloats = new Float32Array(68);
     const StartMs = performance.now();
     let FpsAccumSec = 0.0;
     let FpsCount = 0;
@@ -1234,13 +1460,14 @@ async function LaunchLoftedVehicleWorkbench()
             Math.cos(ElRad) * Math.cos(AzRad)
         ]);
 
+        const QuadSdf  = CompiledQuads[ActiveSettings.QuadKey];
         const LoftSdf  = CompiledLofts[ActiveSettings.LoftKey];
         const VoxelSdf = CompiledVoxels[ActiveSettings.VoxelKey];
 
         UniformFloats.set(ViewProj, 0);
         UniformFloats.set(InvViewProj, 16);
 
-        // Params0..Params7
+        // Params0..Params8
         UniformFloats[32] = Eye[0];
         UniformFloats[33] = Eye[1];
         UniformFloats[34] = Eye[2];
@@ -1281,10 +1508,18 @@ async function LaunchLoftedVehicleWorkbench()
         UniformFloats[62] = ActiveSettings.CutClipCar ? 1.0 : 0.0;
         UniformFloats[63] = (NowMs - StartMs) * 0.001;
 
+        UniformFloats[64] = QuadSdf.KnotSpan;
+        UniformFloats[65] = QuadSdf.HaloLimit;
+        UniformFloats[66] = ActiveSettings.SplitRightMode;
+        UniformFloats[67] = QuadSdf.WheelSamples;
+
         GpuDriver.RenderTick(UniformFloats, {
-            DisplayMode:   ActiveSettings.DisplayMode,
-            ShowLoftCage:  ActiveSettings.ShowLoftCage,
-            ShowVoxelCage: ActiveSettings.ShowVoxelCage
+            DisplayMode:    ActiveSettings.DisplayMode,
+            ActiveParadigm: ActiveSettings.ActiveParadigm,
+            SplitCompare:   ActiveSettings.SplitCompare,
+            SplitRightMode: ActiveSettings.SplitRightMode,
+            ShowLoftCage:   ActiveSettings.ShowLoftCage,
+            ShowVoxelCage:  ActiveSettings.ShowVoxelCage
         });
 
         requestAnimationFrame(TickLoop);

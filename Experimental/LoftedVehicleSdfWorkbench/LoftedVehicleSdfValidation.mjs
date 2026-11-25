@@ -14,15 +14,20 @@ import { fileURLToPath } from "url";
 
 import {
     LoftResolutionPresets,
+    QuadPatchResolutionPresets,
     EncodeFloat16Bits,
     ParseFct1VehicleBinary,
     AssembleCompleteControlVehicle,
     BuildTriangleBvhAccelerator,
     CompileLoftedVehicleSdf,
     EvaluateLoftedVehicleSdf,
+    CompileQuadPatchVehicleSdf,
+    EvalBicubicQuadChartSurface,
+    EvaluateQuadPatchVehicleSdf,
     CompileUniformVoxelVehicleSdf,
     EvaluateVoxelVehicleSdf,
-    BenchmarkLoftVsVoxelSdf
+    BenchmarkLoftVsVoxelSdf,
+    BenchmarkQuadPatchVsVoxelSdf
 } from "./LoftedVehicleSdfCompiler.js";
 
 import {
@@ -31,6 +36,7 @@ import {
     BuildShowroomSceneBuffers,
     BuildCutawayPlaneBuffers,
     BuildLoftCurveCageBuffers,
+    BuildQuadPatchCageBuffers,
     BuildVoxelCageBuffers
 } from "./VehicleShowroomBuilder.js";
 
@@ -60,7 +66,7 @@ function DecodeFloat16Bits(H)
 }
 
 let ChecksPassed = 0;
-const TotalChecks = 7;
+const TotalChecks = 8;
 
 function AssertCondition(Cond, Msg)
 {
@@ -147,25 +153,97 @@ console.log(
 );
 
 // ============================================================================
-// Check 3: O(M*K) vs. O(N^3) VRAM Compression & Voxel SDF Consistency
+// Check 3: Closed 6-Chart 4-Corner C² Quad-Patch Convergence, 0 Poles & Seam Watertightness
 // ============================================================================
-const Vox16 = CompileUniformVoxelVehicleSdf(Car, ExactBvh, 16, RefLoft);
-const Vox64 = CompileUniformVoxelVehicleSdf(Car, ExactBvh, 64, RefLoft);
+const BodyBvh = BuildTriangleBvhAccelerator(Car.BodyPart.Positions, Car.BodyPart.Indices, Car.BodyPart.FaceCount);
+const CompiledQuads = [];
+for (const P of QuadPatchResolutionPresets)
+{
+    const Q = CompileQuadPatchVehicleSdf(Car, P.GridN, P.WheelSamples, BodyBvh);
+    CompiledQuads.push(Q);
+
+    let MaxHalfErr = 0.0;
+    for (let I = 0; I < Q.HermiteKnotsF32.length; ++I)
+    {
+        const Orig = Q.HermiteKnotsF32[I];
+        const Dec  = DecodeFloat16Bits(Q.HermiteKnotsRgba16[I]);
+        MaxHalfErr = Math.max(MaxHalfErr, Math.abs(Orig - Dec));
+    }
+    AssertCondition(MaxHalfErr < 1.5e-3, `Quad-Patch half-float knot quantization error too high (${MaxHalfErr})`);
+}
+
+const RefQuad = CompiledQuads[2]; // 6 x 16^2 = 1,536 4-corner patches
+AssertCondition(EvaluateQuadPatchVehicleSdf(RefQuad, [0.0, 0.85, 0.0]) < -0.35, "Cabin center must be strictly negative inside Quad-Patch SDF");
+AssertCondition(EvaluateQuadPatchVehicleSdf(RefQuad, [0.0, 2.50, 0.0]) > 0.65, "Point above roof must be strictly positive outside Quad-Patch SDF");
+const QuadWheelGapD = EvaluateQuadPatchVehicleSdf(CompiledQuads[3], [1.05, 1.042, 1.7274]);
+AssertCondition(Math.abs(QuadWheelGapD) < 0.06, `Quad-Patch wheel-well arch gap should be carved cleanly, got d=${QuadWheelGapD}`);
+
+// Verify ZERO polar triangle-fan singularity at exact Front Grille (Chart 4) & Rear Bumper (Chart 5) centers:
+for (const EndChart of [4, 5])
+{
+    const EndSurf = EvalBicubicQuadChartSurface(RefQuad, EndChart, 0.0, 0.0);
+    const Jx = EndSurf.Sxi[1] * EndSurf.Seta[2] - EndSurf.Sxi[2] * EndSurf.Seta[1];
+    const Jy = EndSurf.Sxi[2] * EndSurf.Seta[0] - EndSurf.Sxi[0] * EndSurf.Seta[2];
+    const Jz = EndSurf.Sxi[0] * EndSurf.Seta[1] - EndSurf.Sxi[1] * EndSurf.Seta[0];
+    const JacArea = Math.hypot(Jx, Jy, Jz);
+    AssertCondition(JacArea > 0.15, `Degenerate polar Jacobian (${JacArea}) on end-cap Chart ${EndChart}`);
+}
+
+// Verify knot-aligned cube-box seam watertightness (< 1e-6 mm!) between Front (+Z, Chart 4, Eta=+1) & Top (+Y, Chart 2, Eta=-1):
+let MaxSeamGapMm = 0.0;
+for (let S = 0; S <= 32; ++S)
+{
+    const Xi = -1.0 + (2.0 * S) / 32.0;
+    const FrontSeam = EvalBicubicQuadChartSurface(RefQuad, 4, Xi, 1.0).Pos;
+    const TopSeam   = EvalBicubicQuadChartSurface(RefQuad, 2, Xi, -1.0).Pos;
+    const GapMm = Math.hypot(FrontSeam[0] - TopSeam[0], FrontSeam[1] - TopSeam[1], FrontSeam[2] - TopSeam[2]) * 1000.0;
+    if (GapMm > MaxSeamGapMm) MaxSeamGapMm = GapMm;
+}
+AssertCondition(MaxSeamGapMm < 1e-6, `Cube-box chart seam gap too large (${MaxSeamGapMm} mm)`);
+
+const QuadBenchResults = CompiledQuads.map((Q) => BenchmarkQuadPatchVsVoxelSdf(Car, ExactBvh, Q, Vox32));
+for (let I = 1; I < QuadBenchResults.length; ++I)
+{
+    AssertCondition(
+        QuadBenchResults[I].LoftMeanErrMm < QuadBenchResults[I - 1].LoftMeanErrMm,
+        `Quad-Patch mean error failed to decrease monotonically (${QuadBenchResults[I - 1].LoftMeanErrMm} -> ${QuadBenchResults[I].LoftMeanErrMm})`
+    );
+    AssertCondition(
+        QuadBenchResults[I].LoftP90Mm < QuadBenchResults[I - 1].LoftP90Mm,
+        `Quad-Patch P90 error failed to decrease monotonically (${QuadBenchResults[I - 1].LoftP90Mm} -> ${QuadBenchResults[I].LoftP90Mm})`
+    );
+}
+AssertCondition(QuadBenchResults[3].LoftMedianMm < 2.0, `6x24^2 Quad-Patch median error > 2.0 mm (${QuadBenchResults[3].LoftMedianMm})`);
+AssertCondition(QuadBenchResults[3].LoftP90Mm < 10.0, `6x24^2 Quad-Patch P90 error > 10.0 mm (${QuadBenchResults[3].LoftP90Mm})`);
+++ChecksPassed;
+console.log(
+    `✔️ [3/${TotalChecks}] Closed 4-Corner C² Quad-Patch verified (0 poles, seam gap=${MaxSeamGapMm.toExponential(2)}mm): ` +
+    `6x6² Med=${QuadBenchResults[0].LoftMedianMm.toFixed(2)}mm -> ` +
+    `6x10² Med=${QuadBenchResults[1].LoftMedianMm.toFixed(2)}mm -> ` +
+    `6x16² Med=${QuadBenchResults[2].LoftMedianMm.toFixed(2)}mm -> ` +
+    `6x24² Med=${QuadBenchResults[3].LoftMedianMm.toFixed(2)}mm (P90=${QuadBenchResults[3].LoftP90Mm.toFixed(2)}mm)`
+);
+
+// ============================================================================
+// Check 4: O(M*K) vs. O(N^3) VRAM Compression & Voxel SDF Consistency
+// ============================================================================
+const Vox16 = CompileUniformVoxelVehicleSdf(Car, ExactBvh, 16, RefQuad);
+const Vox64 = CompileUniformVoxelVehicleSdf(Car, ExactBvh, 64, RefQuad);
 AssertCondition(EvaluateVoxelVehicleSdf(Vox32, [0.0, 0.85, 0.0]) < -0.25, "Voxel 32^3 cabin center should be negative");
 AssertCondition(EvaluateVoxelVehicleSdf(Vox64, [0.0, 2.50, 0.0]) > 0.65, "Voxel 64^3 point above roof should be positive");
 
-const Ratio32 = Vox32.VramFp16Bytes / CompiledLofts[3].CompactKnotBytes;
-const Ratio64 = Vox64.VramFp16Bytes / CompiledLofts[3].CompactKnotBytes;
-AssertCondition(Ratio32 > 10.0, `Expected >10x VRAM compression vs 32^3, got ${Ratio32}`);
-AssertCondition(Ratio64 > 80.0, `Expected >80x VRAM compression vs 64^3, got ${Ratio64}`);
+const Ratio32 = Vox32.VramFp16Bytes / RefQuad.CompactKnotBytes;
+const Ratio64 = Vox64.VramFp16Bytes / RefQuad.CompactKnotBytes;
+AssertCondition(Ratio32 > 15.0, `Expected >15x VRAM compression vs 32^3, got ${Ratio32}`);
+AssertCondition(Ratio64 > 120.0, `Expected >120x VRAM compression vs 64^3, got ${Ratio64}`);
 ++ChecksPassed;
 console.log(
-    `✔️ [3/${TotalChecks}] VRAM scaling verified: Loft 48x64 = ${(CompiledLofts[3].CompactKnotBytes / 1024).toFixed(2)} KB compact ` +
+    `✔️ [4/${TotalChecks}] VRAM scaling verified: Quad 6x16² = ${(RefQuad.CompactKnotBytes / 1024).toFixed(2)} KB compact ` +
     `(${Ratio32.toFixed(1)}x smaller than Voxel 32^3, ${Ratio64.toFixed(1)}x smaller than Voxel 64^3)`
 );
 
 // ============================================================================
-// Check 4: Showroom Geometry, Cutaway Plane & 3D RibxRail Spline Cage Buffers
+// Check 5: Showroom Geometry, Cutaway Plane & 4-Corner Quad-Patch / Loft Cage Buffers
 // ============================================================================
 const ShowroomBuf = BuildShowroomSceneBuffers(Car);
 AssertCondition(ShowroomBuf.VehicleIndexCount === Car.TotalFaces * 3, "Vehicle index count mismatch");
@@ -183,20 +261,22 @@ const CutZ = BuildCutawayPlaneBuffers(0, 0.35);
 const CutX = BuildCutawayPlaneBuffers(1, 0.00);
 AssertCondition(CutZ.IndexCount === 12 && CutX.IndexCount === 12, "Expected 12 double-sided indices on cutaway quad");
 
+const QuadCage = BuildQuadPatchCageBuffers(RefQuad);
 const LoftCage = BuildLoftCurveCageBuffers(RefLoft);
 const VoxCage  = BuildVoxelCageBuffers(Vox32);
+AssertCondition(QuadCage.VertexCount > 4000, `Too few Quad-Patch cage vertices (${QuadCage.VertexCount})`);
 AssertCondition(LoftCage.VertexCount > 4000, `Too few Loft spline cage vertices (${LoftCage.VertexCount})`);
 AssertCondition(VoxCage.VertexCount > 2000, `Too few Voxel cage vertices (${VoxCage.VertexCount})`);
-for (let I = 0; I < LoftCage.Vertices.length; ++I)
+for (let I = 0; I < QuadCage.Vertices.length; ++I)
 {
-    AssertCondition(Number.isFinite(LoftCage.Vertices[I]), `Non-finite float in LoftCage at ${I}`);
+    AssertCondition(Number.isFinite(QuadCage.Vertices[I]), `Non-finite float in QuadCage at ${I}`);
 }
-AssertCondition(LoftCage.Vertices.length === LoftCage.VertexCount * CageLineVertexFloats, "LoftCage stride mismatch");
+AssertCondition(QuadCage.Vertices.length === QuadCage.VertexCount * CageLineVertexFloats, "QuadCage stride mismatch");
 ++ChecksPassed;
-console.log(`✔️ [4/${TotalChecks}] Showroom buffers verified (${ShowroomBuf.Vertices.length / ShowroomVertexFloats} surface verts, ${LoftCage.VertexCount} rib/rail cage verts)`);
+console.log(`✔️ [5/${TotalChecks}] Showroom & 4-Corner Quad-Patch cage buffers verified (${QuadCage.VertexCount} quad cage verts, ${LoftCage.VertexCount} cyl cage verts)`);
 
 // ============================================================================
-// Check 5: WGSL & GLSL Shader Static Derivative-Uniformity Audit
+// Check 6: WGSL & GLSL Shader Static Derivative-Uniformity Audit
 // ============================================================================
 for (const WgslSrc of [ShowroomSurfaceWgsl, RayMarchIsoSurfaceWgsl, CageOverlayWgsl])
 {
@@ -204,16 +284,18 @@ for (const WgslSrc of [ShowroomSurfaceWgsl, RayMarchIsoSurfaceWgsl, CageOverlayW
     const StorageHits = WgslSrc.match(/var<\s*storage/g) || [];
     AssertCondition(StorageHits.length <= 4, `Exceeded 4 storage slots (${StorageHits.length})`);
 }
+AssertCondition(ShowroomSurfaceWgsl.includes("EvalQuadPatchVehicleSdf") && RayMarchIsoSurfaceWgsl.includes("EvalQuadPatchVehicleSdf"), "Missing EvalQuadPatchVehicleSdf in WGSL");
+AssertCondition(ShowroomSurfaceGlslFrag.includes("EvalQuadPatchVehicleSdf") && RayMarchIsoSurfaceGlslFrag.includes("EvalQuadPatchVehicleSdf"), "Missing EvalQuadPatchVehicleSdf in GLSL");
 for (const GlslSrc of [ShowroomSurfaceGlslVert, ShowroomSurfaceGlslFrag, RayMarchIsoSurfaceGlslVert, RayMarchIsoSurfaceGlslFrag, CageOverlayGlslVert, CageOverlayGlslFrag])
 {
     AssertCondition(GlslSrc.startsWith("#version 300 es"), "GLSL shader must start with #version 300 es");
     AssertCondition(!/\btexture\s*\(/.test(GlslSrc), "Forbidden implicit-derivative texture() found in GLSL; use texelFetch/textureLod");
 }
 ++ChecksPassed;
-console.log(`✔️ [5/${TotalChecks}] WGSL & GLSL ES 3.00 shaders passed derivative-uniformity & slot audit`);
+console.log(`✔️ [6/${TotalChecks}] WGSL & GLSL ES 3.00 shaders passed derivative-uniformity & Quad-Patch parity audit`);
 
 // ============================================================================
-// Check 6: HTML <-> JS DOM Control Synchronization
+// Check 7: HTML <-> JS DOM Control Synchronization
 // ============================================================================
 const HtmlSrc = fs.readFileSync(path.join(DirHere, "index.html"), "utf8");
 const WbSrc   = fs.readFileSync(path.join(DirHere, "LoftedVehicleSdfWorkbench.js"), "utf8");
@@ -226,7 +308,7 @@ while ((Match = IdRegex.exec(WbSrc)) !== null)
     ++MatchedIds;
 }
 ++ChecksPassed;
-console.log(`✔️ [6/${TotalChecks}] HTML <-> JS DOM synchronization verified (${MatchedIds} element IDs matched)`);
+console.log(`✔️ [7/${TotalChecks}] HTML <-> JS DOM synchronization verified (${MatchedIds} element IDs matched)`);
 
 // ============================================================================
 // Check 7: Frontier Governance Scan (Banned Words, Bool Prefixes, Emoji Allowlist)
@@ -301,5 +383,5 @@ for (const Rel of TargetFiles)
     }
 }
 ++ChecksPassed;
-console.log(`✔️ [7/${TotalChecks}] Governance scan passed across all ${TargetFiles.length} files (0 banned words, 0 bad emojis)`);
+console.log(`✔️ [8/${TotalChecks}] Governance scan passed across all ${TargetFiles.length} files (0 banned words, 0 bad emojis)`);
 console.log(`\n🟢 ALL ${ChecksPassed}/${TotalChecks} LOFTED VEHICLE SDF WORKBENCH CHECKS PASSED!`);
