@@ -9,7 +9,16 @@
 //   3. `ROCK2_MESH_VS` / `ROCK2_MESH_FS`: 4^3 Sparse-Brick QEF Dual-Contour Triangle Mesh + Wireframe Overlay.
 
 import { clamp, DEG2RAD } from './Core/SpatialNoise3D.js';
-import { evalRock2StackSdf, packRock2StackGpuBuffers } from './RockFormationStackEngine.js';
+import {
+    evalRock2StackSdf,
+    packRock2StackGpuBuffers,
+    buildRock2EulerMatrix3,
+    forwardRock2Point,
+    inverseRock2Vector,
+    buildRock2SplineArcTable,
+    evaluateRock2GeneratorInstances,
+    normalizeSplineKnots
+} from './RockFormationStackEngine.js';
 
 const FULLSCREEN_VS = `#version 300 es
 precision highp float;
@@ -500,9 +509,13 @@ void main() {
 
 export class RockFormation2Viewport
 {
-    constructor(canvas)
+    constructor(canvas, overlayCanvas = null, callbacks = {})
     {
         this.canvas = canvas;
+        this.overlayCanvas = overlayCanvas || (typeof document !== 'undefined' ? document.getElementById('OverlayRock2') : null);
+        this.ctx2d = this.overlayCanvas ? this.overlayCanvas.getContext('2d') : null;
+        this.callbacks = callbacks || {};
+
         this.gl = canvas.getContext('webgl2', { antialias: true, alpha: false, depth: true });
         if (!this.gl)
         {
@@ -511,6 +524,15 @@ export class RockFormation2Viewport
         }
 
         this.compiledStack = null;
+        this.activeLayer = null;
+        this.showGizmos = true;
+        this.selectedKnotIndex = 0;
+        this._screenHandles = [];
+        this._screenSplineSegs = [];
+        this._hoveredHandle = null;
+        this._hoveredCurveInsert = null;
+        this._gizmoDrag = null;
+
         this.renderMode = 'raymarch'; // 'raymarch' | 'qef-mesh'
         this.showWireframe = false;
         this.lens = 0;
@@ -817,17 +839,241 @@ export class RockFormation2Viewport
         this.pitch = 0.28;
     }
 
+    setActiveLayer(layer)
+    {
+        this.activeLayer = layer || null;
+        const knots = layer?.generator?.knots;
+        if (Array.isArray(knots) && knots.length > 0)
+        {
+            this.selectedKnotIndex = clamp(this.selectedKnotIndex, 0, knots.length - 1);
+        }
+        else
+        {
+            this.selectedKnotIndex = 0;
+        }
+    }
+
+    _getLayerTransform(layer)
+    {
+        const p = layer?.params || {};
+        const R = buildRock2EulerMatrix3(p.yawDeg ?? 0, p.pitchDeg ?? 0, p.rollDeg ?? 0);
+        const pivot = [p.posX ?? 0.0, p.posY ?? 0.0, p.posZ ?? 0.0];
+        const upW = [R[1], R[4], R[7]];
+        return { R, pivot, upW };
+    }
+
+    _projectWorldPoint(wx, wy, wz, cam, cssW, cssH)
+    {
+        const dx = wx - cam.camPos[0];
+        const dy = wy - cam.camPos[1];
+        const dz = wz - cam.camPos[2];
+        const zCam = dx * cam.fwd[0] + dy * cam.fwd[1] + dz * cam.fwd[2];
+        if (zCam <= 0.14) return null;
+
+        const xCam = dx * cam.right[0] + dy * cam.right[1] + dz * cam.right[2];
+        const yCam = dx * cam.up[0]    + dy * cam.up[1]    + dz * cam.up[2];
+        const aspect = cssW / Math.max(1, cssH);
+        const ndcX = xCam / (zCam * 0.44 * aspect);
+        const ndcY = yCam / (zCam * 0.44);
+
+        return {
+            sx: (ndcX * 0.5 + 0.5) * cssW,
+            sy: (0.5 - ndcY * 0.5) * cssH,
+            depth: zCam
+        };
+    }
+
+    _screenRay(clientX, clientY)
+    {
+        const rect = this.canvas.getBoundingClientRect();
+        const cssW = Math.max(1, rect.width);
+        const cssH = Math.max(1, rect.height);
+        const sx = clientX - rect.left;
+        const sy = clientY - rect.top;
+        const ndcX = (sx / cssW) * 2.0 - 1.0;
+        const ndcY = 1.0 - (sy / cssH) * 2.0;
+        const aspect = cssW / cssH;
+
+        const cam = this._computeCameraBasis();
+        const u = ndcX * aspect * 0.44;
+        const v = ndcY * 0.44;
+        let rdx = cam.fwd[0] + u * cam.right[0] + v * cam.up[0];
+        let rdy = cam.fwd[1] + u * cam.right[1] + v * cam.up[1];
+        let rdz = cam.fwd[2] + u * cam.right[2] + v * cam.up[2];
+        const rl = Math.hypot(rdx, rdy, rdz) || 1;
+        rdx /= rl; rdy /= rl; rdz /= rl;
+
+        return { ro: cam.camPos, rd: [rdx, rdy, rdz], sx, sy, cssW, cssH, cam };
+    }
+
+    _intersectHorizontalPlane(clientX, clientY, anchorW, upW)
+    {
+        const { ro, rd, cam } = this._screenRay(clientX, clientY);
+        let nx = upW[0], ny = upW[1], nz = upW[2];
+        let denom = rd[0] * nx + rd[1] * ny + rd[2] * nz;
+        if (Math.abs(denom) < 0.06)
+        {
+            // Grazing-angle fallback onto view-aligned plane
+            nx = -cam.fwd[0]; ny = -cam.fwd[1]; nz = -cam.fwd[2];
+            denom = rd[0] * nx + rd[1] * ny + rd[2] * nz;
+            if (Math.abs(denom) < 1e-5) return anchorW;
+        }
+        const t = ((anchorW[0] - ro[0]) * nx + (anchorW[1] - ro[1]) * ny + (anchorW[2] - ro[2]) * nz) / denom;
+        const tClamped = clamp(t, 0.15, 160.0);
+        return [ro[0] + rd[0] * tClamped, ro[1] + rd[1] * tClamped, ro[2] + rd[2] * tClamped];
+    }
+
+    _intersectVerticalAxis(clientX, clientY, anchorW, upW)
+    {
+        const { ro, rd } = this._screenRay(clientX, clientY);
+        const vx = ro[0] - anchorW[0], vy = ro[1] - anchorW[1], vz = ro[2] - anchorW[2];
+        const proj = vx * upW[0] + vy * upW[1] + vz * upW[2];
+        let pnx = vx - upW[0] * proj;
+        let pny = vy - upW[1] * proj;
+        let pnz = vz - upW[2] * proj;
+        const pl = Math.hypot(pnx, pny, pnz);
+        if (pl < 1e-4) return 0.0;
+        pnx /= pl; pny /= pl; pnz /= pl;
+
+        const denom = rd[0] * pnx + rd[1] * pny + rd[2] * pnz;
+        if (Math.abs(denom) < 1e-4) return 0.0;
+        const t = ((anchorW[0] - ro[0]) * pnx + (anchorW[1] - ro[1]) * pny + (anchorW[2] - ro[2]) * pnz) / denom;
+        const tClamped = clamp(t, 0.15, 160.0);
+        const hx = ro[0] + rd[0] * tClamped - anchorW[0];
+        const hy = ro[1] + rd[1] * tClamped - anchorW[1];
+        const hz = ro[2] + rd[2] * tClamped - anchorW[2];
+        return hx * upW[0] + hy * upW[1] + hz * upW[2];
+    }
+
+    _pickHandleAt(sx, sy)
+    {
+        if (!this.showGizmos || !this._screenHandles.length) return null;
+        let best = null;
+        let bestDist = 1e9;
+        for (let i = 0; i < this._screenHandles.length; i++)
+        {
+            const h = this._screenHandles[i];
+            const d = Math.hypot(sx - h.sx, sy - h.sy);
+            if (d <= h.hitRadius && d < bestDist)
+            {
+                bestDist = d;
+                best = h;
+            }
+        }
+        return best;
+    }
+
+    _pickSplineCurveSegmentAt(sx, sy, maxDistPx = 13)
+    {
+        if (!this.showGizmos || !this._screenSplineSegs.length) return null;
+        let best = null;
+        let bestD = maxDistPx;
+        for (let i = 0; i < this._screenSplineSegs.length; i++)
+        {
+            const seg = this._screenSplineSegs[i];
+            const abx = seg.x1 - seg.x0, aby = seg.y1 - seg.y0;
+            const len2 = abx * abx + aby * aby;
+            const f = len2 > 1e-4 ? clamp(((sx - seg.x0) * abx + (sy - seg.y0) * aby) / len2, 0.0, 1.0) : 0.0;
+            const px = seg.x0 + abx * f;
+            const py = seg.y0 + aby * f;
+            const d = Math.hypot(sx - px, sy - py);
+            if (d < bestD)
+            {
+                bestD = d;
+                best = {
+                    px, py,
+                    insertIndex: seg.segIndex + 1,
+                    localPt: [
+                        seg.l0[0] + (seg.l1[0] - seg.l0[0]) * f,
+                        seg.l0[1] + (seg.l1[1] - seg.l0[1]) * f,
+                        seg.l0[2] + (seg.l1[2] - seg.l0[2]) * f
+                    ],
+                    scale: seg.s0 + (seg.s1 - seg.s0) * f
+                };
+            }
+        }
+        return best;
+    }
+
     _bindPointerEvents()
     {
-        let dragging = false;
+        let camDragging = false;
         let panMode = false;
         let lastX = 0, lastY = 0;
 
         this.canvas.addEventListener('contextmenu', e => e.preventDefault());
 
+        this.canvas.addEventListener('dblclick', e =>
+        {
+            if (!this.showGizmos || !this.activeLayer || this.activeLayer.generator?.type !== 'spline') return;
+            const rect = this.canvas.getBoundingClientRect();
+            const sx = e.clientX - rect.left;
+            const sy = e.clientY - rect.top;
+            if (this._pickHandleAt(sx, sy)) return;
+
+            const hit = this._pickSplineCurveSegmentAt(sx, sy, 16);
+            if (!hit) return;
+
+            const g = this.activeLayer.generator;
+            g.knots = normalizeSplineKnots(g.knots);
+            if (g.knots.length >= 20) return;
+
+            this.callbacks.onBeforeGizmoEdit?.();
+            const insIdx = clamp(hit.insertIndex, 1, g.knots.length);
+            g.knots.splice(insIdx, 0, {
+                x: Number(hit.localPt[0].toFixed(3)),
+                y: Number(hit.localPt[1].toFixed(3)),
+                z: Number(hit.localPt[2].toFixed(3)),
+                scale: Number(hit.scale.toFixed(2))
+            });
+            this.selectedKnotIndex = insIdx;
+            this.callbacks.onLiveGizmoEdit?.();
+            this.callbacks.onCommitGizmoEdit?.();
+        });
+
         this.canvas.addEventListener('pointerdown', e =>
         {
-            dragging = true;
+            const rect = this.canvas.getBoundingClientRect();
+            const sx = e.clientX - rect.left;
+            const sy = e.clientY - rect.top;
+
+            if (e.button === 0 && !e.altKey && this.showGizmos && this.activeLayer && this.activeLayer.enabled)
+            {
+                const hit = this._pickHandleAt(sx, sy);
+                if (hit)
+                {
+                    if (hit.knotIndex !== undefined)
+                    {
+                        this.selectedKnotIndex = hit.knotIndex;
+                    }
+                    const { R, pivot, upW } = this._getLayerTransform(this.activeLayer);
+                    const anchorW = hit.anchorWorld;
+                    const startHitW = hit.axis === 'y'
+                        ? anchorW
+                        : this._intersectHorizontalPlane(e.clientX, e.clientY, anchorW, upW);
+                    const startAxisH = hit.axis === 'y'
+                        ? this._intersectVerticalAxis(e.clientX, e.clientY, anchorW, upW)
+                        : 0.0;
+
+                    this._gizmoDrag = {
+                        handle: hit,
+                        layer: this.activeLayer,
+                        R, pivot, upW,
+                        anchorW,
+                        startHitW,
+                        startAxisH,
+                        startSnapshotTaken: false,
+                        moved: false,
+                        startValues: JSON.parse(JSON.stringify(this.activeLayer.generator || {}))
+                    };
+                    this.canvas.style.cursor = 'grabbing';
+                    this.canvas.setPointerCapture(e.pointerId);
+                    this.callbacks.onCommitGizmoEdit?.();
+                    return;
+                }
+            }
+
+            camDragging = true;
             panMode = (e.button === 1) || e.shiftKey;
             lastX = e.clientX;
             lastY = e.clientY;
@@ -836,7 +1082,144 @@ export class RockFormation2Viewport
 
         this.canvas.addEventListener('pointermove', e =>
         {
-            if (!dragging) return;
+            if (this._gizmoDrag)
+            {
+                const dg = this._gizmoDrag;
+                const g = dg.layer.generator;
+                if (!g) return;
+
+                if (!dg.startSnapshotTaken)
+                {
+                    this.callbacks.onBeforeGizmoEdit?.();
+                    dg.startSnapshotTaken = true;
+                }
+                dg.moved = true;
+
+                const h = dg.handle;
+                const sv = dg.startValues;
+
+                if (h.axis === 'y')
+                {
+                    const curH = this._intersectVerticalAxis(e.clientX, e.clientY, dg.anchorW, dg.upW);
+                    const dy = curH - dg.startAxisH;
+
+                    if (h.kind === 'spline_knot_y' && Array.isArray(g.knots) && g.knots[h.knotIndex])
+                    {
+                        g.knots[h.knotIndex].y = clamp((sv.knots[h.knotIndex]?.y ?? 0) + dy, -6.0, 10.0);
+                    }
+                    else if (h.kind === 'array_start_y')
+                    {
+                        g.startY = clamp((sv.startY ?? 0) + dy, -6.0, 10.0);
+                    }
+                    else if (h.kind === 'array_end_y')
+                    {
+                        g.endY = clamp((sv.endY ?? 0) + dy, -6.0, 10.0);
+                    }
+                }
+                else
+                {
+                    const hitW = this._intersectHorizontalPlane(e.clientX, e.clientY, dg.anchorW, dg.upW);
+                    const dLocal = inverseRock2Vector(
+                        dg.R,
+                        hitW[0] - dg.startHitW[0],
+                        hitW[1] - dg.startHitW[1],
+                        hitW[2] - dg.startHitW[2]
+                    );
+                    const dlx = dLocal[0];
+                    const dlz = dLocal[2];
+
+                    if (h.kind === 'spline_knot_xz' && Array.isArray(g.knots) && g.knots[h.knotIndex])
+                    {
+                        g.knots[h.knotIndex].x = clamp((sv.knots[h.knotIndex]?.x ?? 0) + dlx, -16.0, 16.0);
+                        g.knots[h.knotIndex].z = clamp((sv.knots[h.knotIndex]?.z ?? 0) + dlz, -16.0, 16.0);
+                    }
+                    else if (h.kind === 'array_start_xz')
+                    {
+                        g.startX = clamp((sv.startX ?? -4.8) + dlx, -16.0, 16.0);
+                        g.startZ = clamp((sv.startZ ?? 0.0) + dlz, -16.0, 16.0);
+                    }
+                    else if (h.kind === 'array_end_xz')
+                    {
+                        g.endX = clamp((sv.endX ?? 4.8) + dlx, -16.0, 16.0);
+                        g.endZ = clamp((sv.endZ ?? 0.0) + dlz, -16.0, 16.0);
+                    }
+                    else if (h.kind === 'array_grid_x')
+                    {
+                        const nx = Math.max(2, Math.round(sv.countX ?? 3));
+                        const baseHalf = ((nx - 1) * (sv.stepX ?? 2.4)) * 0.5;
+                        const nextHalf = Math.max(0.25, baseHalf + dlx);
+                        g.stepX = clamp((nextHalf * 2.0) / (nx - 1), 0.35, 8.0);
+                    }
+                    else if (h.kind === 'array_grid_z')
+                    {
+                        const nz = Math.max(2, Math.round(sv.countZ ?? 3));
+                        const baseHalf = ((nz - 1) * (sv.stepZ ?? 2.4)) * 0.5;
+                        const nextHalf = Math.max(0.25, baseHalf + dlz);
+                        g.stepZ = clamp((nextHalf * 2.0) / (nz - 1), 0.35, 8.0);
+                    }
+                    else if (h.kind === 'array_hex_spacing')
+                    {
+                        const rings = Math.max(1, Math.round(sv.hexRings ?? 2));
+                        const curLocal = inverseRock2Vector(dg.R, hitW[0] - dg.pivot[0], hitW[1] - dg.pivot[1], hitW[2] - dg.pivot[2]);
+                        const rad = Math.max(0.35, Math.hypot(curLocal[0], curLocal[2]));
+                        g.cellSpacing = clamp(rad / rings, 0.30, 4.5);
+                    }
+                    else if (h.kind === 'array_ring_radius')
+                    {
+                        const curLocal = inverseRock2Vector(dg.R, hitW[0] - dg.pivot[0], hitW[1] - dg.pivot[1], hitW[2] - dg.pivot[2]);
+                        g.ringRadius = clamp(Math.hypot(curLocal[0], curLocal[2]), 0.5, 14.0);
+                    }
+                    else if (h.kind === 'splatter_radius')
+                    {
+                        const curLocal = inverseRock2Vector(dg.R, hitW[0] - dg.pivot[0], hitW[1] - dg.pivot[1], hitW[2] - dg.pivot[2]);
+                        g.outerRadius = clamp(Math.hypot(curLocal[0], curLocal[2]), 0.5, 14.0);
+                        if (g.splatterMode === 'talus_fan')
+                        {
+                            g.fanAzimuthDeg = Math.round(Math.atan2(curLocal[0], curLocal[2]) / DEG2RAD);
+                        }
+                    }
+                    else if (h.kind === 'scatter_width')
+                    {
+                        const curLocal = inverseRock2Vector(dg.R, hitW[0] - dg.pivot[0], hitW[1] - dg.pivot[1], hitW[2] - dg.pivot[2]);
+                        g.scatterWidth = clamp(Math.abs(curLocal[0]) * 2.0, 1.0, 22.0);
+                    }
+                    else if (h.kind === 'scatter_length')
+                    {
+                        const curLocal = inverseRock2Vector(dg.R, hitW[0] - dg.pivot[0], hitW[1] - dg.pivot[1], hitW[2] - dg.pivot[2]);
+                        g.scatterLength = clamp(Math.abs(curLocal[2]) * 2.0, 1.0, 22.0);
+                    }
+                }
+
+                this.callbacks.onLiveGizmoEdit?.();
+                return;
+            }
+
+            if (!camDragging)
+            {
+                // Update hover state & cursor for 3D handles + spline curve insert preview
+                const rect = this.canvas.getBoundingClientRect();
+                const sx = e.clientX - rect.left;
+                const sy = e.clientY - rect.top;
+                this._hoveredHandle = this._pickHandleAt(sx, sy);
+                this._hoveredCurveInsert = (!this._hoveredHandle && this.activeLayer?.generator?.type === 'spline')
+                    ? this._pickSplineCurveSegmentAt(sx, sy, 13)
+                    : null;
+
+                if (this._hoveredHandle)
+                {
+                    this.canvas.style.cursor = this._hoveredHandle.axis === 'y' ? 'ns-resize' : 'grab';
+                }
+                else if (this._hoveredCurveInsert)
+                {
+                    this.canvas.style.cursor = 'copy';
+                }
+                else
+                {
+                    this.canvas.style.cursor = '';
+                }
+                return;
+            }
+
             const dx = e.clientX - lastX;
             const dy = e.clientY - lastY;
             lastX = e.clientX;
@@ -857,7 +1240,17 @@ export class RockFormation2Viewport
             }
         });
 
-        const endDrag = () => { dragging = false; };
+        const endDrag = () =>
+        {
+            if (this._gizmoDrag)
+            {
+                const wasMoved = this._gizmoDrag.moved;
+                this._gizmoDrag = null;
+                this.canvas.style.cursor = this._hoveredHandle ? 'grab' : '';
+                if (wasMoved) this.callbacks.onCommitGizmoEdit?.();
+            }
+            camDragging = false;
+        };
         this.canvas.addEventListener('pointerup', endDrag);
         this.canvas.addEventListener('pointercancel', endDrag);
 
@@ -884,12 +1277,10 @@ export class RockFormation2Viewport
         const fl = Math.hypot(fx, fy, fz) || 1;
         const fwd = [fx / fl, fy / fl, fz / fl];
 
-        // right = normalize(cross(fwd, worldUp)) = (-fwd.z, 0, fwd.x)
         const rx = -fwd[2], rz = fwd[0];
         const rl = Math.hypot(rx, rz) || 1;
         const right = [rx / rl, 0, rz / rl];
 
-        // up = cross(right, fwd)
         const up = [
             right[1] * fwd[2] - right[2] * fwd[1],
             right[2] * fwd[0] - right[0] * fwd[2],
@@ -900,7 +1291,7 @@ export class RockFormation2Viewport
 
     _buildViewProjMatrix(camPos, fwd, right, up, aspect)
     {
-        const f = 1.0 / 0.44; // Matches screen * 0.44 FOV in raymarcher!
+        const f = 1.0 / 0.44;
         const near = 0.12, far = 160.0;
         const nf = 1.0 / (near - far);
 
@@ -940,6 +1331,564 @@ export class RockFormation2Viewport
         return out;
     }
 
+    _drawHandleWithElevationArrow(ctx, cam, cssW, cssH, R, pivot, lx, ly, lz, opts)
+    {
+        const wBase = forwardRock2Point(R, pivot, lx, ly, lz);
+        const wFloor = forwardRock2Point(R, pivot, lx, 0.0, lz);
+        const arrowLenM = clamp(this.distance * 0.095, 0.55, 1.85);
+        const wTip = forwardRock2Point(R, pivot, lx, ly + arrowLenM, lz);
+
+        const pBase = this._projectWorldPoint(wBase[0], wBase[1], wBase[2], cam, cssW, cssH);
+        if (!pBase) return;
+        const pFloor = this._projectWorldPoint(wFloor[0], wFloor[1], wFloor[2], cam, cssW, cssH);
+        const pTip = this._projectWorldPoint(wTip[0], wTip[1], wTip[2], cam, cssW, cssH);
+
+        // Ground stem when elevated/lowered
+        if (pFloor && Math.abs(ly) > 0.03)
+        {
+            ctx.save();
+            ctx.setLineDash([3, 3]);
+            ctx.strokeStyle = 'rgba(239, 244, 207, 0.38)';
+            ctx.lineWidth = 1.25;
+            ctx.beginPath();
+            ctx.moveTo(pFloor.sx, pFloor.sy);
+            ctx.lineTo(pBase.sx, pBase.sy);
+            ctx.stroke();
+            ctx.fillStyle = 'rgba(239, 244, 207, 0.55)';
+            ctx.beginPath();
+            ctx.arc(pFloor.sx, pFloor.sy, 2.6, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        // Vertical Y Arrow Handle
+        if (pTip && opts.kindY)
+        {
+            const isHoverY = (this._hoveredHandle?.id === opts.idY) || (this._gizmoDrag?.handle?.id === opts.idY);
+            const arrowCol = isHoverY ? '#8ff7cb' : '#52d69c';
+
+            ctx.save();
+            ctx.strokeStyle = 'rgba(10, 12, 16, 0.78)';
+            ctx.lineWidth = 4.0;
+            ctx.beginPath();
+            ctx.moveTo(pBase.sx, pBase.sy);
+            ctx.lineTo(pTip.sx, pTip.sy);
+            ctx.stroke();
+
+            ctx.strokeStyle = arrowCol;
+            ctx.lineWidth = isHoverY ? 2.6 : 2.0;
+            ctx.beginPath();
+            ctx.moveTo(pBase.sx, pBase.sy);
+            ctx.lineTo(pTip.sx, pTip.sy);
+            ctx.stroke();
+
+            // Upward arrowhead triangle
+            const ang = Math.atan2(pTip.sy - pBase.sy, pTip.sx - pBase.sx);
+            const headLen = isHoverY ? 9.5 : 8.0;
+            ctx.fillStyle = arrowCol;
+            ctx.beginPath();
+            ctx.moveTo(pTip.sx, pTip.sy);
+            ctx.lineTo(pTip.sx - headLen * Math.cos(ang - 0.45), pTip.sy - headLen * Math.sin(ang - 0.45));
+            ctx.lineTo(pTip.sx - headLen * Math.cos(ang + 0.45), pTip.sy - headLen * Math.sin(ang + 0.45));
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+
+            this._screenHandles.push({
+                id: opts.idY,
+                kind: opts.kindY,
+                axis: 'y',
+                knotIndex: opts.knotIndex,
+                sx: pTip.sx,
+                sy: pTip.sy,
+                hitRadius: 12,
+                anchorWorld: wBase
+            });
+        }
+
+        // XZ Planar Disc Badge
+        const isHoverXZ = (this._hoveredHandle?.id === opts.idXZ) || (this._gizmoDrag?.handle?.id === opts.idXZ);
+        const rad = opts.selected ? 11.0 : 9.5;
+
+        if (opts.selected || isHoverXZ)
+        {
+            ctx.save();
+            ctx.strokeStyle = isHoverXZ ? '#ffffff' : opts.accent;
+            ctx.lineWidth = 2.0;
+            ctx.beginPath();
+            ctx.arc(pBase.sx, pBase.sy, rad + 4.0, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        ctx.save();
+        ctx.fillStyle = opts.selected ? opts.accent : 'rgba(20, 23, 29, 0.92)';
+        ctx.strokeStyle = opts.accent;
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.arc(pBase.sx, pBase.sy, rad, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = opts.selected ? '#141610' : '#f4f6ef';
+        ctx.font = '700 10px ui-sans-serif, system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(opts.label, pBase.sx, pBase.sy + 0.5);
+        ctx.restore();
+
+        this._screenHandles.push({
+            id: opts.idXZ,
+            kind: opts.kindXZ,
+            axis: 'xz',
+            knotIndex: opts.knotIndex,
+            sx: pBase.sx,
+            sy: pBase.sy,
+            hitRadius: 14,
+            anchorWorld: wBase
+        });
+    }
+
+    _renderGizmoOverlay(cam)
+    {
+        const ov = this.overlayCanvas;
+        const ctx = this.ctx2d;
+        if (!ov || !ctx) return;
+
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const cssW = Math.max(1, ov.clientWidth || this.canvas.clientWidth);
+        const cssH = Math.max(1, ov.clientHeight || this.canvas.clientHeight);
+        const pw = Math.max(1, Math.floor(cssW * dpr));
+        const ph = Math.max(1, Math.floor(cssH * dpr));
+        if (ov.width !== pw || ov.height !== ph)
+        {
+            ov.width = pw;
+            ov.height = ph;
+        }
+
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, cssW, cssH);
+
+        this._screenHandles = [];
+        this._screenSplineSegs = [];
+
+        const layer = this.activeLayer;
+        if (!this.showGizmos || !layer || !layer.enabled) return;
+
+        const g = layer.generator;
+        if (!g || g.type === 'none') return;
+
+        const { R, pivot } = this._getLayerTransform(layer);
+        const projLocal = (lx, ly, lz) =>
+        {
+            const w = forwardRock2Point(R, pivot, lx, ly, lz);
+            return this._projectWorldPoint(w[0], w[1], w[2], cam, cssW, cssH);
+        };
+
+        // Draw generated rock instance markers + orientation ticks so placement & random angles are immediately legible
+        const evalRes = evaluateRock2GeneratorInstances(g, layer.params, layer.type);
+        ctx.save();
+        for (let i = 0; i < evalRes.instances.length; i++)
+        {
+            const inst = evalRes.instances[i];
+            const p0 = projLocal(inst.pos[0], inst.pos[1], inst.pos[2]);
+            if (!p0) continue;
+            const yawRad = inst.yawDeg * DEG2RAD;
+            const tickLen = 0.42;
+            const pDir = projLocal(
+                inst.pos[0] + Math.sin(yawRad) * tickLen,
+                inst.pos[1],
+                inst.pos[2] + Math.cos(yawRad) * tickLen
+            );
+            if (pDir)
+            {
+                ctx.strokeStyle = 'rgba(239, 244, 207, 0.42)';
+                ctx.lineWidth = 1.4;
+                ctx.beginPath();
+                ctx.moveTo(p0.sx, p0.sy);
+                ctx.lineTo(pDir.sx, pDir.sy);
+                ctx.stroke();
+            }
+            ctx.fillStyle = 'rgba(239, 244, 207, 0.72)';
+            ctx.beginPath();
+            ctx.arc(p0.sx, p0.sy, 2.8, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.restore();
+
+        // 1. INTERACTIVE 3D SPLINE OVERLAY & KNOT GIZMOS
+        if (g.type === 'spline')
+        {
+            const arcTable = buildRock2SplineArcTable(g, 18);
+            const samples = arcTable.samples;
+
+            // Ground shadow projection at y = 0 + Upper Cliff-Crest Rim Guide
+            ctx.save();
+            ctx.setLineDash([4, 4]);
+            ctx.strokeStyle = 'rgba(239, 244, 207, 0.24)';
+            ctx.lineWidth = 1.3;
+            ctx.beginPath();
+            let startedFloor = false;
+            for (let i = 0; i < samples.length; i++)
+            {
+                const pF = projLocal(samples[i].x, 0.0, samples[i].z);
+                if (!pF) { startedFloor = false; continue; }
+                if (!startedFloor) { ctx.moveTo(pF.sx, pF.sy); startedFloor = true; }
+                else ctx.lineTo(pF.sx, pF.sy);
+            }
+            ctx.stroke();
+
+            const cliffH = Math.max(0.8, layer.params?.height ?? 3.5);
+            ctx.setLineDash([6, 5]);
+            ctx.strokeStyle = 'rgba(240, 182, 127, 0.36)';
+            ctx.lineWidth = 1.25;
+            ctx.beginPath();
+            let startedCrest = false;
+            for (let i = 0; i < samples.length; i++)
+            {
+                const s = samples[i];
+                const pC = projLocal(s.x, s.y + cliffH * (s.scale ?? 1.0), s.z);
+                if (!pC) { startedCrest = false; continue; }
+                if (!startedCrest) { ctx.moveTo(pC.sx, pC.sy); startedCrest = true; }
+                else ctx.lineTo(pC.sx, pC.sy);
+            }
+            ctx.stroke();
+            ctx.restore();
+
+            // Outward cliff-face normal ticks along the spline
+            if ((g.alignToTangent ?? 1) > 0.5)
+            {
+                ctx.save();
+                ctx.strokeStyle = 'rgba(240, 182, 127, 0.55)';
+                ctx.lineWidth = 1.4;
+                const stride = Math.max(2, Math.floor(samples.length / 10));
+                for (let i = stride; i < samples.length - 1; i += stride)
+                {
+                    const s = samples[i];
+                    const nx = -s.tz, nz = s.tx;
+                    const a = projLocal(s.x, s.y, s.z);
+                    const b = projLocal(s.x + nx * 0.55, s.y, s.z + nz * 0.55);
+                    if (a && b)
+                    {
+                        ctx.beginPath();
+                        ctx.moveTo(a.sx, a.sy);
+                        ctx.lineTo(b.sx, b.sy);
+                        ctx.stroke();
+                    }
+                }
+                ctx.restore();
+            }
+
+            // Main 3D Catmull-Rom Spline Curve (dark halo + bright studio lime-gold stroke)
+            const pts2D = samples.map(s => projLocal(s.x, s.y, s.z));
+            for (let i = 0; i < samples.length - 1; i++)
+            {
+                const a = pts2D[i], b = pts2D[i + 1];
+                if (!a || !b) continue;
+                this._screenSplineSegs.push({
+                    x0: a.sx, y0: a.sy,
+                    x1: b.sx, y1: b.sy,
+                    segIndex: samples[i].segIndex,
+                    l0: [samples[i].x, samples[i].y, samples[i].z],
+                    l1: [samples[i + 1].x, samples[i + 1].y, samples[i + 1].z],
+                    s0: samples[i].scale,
+                    s1: samples[i + 1].scale
+                });
+            }
+
+            const strokeSpline = (color, width) =>
+            {
+                ctx.strokeStyle = color;
+                ctx.lineWidth = width;
+                ctx.lineJoin = 'round';
+                ctx.lineCap = 'round';
+                ctx.beginPath();
+                let open = false;
+                for (let i = 0; i < pts2D.length; i++)
+                {
+                    const p = pts2D[i];
+                    if (!p) { open = false; continue; }
+                    if (!open) { ctx.moveTo(p.sx, p.sy); open = true; }
+                    else ctx.lineTo(p.sx, p.sy);
+                }
+                ctx.stroke();
+            };
+
+            ctx.save();
+            strokeSpline('rgba(10, 12, 16, 0.85)', 5.2);
+            strokeSpline('#eff4cf', 2.4);
+            ctx.restore();
+
+            // Double-click curve insert preview badge
+            if (this._hoveredCurveInsert && !this._gizmoDrag)
+            {
+                const hi = this._hoveredCurveInsert;
+                ctx.save();
+                ctx.fillStyle = '#52d69c';
+                ctx.strokeStyle = '#101412';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(hi.px, hi.py, 7.5, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+                ctx.fillStyle = '#0d120f';
+                ctx.font = '700 11px ui-sans-serif, system-ui, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('+', hi.px, hi.py + 0.5);
+                ctx.restore();
+            }
+
+            // Knot Gizmos (XZ planar move + Y vertical elevation arrow)
+            const knots = arcTable.knots;
+            for (let k = 0; k < knots.length; k++)
+            {
+                const kn = knots[k];
+                this._drawHandleWithElevationArrow(ctx, cam, cssW, cssH, R, pivot, kn.x, kn.y, kn.z, {
+                    idXZ: `sp_xz_${k}`,
+                    idY: `sp_y_${k}`,
+                    kindXZ: 'spline_knot_xz',
+                    kindY: 'spline_knot_y',
+                    knotIndex: k,
+                    selected: k === this.selectedKnotIndex,
+                    label: String(k + 1),
+                    accent: '#eff4cf'
+                });
+            }
+            return;
+        }
+
+        // 2. INTERACTIVE 3D ARRAY OVERLAY & ENDPOINT / EXTENT GIZMOS
+        if (g.type === 'array')
+        {
+            const mode = (g.arrayMode === 'linear' || !g.arrayMode) ? 'line' : g.arrayMode;
+
+            if (mode === 'line')
+            {
+                const ax = g.startX ?? -4.8, ay = g.startY ?? 0.0, az = g.startZ ?? 0.0;
+                const bx = g.endX ?? 4.8,    by = g.endY ?? 0.0,   bz = g.endZ ?? 0.0;
+                const pA = projLocal(ax, ay, az);
+                const pB = projLocal(bx, by, bz);
+
+                // Lateral jitter corridor preview lines
+                const lat = g.lateralJitter ?? 0.24;
+                if (lat > 0.02)
+                {
+                    const dx = bx - ax, dz = bz - az;
+                    const hl = Math.hypot(dx, dz) || 1;
+                    const nx = -dz / hl, nz = dx / hl;
+                    ctx.save();
+                    ctx.setLineDash([4, 5]);
+                    ctx.strokeStyle = 'rgba(125, 211, 252, 0.28)';
+                    ctx.lineWidth = 1.2;
+                    for (const sgn of [-1, 1])
+                    {
+                        const c0 = projLocal(ax + nx * lat * sgn, ay, az + nz * lat * sgn);
+                        const c1 = projLocal(bx + nx * lat * sgn, by, bz + nz * lat * sgn);
+                        if (c0 && c1)
+                        {
+                            ctx.beginPath();
+                            ctx.moveTo(c0.sx, c0.sy);
+                            ctx.lineTo(c1.sx, c1.sy);
+                            ctx.stroke();
+                        }
+                    }
+                    ctx.restore();
+                }
+
+                if (pA && pB)
+                {
+                    ctx.save();
+                    ctx.strokeStyle = 'rgba(10, 12, 16, 0.82)';
+                    ctx.lineWidth = 4.6;
+                    ctx.beginPath();
+                    ctx.moveTo(pA.sx, pA.sy);
+                    ctx.lineTo(pB.sx, pB.sy);
+                    ctx.stroke();
+
+                    ctx.setLineDash([7, 5]);
+                    ctx.strokeStyle = '#7dd3fc';
+                    ctx.lineWidth = 2.3;
+                    ctx.beginPath();
+                    ctx.moveTo(pA.sx, pA.sy);
+                    ctx.lineTo(pB.sx, pB.sy);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+
+                    // Midpoint meter & rock count readout pill
+                    const mx = (pA.sx + pB.sx) * 0.5;
+                    const my = (pA.sy + pB.sy) * 0.5 - 14;
+                    const distM = Math.hypot(bx - ax, by - ay, bz - az).toFixed(1);
+                    const tag = `${distM}m · ×${evalRes.instances.length} varied`;
+                    ctx.font = '600 10px ui-sans-serif, system-ui, sans-serif';
+                    const tw = ctx.measureText(tag).width + 12;
+                    ctx.fillStyle = 'rgba(14, 18, 24, 0.86)';
+                    ctx.strokeStyle = 'rgba(125, 211, 252, 0.45)';
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.roundRect(mx - tw * 0.5, my - 9, tw, 18, 9);
+                    ctx.fill();
+                    ctx.stroke();
+                    ctx.fillStyle = '#bae6fd';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(tag, mx, my);
+                    ctx.restore();
+                }
+
+                this._drawHandleWithElevationArrow(ctx, cam, cssW, cssH, R, pivot, ax, ay, az, {
+                    idXZ: 'arr_a_xz', idY: 'arr_a_y',
+                    kindXZ: 'array_start_xz', kindY: 'array_start_y',
+                    selected: true, label: 'A', accent: '#7dd3fc'
+                });
+                this._drawHandleWithElevationArrow(ctx, cam, cssW, cssH, R, pivot, bx, by, bz, {
+                    idXZ: 'arr_b_xz', idY: 'arr_b_y',
+                    kindXZ: 'array_end_xz', kindY: 'array_end_y',
+                    selected: true, label: 'B', accent: '#7dd3fc'
+                });
+            }
+            else if (mode === 'grid2d' || mode === 'grid3d')
+            {
+                const halfX = Math.max(0.4, ((Math.round(g.countX ?? 3) - 1) * (g.stepX ?? 2.4)) * 0.5);
+                const halfZ = Math.max(0.4, ((Math.round(g.countZ ?? 3) - 1) * (g.stepZ ?? 2.4)) * 0.5);
+                const corners = [
+                    projLocal(-halfX, 0, -halfZ),
+                    projLocal( halfX, 0, -halfZ),
+                    projLocal( halfX, 0,  halfZ),
+                    projLocal(-halfX, 0,  halfZ)
+                ];
+                if (corners.every(Boolean))
+                {
+                    ctx.save();
+                    ctx.setLineDash([6, 4]);
+                    ctx.strokeStyle = '#7dd3fc';
+                    ctx.lineWidth = 1.8;
+                    ctx.beginPath();
+                    ctx.moveTo(corners[0].sx, corners[0].sy);
+                    for (let i = 1; i < 4; i++) ctx.lineTo(corners[i].sx, corners[i].sy);
+                    ctx.closePath();
+                    ctx.stroke();
+                    ctx.restore();
+                }
+                this._drawHandleWithElevationArrow(ctx, cam, cssW, cssH, R, pivot, halfX, 0, 0, {
+                    idXZ: 'arr_gx', kindXZ: 'array_grid_x', selected: true, label: 'X', accent: '#7dd3fc'
+                });
+                this._drawHandleWithElevationArrow(ctx, cam, cssW, cssH, R, pivot, 0, 0, halfZ, {
+                    idXZ: 'arr_gz', kindXZ: 'array_grid_z', selected: true, label: 'Z', accent: '#7dd3fc'
+                });
+            }
+            else if (mode === 'hex' || mode === 'radial')
+            {
+                const rad = mode === 'hex'
+                    ? Math.max(0.5, Math.round(g.hexRings ?? 2) * (g.cellSpacing ?? 1.02))
+                    : Math.max(0.5, g.ringRadius ?? 3.8);
+                ctx.save();
+                ctx.setLineDash([5, 4]);
+                ctx.strokeStyle = '#7dd3fc';
+                ctx.lineWidth = 1.8;
+                ctx.beginPath();
+                let started = false;
+                const steps = mode === 'hex' ? 6 : 40;
+                for (let s = 0; s <= steps; s++)
+                {
+                    const a = (s / steps) * Math.PI * 2;
+                    const p = projLocal(Math.sin(a) * rad, 0, Math.cos(a) * rad);
+                    if (!p) { started = false; continue; }
+                    if (!started) { ctx.moveTo(p.sx, p.sy); started = true; }
+                    else ctx.lineTo(p.sx, p.sy);
+                }
+                ctx.stroke();
+                ctx.restore();
+
+                this._drawHandleWithElevationArrow(ctx, cam, cssW, cssH, R, pivot, rad, 0, 0, {
+                    idXZ: 'arr_rad',
+                    kindXZ: mode === 'hex' ? 'array_hex_spacing' : 'array_ring_radius',
+                    selected: true, label: 'R', accent: '#7dd3fc'
+                });
+            }
+            return;
+        }
+
+        // 3. INTERACTIVE 3D SPLATTER & SCATTER FIELD HANDLES
+        if (g.type === 'splatter')
+        {
+            const rad = Math.max(0.5, g.outerRadius ?? 3.8);
+            const isFan = g.splatterMode === 'talus_fan';
+            const az = (g.fanAzimuthDeg ?? 0) * DEG2RAD;
+
+            ctx.save();
+            ctx.setLineDash([5, 4]);
+            ctx.strokeStyle = '#f0b67f';
+            ctx.lineWidth = 1.8;
+            ctx.beginPath();
+            if (isFan)
+            {
+                const halfSp = ((g.fanSpreadDeg ?? 110) * 0.5) * DEG2RAD;
+                const c0 = projLocal(0, 0, 0);
+                if (c0) ctx.moveTo(c0.sx, c0.sy);
+                for (let s = 0; s <= 24; s++)
+                {
+                    const a = az - halfSp + (s / 24) * (halfSp * 2);
+                    const p = projLocal(Math.sin(a) * rad, 0, Math.cos(a) * rad);
+                    if (p) ctx.lineTo(p.sx, p.sy);
+                }
+                if (c0) ctx.lineTo(c0.sx, c0.sy);
+            }
+            else
+            {
+                let started = false;
+                for (let s = 0; s <= 40; s++)
+                {
+                    const a = (s / 40) * Math.PI * 2;
+                    const p = projLocal(Math.sin(a) * rad, 0, Math.cos(a) * rad);
+                    if (!p) { started = false; continue; }
+                    if (!started) { ctx.moveTo(p.sx, p.sy); started = true; }
+                    else ctx.lineTo(p.sx, p.sy);
+                }
+            }
+            ctx.stroke();
+            ctx.restore();
+
+            const hx = isFan ? Math.sin(az) * rad : rad;
+            const hz = isFan ? Math.cos(az) * rad : 0;
+            this._drawHandleWithElevationArrow(ctx, cam, cssW, cssH, R, pivot, hx, 0, hz, {
+                idXZ: 'splat_r', kindXZ: 'splatter_radius', selected: true, label: 'R', accent: '#f0b67f'
+            });
+            return;
+        }
+
+        if (g.type === 'scatter')
+        {
+            const hw = Math.max(0.5, (g.scatterWidth ?? 6.8) * 0.5);
+            const hl = Math.max(0.5, (g.scatterLength ?? 6.2) * 0.5);
+            const corners = [
+                projLocal(-hw, 0, -hl),
+                projLocal( hw, 0, -hl),
+                projLocal( hw, 0,  hl),
+                projLocal(-hw, 0,  hl)
+            ];
+            if (corners.every(Boolean))
+            {
+                ctx.save();
+                ctx.setLineDash([5, 4]);
+                ctx.strokeStyle = '#c8d99b';
+                ctx.lineWidth = 1.8;
+                ctx.beginPath();
+                ctx.moveTo(corners[0].sx, corners[0].sy);
+                for (let i = 1; i < 4; i++) ctx.lineTo(corners[i].sx, corners[i].sy);
+                ctx.closePath();
+                ctx.stroke();
+                ctx.restore();
+            }
+            this._drawHandleWithElevationArrow(ctx, cam, cssW, cssH, R, pivot, hw, 0, 0, {
+                idXZ: 'scat_w', kindXZ: 'scatter_width', selected: true, label: 'W', accent: '#c8d99b'
+            });
+            this._drawHandleWithElevationArrow(ctx, cam, cssW, cssH, R, pivot, 0, 0, hl, {
+                idXZ: 'scat_l', kindXZ: 'scatter_length', selected: true, label: 'L', accent: '#c8d99b'
+            });
+        }
+    }
+
     render()
     {
         const gl = this.gl;
@@ -957,7 +1906,8 @@ export class RockFormation2Viewport
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         gl.viewport(0, 0, w, h);
 
-        const { camPos, fwd, right, up } = this._computeCameraBasis();
+        const cam = this._computeCameraBasis();
+        const { camPos, fwd, right, up } = cam;
         const sunDir = this.compiledStack.sunDir || [0.5, 0.7, 0.5];
 
         if (this.renderMode === 'qef-mesh' && this.meshIndexCount > 0)
@@ -989,27 +1939,31 @@ export class RockFormation2Viewport
                 gl.disable(gl.BLEND);
             }
             gl.bindVertexArray(null);
-            return;
+        }
+        else
+        {
+            gl.disable(gl.DEPTH_TEST);
+            gl.useProgram(this.rayProg);
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_3D, this.sdfVolTex);
+            gl.uniform1i(gl.getUniformLocation(this.rayProg, 'uSdfVol'), 0);
+            gl.uniform3fv(gl.getUniformLocation(this.rayProg, 'uVolMin'), this.volMin);
+            gl.uniform3fv(gl.getUniformLocation(this.rayProg, 'uVolMax'), this.volMax);
+            gl.uniform3fv(gl.getUniformLocation(this.rayProg, 'uCamPos'), camPos);
+            gl.uniform3fv(gl.getUniformLocation(this.rayProg, 'uCamFwd'), fwd);
+            gl.uniform3fv(gl.getUniformLocation(this.rayProg, 'uCamRight'), right);
+            gl.uniform3fv(gl.getUniformLocation(this.rayProg, 'uCamUp'), up);
+            gl.uniform2f(gl.getUniformLocation(this.rayProg, 'uResolution'), w, h);
+            gl.uniform3fv(gl.getUniformLocation(this.rayProg, 'uSunDir'), sunDir);
+            gl.uniform1f(gl.getUniformLocation(this.rayProg, 'uExposure'), this.exposure);
+            gl.uniform1i(gl.getUniformLocation(this.rayProg, 'uLens'), this.lens);
+
+            gl.bindVertexArray(this.emptyVao);
+            gl.drawArrays(gl.TRIANGLES, 0, 3);
+            gl.bindVertexArray(null);
         }
 
-        gl.disable(gl.DEPTH_TEST);
-        gl.useProgram(this.rayProg);
-        gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_3D, this.sdfVolTex);
-        gl.uniform1i(gl.getUniformLocation(this.rayProg, 'uSdfVol'), 0);
-        gl.uniform3fv(gl.getUniformLocation(this.rayProg, 'uVolMin'), this.volMin);
-        gl.uniform3fv(gl.getUniformLocation(this.rayProg, 'uVolMax'), this.volMax);
-        gl.uniform3fv(gl.getUniformLocation(this.rayProg, 'uCamPos'), camPos);
-        gl.uniform3fv(gl.getUniformLocation(this.rayProg, 'uCamFwd'), fwd);
-        gl.uniform3fv(gl.getUniformLocation(this.rayProg, 'uCamRight'), right);
-        gl.uniform3fv(gl.getUniformLocation(this.rayProg, 'uCamUp'), up);
-        gl.uniform2f(gl.getUniformLocation(this.rayProg, 'uResolution'), w, h);
-        gl.uniform3fv(gl.getUniformLocation(this.rayProg, 'uSunDir'), sunDir);
-        gl.uniform1f(gl.getUniformLocation(this.rayProg, 'uExposure'), this.exposure);
-        gl.uniform1i(gl.getUniformLocation(this.rayProg, 'uLens'), this.lens);
-
-        gl.bindVertexArray(this.emptyVao);
-        gl.drawArrays(gl.TRIANGLES, 0, 3);
-        gl.bindVertexArray(null);
+        this._renderGizmoOverlay(cam);
     }
 }
+

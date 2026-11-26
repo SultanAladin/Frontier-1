@@ -14,23 +14,23 @@
     <meta http-equiv="Expires" content="0" />
     <title>SDF Terrain Studio — Frontier Experimental Remastered</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23161616'/%3E%3Cpath d='M5 23l7-12 5 7 4-5 6 10z' fill='%23eff4cf'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="./TerrainWorldEditor.css?v=20261127b" />
+    <link rel="stylesheet" href="./TerrainWorldEditor.css?v=20261127c" />
     <script type="importmap">
     {
         "imports": {
-            "./Engine/RockCliff/Core/SpatialNoise3D.js": "./Engine/RockCliff/Core/SpatialNoise3D.js?v=20261127b",
-            "./Engine/RockCliff/Core/SparseSdfBrickGrid.js": "./Engine/RockCliff/Core/SparseSdfBrickGrid.js?v=20261127b",
-            "./Engine/RockCliff/Core/QefDualContour.js": "./Engine/RockCliff/Core/QefDualContour.js?v=20261127b",
-            "./Engine/RockCliff/PureSdfFractureEngine.js": "./Engine/RockCliff/PureSdfFractureEngine.js?v=20261127b",
-            "./Engine/RockCliff/FractureLabViewport.js": "./Engine/RockCliff/FractureLabViewport.js?v=20261127b",
-            "./Engine/RockCliff/RockFormationStackEngine.js": "./Engine/RockCliff/RockFormationStackEngine.js?v=20261127b",
-            "./Engine/RockCliff/RockFormation2Viewport.js": "./Engine/RockCliff/RockFormation2Viewport.js?v=20261127b",
-            "./Engine/TerrainLayerStack.js": "./Engine/TerrainLayerStack.js?v=20261127b",
-            "./StudioControls.js": "./StudioControls.js?v=20261127b"
+            "./Engine/RockCliff/Core/SpatialNoise3D.js": "./Engine/RockCliff/Core/SpatialNoise3D.js?v=20261127c",
+            "./Engine/RockCliff/Core/SparseSdfBrickGrid.js": "./Engine/RockCliff/Core/SparseSdfBrickGrid.js?v=20261127c",
+            "./Engine/RockCliff/Core/QefDualContour.js": "./Engine/RockCliff/Core/QefDualContour.js?v=20261127c",
+            "./Engine/RockCliff/PureSdfFractureEngine.js": "./Engine/RockCliff/PureSdfFractureEngine.js?v=20261127c",
+            "./Engine/RockCliff/FractureLabViewport.js": "./Engine/RockCliff/FractureLabViewport.js?v=20261127c",
+            "./Engine/RockCliff/RockFormationStackEngine.js": "./Engine/RockCliff/RockFormationStackEngine.js?v=20261127c",
+            "./Engine/RockCliff/RockFormation2Viewport.js": "./Engine/RockCliff/RockFormation2Viewport.js?v=20261127c",
+            "./Engine/TerrainLayerStack.js": "./Engine/TerrainLayerStack.js?v=20261127c",
+            "./StudioControls.js": "./StudioControls.js?v=20261127c"
         }
     }
     </script>
-    <script type="module" src="./TerrainWorldEditor.js?v=20261127b"></script>
+    <script type="module" src="./TerrainWorldEditor.js?v=20261127c"></script>
 </head>
 <body class="ws-rock2">
     <div id="app">
@@ -250,16 +250,18 @@
                     <!-- RockFormation 2.0 Pure-SDF Composable Plain-Rock Layer Stack Pane -->
                     <div class="stage-pane stage-pane-rock2" id="PaneRock2">
                         <canvas id="CanvasRock2" aria-label="RockFormation 2.0 Pure-SDF Layer Stack 3D Viewport"></canvas>
+                        <canvas id="OverlayRock2" class="stage-overlay-canvas" aria-hidden="true"></canvas>
 
                         <div class="viewport-caption">
                             <span class="live-pill"><i></i><span>ROCKFORMATION 2.0</span></span>
-                            <span id="hud-rock2-stack">01 · Plain Big Boulder</span>
+                            <span id="hud-rock2-stack">01 · Canyon Cliff Spline + Boulder + Talus</span>
                             <small id="hud-rock2-pure" class="tabular">Layer Stack · Plain SDF</small>
                         </div>
 
                         <div class="fracture-floating-bar" role="toolbar" aria-label="RockFormation 2.0 Render &amp; Form Lenses">
                             <button id="rock2-mode-ray-btn" class="fracture-pill-btn active" type="button" title="Real-time 60 FPS GPU Pure-SDF Layer Stack Raymarcher">60 FPS GPU SDF</button>
                             <button id="rock2-mode-qef-btn" class="fracture-pill-btn" type="button" title="4^3 Sparse-Brick QEF Dual-Contoured Manifold Mesh">QEF Dual-Contour Mesh</button>
+                            <button id="rock2-gizmo-btn" class="fracture-pill-btn active" type="button" title="Show/hide interactive 3D Spline, Array &amp; Scatter viewport handles">3D Gizmos</button>
                             <button id="rock2-wire-btn" class="fracture-pill-btn" type="button" title="Overlay QEF sharp-crease wireframe" style="display:none">Wireframe</button>
                             <select id="rock2-lens-select" class="fracture-lens-select" aria-label="RockFormation 2.0 form lens">
                                 <option value="0" selected>Lens · Plain Stone Studio</option>
@@ -276,7 +278,7 @@
                         </div>
 
                         <div class="viewport-help">
-                            <span>Drag: orbit 360°</span><i>·</i><span>Shift+Drag / MMB: pan</span><i>·</i><span>Wheel: zoom</span><i>·</i><span>Stack &amp; combine plain basic rock SDF layers</span>
+                            <span>Drag Handle: XZ move</span><i>·</i><span>Drag ↑: elevation Y</span><i>·</i><span>Dbl-Click Spline: +Knot</span><i>·</i><span>Drag Space: orbit 360°</span>
                         </div>
                     </div>
                 </div>

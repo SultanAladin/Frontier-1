@@ -559,6 +559,12 @@ body:not(.ws-fracture) #inspector-tabs button[data-itab="fracture"] {
     height: 100%;
 }
 
+#OverlayRock2 {
+    background: transparent !important;
+    pointer-events: none;
+    z-index: 2;
+}
+
 /* Hide 2D/3D Terrain-specific chrome in RockFormation 2.0 while keeping Undo/Redo, Import, Export, Quick Library,
    Selected Layer Name & Visibility Switch 100% live and bound to the Layer Stack (zero dead controls). */
 body.ws-rock2 .document-dock,

@@ -40,6 +40,12 @@ import {
 import {
     ROCK2_NODE_CATALOG,
     ROCK2_STARTER_STACKS,
+    buildRock2SplinePresetKnots,
+    buildRock2SplineArcTable,
+    sampleRock2SplineAtNormalizedArc,
+    buildRock2EulerMatrix3,
+    forwardRock2Point,
+    inverseRock2Vector,
     createRock2Generator,
     createRock2Layer,
     cloneRock2Layer,
@@ -1350,11 +1356,11 @@ Suite('28. RockFormation 2.0: 8 atomic single base rocks (zero arches), per-laye
 
     // 2. Validate Composable Per-Layer Generators (`spline`, `array`, `splatter`, `scatter`) on arbitrary Base Rocks!
     const GenTests = [
-        ['cliff_block', createRock2Generator('spline', { splineShape: 'arc', count: 6, intraBlend: 0.24 }), 6],
-        ['smooth_rock', createRock2Generator('spline', { splineShape: 'scurve', count: 7, intraBlend: 0.0 }), 7],
-        ['spire_pinnacle', createRock2Generator('spline', { splineShape: 'ring', count: 8, ringRadius: 4.0 }), 8],
-        ['big_boulder', createRock2Generator('spline', { splineShape: 'custom', count: 5 }), 5],
-        ['rock_slab', createRock2Generator('array', { arrayMode: 'linear', countX: 4, stepY: 0.7, stepZ: -1.4 }), 4],
+        ['cliff_block', createRock2Generator('spline', { splinePreset: 'arc', count: 6, intraBlend: 0.24 }), 6],
+        ['smooth_rock', createRock2Generator('spline', { splinePreset: 'scurve', knots: buildRock2SplinePresetKnots('scurve'), count: 7, intraBlend: 0.0 }), 7],
+        ['spire_pinnacle', createRock2Generator('spline', { splinePreset: 'ring', closedLoop: 1, knots: buildRock2SplinePresetKnots('ring'), count: 8 }), 8],
+        ['cliff_block', createRock2Generator('spline', { splinePreset: 'box_canyon', knots: buildRock2SplinePresetKnots('box_canyon'), count: 9 }), 9],
+        ['big_boulder', createRock2Generator('array', { arrayMode: 'line', countX: 6, startX: -5, endX: 5 }), 6],
         ['small_rock', createRock2Generator('array', { arrayMode: 'grid2d', countX: 3, countZ: 4 }), 12],
         ['cliff_block', createRock2Generator('array', { arrayMode: 'grid3d', countX: 2, countY: 2, countZ: 2 }), 8],
         ['basalt_column', createRock2Generator('array', { arrayMode: 'hex', hexRings: 2 }), 19],
@@ -1367,7 +1373,7 @@ Suite('28. RockFormation 2.0: 8 atomic single base rocks (zero arches), per-laye
     ];
     for (const [BaseType, Gen, ExpectedCount] of GenTests)
     {
-        const Eval = evaluateRock2GeneratorInstances(Gen, { seed: 101, width: 1.2, height: 1.0, length: 1.2 });
+        const Eval = evaluateRock2GeneratorInstances(Gen, { seed: 101, width: 1.2, height: 1.0, length: 1.2 }, BaseType);
         assert.equal(Eval.instances.length, ExpectedCount, `${BaseType} + ${Gen.type}: expected ${ExpectedCount} instances`);
         const Comp = compileRock2Stack({ layers: [createRock2Layer(BaseType, { generator: Gen })] });
         assert.equal(Comp.primitives.length, ExpectedCount, `${BaseType} + ${Gen.type}: must compile ${ExpectedCount} SDF primitives`);
@@ -1418,7 +1424,7 @@ Suite('28. RockFormation 2.0: 8 atomic single base rocks (zero arches), per-laye
     assert.ok(Number.isFinite(evalRock2StackSdf(StackAllOps, 0.2, 1.0, 0.1)), 'Chamfer & Intersect stack modes must evaluate finite SDF');
 
     // 4. Validate Starter Stacks, Pure-SDF QEF Dual-Contour Mesh Extraction (0 Mesh->SDF), GLB/OBJ/STL export & JSON round-trip
-    assert.equal(ROCK2_STARTER_STACKS.length, 7, 'Must provide 7 starter stacks (single rocks + Spline/Array/Splatter/Scatter)');
+    assert.equal(ROCK2_STARTER_STACKS.length, 7, 'Must provide 7 starter stacks (Canyon Spline + Varied Array + Hex + Single + Scatter)');
     const OutcropDoc = createDefaultRock2Document('stack-cliff-outcrop');
     const OutcropCompiled = compileRock2Stack(OutcropDoc);
     assert.equal(OutcropCompiled.compiledLayers[0].generatorType, 'spline');
@@ -1441,4 +1447,119 @@ Suite('28. RockFormation 2.0: 8 atomic single base rocks (zero arches), per-laye
     assert.equal(JsonRoundTrip.layers[2].generator.type, 'splatter', 'JSON round-trip must preserve Splatter generator');
 });
 
-console.log(`\nAll ${Passed}/28 Open-World SDF Terrain & Pure-SDF Rock Formation 1.0 + 2.0 Studio validation suites passed!`);
+// 29. Interactive 3D Catmull-Rom Spline Knots + Non-Cloned Varied Array Rocks (Equal & Randomized Spacing)
+Suite('29. Interactive 3D Spline knot editing + Varied Non-Cloned Array rocks with random angles & spacing jitter', () =>
+{
+    // A. Layer-local <-> World 3D gizmo coordinate round-trip
+    const R = buildRock2EulerMatrix3(37.5, -14.0, 8.5);
+    const Pivot = [2.4, 0.9, -1.7];
+    const W = forwardRock2Point(R, Pivot, -3.2, 1.5, 4.1);
+    const L = inverseRock2Vector(R, W[0] - Pivot[0], W[1] - Pivot[1], W[2] - Pivot[2]);
+    assert.ok(Math.hypot(L[0] - (-3.2), L[1] - 1.5, L[2] - 4.1) < 1e-6, 'Gizmo 3D Euler forward/inverse transform must be exact');
+
+    // B. Multi-knot 3D Catmull-Rom Spline arc-length sampling + live knot manipulation for Canyon & Cliff walls
+    const CanyonDoc = createDefaultRock2Document('stack-canyon-swall');
+    const WallLayer = CanyonDoc.layers[0];
+    assert.equal(WallLayer.generator.type, 'spline');
+    assert.ok(WallLayer.generator.knots.length >= 5, 'Winding Canyon S-Spline Wall must start with >= 5 editable 3D knots');
+
+    const ArcTable0 = buildRock2SplineArcTable(WallLayer.generator.knots, false);
+    assert.ok(ArcTable0.totalLen > 10.0, `Canyon spline arc length must be > 10m (got ${ArcTable0.totalLen.toFixed(2)}m)`);
+    const MidSample0 = sampleRock2SplineAtNormalizedArc(ArcTable0, 0.5);
+    assert.ok(Number.isFinite(MidSample0.x) && Math.hypot(MidSample0.tx, MidSample0.ty, MidSample0.tz) > 0.99, 'Spline sample must carry unit tangent');
+
+    // Simulate dragging middle knot #2 in 3D viewport (+Z bend & +Y cliff rise) + inserting a new knot
+    WallLayer.generator.knots[2].z += 3.2;
+    WallLayer.generator.knots[2].y += 2.1;
+    WallLayer.generator.knots.splice(3, 0, { x: 2.2, y: 1.4, z: 1.9, scale: 1.15 });
+    const CompiledEdited = compileRock2Stack(CanyonDoc);
+    const ArcTable1 = buildRock2SplineArcTable(WallLayer.generator.knots, false);
+    const MidSample1 = sampleRock2SplineAtNormalizedArc(ArcTable1, 0.45);
+    assert.ok(Math.hypot(MidSample1.x - MidSample0.x, MidSample1.y - MidSample0.y, MidSample1.z - MidSample0.z) > 1.2,
+        'Dragging & inserting 3D spline knots must deform the canyon cliff trajectory in 3D space');
+    assert.ok(evalRock2StackSdf(CompiledEdited, MidSample1.x, MidSample1.y + 1.2, MidSample1.z) < 0.85,
+        'Compiled SDF cliff blocks must follow the deformed 3D spline');
+
+    // Verify custom 3D knots survive JSON v3 save/load round-trip verbatim
+    const CanyonRT = deserializeRock2Document(JSON.parse(JSON.stringify(serializeRock2Document(CanyonDoc))));
+    assert.equal(CanyonRT.layers[0].generator.knots.length, WallLayer.generator.knots.length, 'JSON round-trip must preserve inserted spline knots');
+    assert.ok(Math.abs(CanyonRT.layers[0].generator.knots[2].y - WallLayer.generator.knots[2].y) < 1e-6, 'JSON round-trip must preserve 3D knot elevation');
+
+    // C. Array Generator MUST NEVER produce a rigid clone row:
+    //    1) Equal spacing (`spacingJitter = 0`, `lateralJitter = 0`) -> uniform spacing along A->B, YET every rock is a DIFFERENT rock at a RANDOM angle!
+    const EqualSpacedArray = createRock2Layer('big_boulder', {
+        seed: 303,
+        generator: createRock2Generator('array', {
+            arrayMode: 'line',
+            countX: 6,
+            startX: -5.0, startY: 0.0, startZ: 0.0,
+            endX: 5.0, endY: 0.0, endZ: 0.0,
+            spacingJitter: 0.0,
+            lateralJitter: 0.0,
+            rockPoolMode: 'varied_base',
+            shapeVariety: 0.85,
+            yawJitterDeg: 180,
+            tiltJitterDeg: 12,
+            seed: 809
+        })
+    });
+    const EvalEq = evaluateRock2GeneratorInstances(EqualSpacedArray.generator, EqualSpacedArray.params, EqualSpacedArray.type);
+    assert.equal(EvalEq.instances.length, 6);
+
+    // Check equal 2.0m step spacing along X when spacingJitter === 0:
+    for (let i = 1; i < EvalEq.instances.length; i++)
+    {
+        const dx = EvalEq.instances[i].pos[0] - EvalEq.instances[i - 1].pos[0];
+        assert.ok(Math.abs(dx - 2.0) < 1e-5, `spacingJitter=0 must preserve equal spacing along A->B (got dx=${dx})`);
+    }
+    // Check that NO TWO rocks in the array are clones: distinct seeds, distinct angles, AND distinct compiled half-space planes!
+    const CompEq = compileRock2Stack({ layers: [EqualSpacedArray] });
+    const Seeds = new Set(EvalEq.instances.map(it => it.seedOffset));
+    const Yaws = new Set(EvalEq.instances.map(it => Math.round(it.yawDeg)));
+    assert.equal(Seeds.size, 6, 'Every rock in the array must receive a unique procedural seed');
+    assert.ok(Yaws.size >= 5, 'Rocks in the array must have randomized angles, not uniform clone orientation');
+
+    for (let i = 1; i < CompEq.primitives.length; i++)
+    {
+        const P0 = CompEq.primitives[i - 1];
+        const P1 = CompEq.primitives[i];
+        let MaxPlaneDiff = 0;
+        const CheckN = Math.min(P0.planes.length, P1.planes.length);
+        for (let k = 0; k < CheckN; k++)
+        {
+            MaxPlaneDiff = Math.max(MaxPlaneDiff, Math.abs(P0.planes[k] - P1.planes[k]));
+        }
+        assert.ok(P0.numPlanes !== P1.numPlanes || MaxPlaneDiff > 0.03,
+            `Adjacent array rocks #${i - 1} and #${i} must have distinct sculpted rock geometry (never identical clones)`);
+    }
+
+    //    2) Randomized spacing (`spacingJitter = 0.60`, `lateralJitter = 0.35`) + `mixed_boulders` pool -> non-uniform spacing + mixed rock types!
+    const JitteredMixedArray = createRock2Layer('big_boulder', {
+        seed: 404,
+        generator: createRock2Generator('array', {
+            arrayMode: 'line',
+            countX: 7,
+            startX: -6.0, startY: 0.0, startZ: -1.5,
+            endX: 6.0, endY: 1.8, endZ: 2.0,
+            spacingJitter: 0.60,
+            lateralJitter: 0.35,
+            rockPoolMode: 'mixed_boulders',
+            shapeVariety: 0.90,
+            seed: 991
+        })
+    });
+    const EvalJit = evaluateRock2GeneratorInstances(JitteredMixedArray.generator, JitteredMixedArray.params, JitteredMixedArray.type);
+    const StepLengths = [];
+    for (let i = 1; i < EvalJit.instances.length; i++)
+    {
+        const A = EvalJit.instances[i - 1].pos, B = EvalJit.instances[i].pos;
+        StepLengths.push(Math.hypot(B[0] - A[0], B[1] - A[1], B[2] - A[2]));
+    }
+    const MinStep = Math.min(...StepLengths);
+    const MaxStep = Math.max(...StepLengths);
+    assert.ok(MaxStep - MinStep > 0.25, `spacingJitter > 0 must randomize rock spacing along A->B (min=${MinStep.toFixed(2)}m, max=${MaxStep.toFixed(2)}m)`);
+    const NodeTypesUsed = new Set(EvalJit.instances.map(it => it.rockType));
+    assert.ok(NodeTypesUsed.size >= 2, `mixed_boulders pool must mix multiple plain rock archetypes along the array (got ${[...NodeTypesUsed].join(', ')})`);
+});
+
+console.log(`\nAll ${Passed}/29 Open-World SDF Terrain & Pure-SDF Rock Formation 1.0 + 2.0 Studio validation suites passed!`);

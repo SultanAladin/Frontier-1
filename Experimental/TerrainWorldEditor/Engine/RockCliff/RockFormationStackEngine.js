@@ -5,8 +5,10 @@
 //   - 8 Atomic Plain Base Rock Shapes (`big_boulder`, `smooth_rock`, `small_rock`, `cliff_block`, `basalt_column`,
 //     `spire_pinnacle`, `rock_slab`, `custom_sculpt_rock`) — ZERO arches, ZERO hardcoded multi-rock scatters,
 //     ZERO fractures, ZERO thermal crazing, ZERO exfoliation, ZERO chemical/noise surface processing.
-//   - Composable Per-Layer Distribution Generators (`none`, `spline`, `array`, `splatter`, `scatter`) attachable to ANY
-//     layer so any plain Base Rock can be arrayed, splined, splattered, or scattered without hardcoding!
+//   - Composable Per-Layer Distribution Generators (`none`, `spline`, `array`, `splatter`, `scatter`) with:
+//       * Interactive 3D Viewport Multi-Knot Catmull-Rom Splines (ideal for curved cliffs & canyon faces)
+//       * Interactive 3D Viewport Array Lines/Frames where every generated rock has distinct mutated geometry,
+//         random 3D angles, and controllable spacing randomness (never mechanical identical clones)
 //   - Ordered CSG Layer Stack (`union`, `smooth_union`, `chamfer_union`, `subtract`, `intersect`), Solo/Mute,
 //     GPU RGBA32F Buffer Packing (`< 2 ms` WebGL2 3D volume bake), and 4^3 Sparse-Brick QEF Dual-Contour Meshing.
 
@@ -102,7 +104,7 @@ export const ROCK2_NODE_CATALOG = [
                 title: 'Boulder Silhouette & Faceting',
                 badge: 'BASE ROCK',
                 glyph: 'Mountain',
-                hint: 'Single plain boulder shape — attach Spline / Array / Splatter / Scatter above to place multiple rocks.',
+                hint: 'Single plain boulder shape — attach Spline / Array / Splatter / Scatter above to place varied rocks.',
                 controls: [
                     {
                         type: 'select', key: 'boulderStyle', label: 'Boulder Archetype',
@@ -184,7 +186,7 @@ export const ROCK2_NODE_CATALOG = [
         shortBadge: 'SMALL ROCK',
         glyph: 'Sparkles',
         accent: '#c8d99b',
-        desc: 'Single plain small rock clast, angular scree shard, tumbled pebble or flat slate chip (ready to scatter/splatter)',
+        desc: 'Single plain small rock clast, angular scree shard, tumbled pebble or flat slate chip',
         defaults: {
             stoneTone: 'clay',
             seed: 5190,
@@ -204,7 +206,7 @@ export const ROCK2_NODE_CATALOG = [
                 title: 'Small Rock Clast Shape',
                 badge: 'BASE ROCK',
                 glyph: 'Sparkles',
-                hint: 'Single plain small rock — attach Scatter, Splatter, Array, or Spline on this layer to distribute many stones.',
+                hint: 'Single plain small rock — attach Scatter, Splatter, Array, or Spline on this layer to distribute varied stones.',
                 controls: [
                     {
                         type: 'select', key: 'clastStyle', label: 'Small Rock Type',
@@ -231,13 +233,13 @@ export const ROCK2_NODE_CATALOG = [
         shortBadge: 'CLIFF',
         glyph: 'Layers',
         accent: '#e09f6d',
-        desc: 'Single plain sheer cliff buttress, battered rampart, overhanging brow or mesa block (spline/array for long walls)',
+        desc: 'Single plain cliff buttress — attach interactive 3D Spline to sculpt full curved cliffs & canyon faces',
         defaults: {
             stoneTone: 'sandstone',
             seed: 7042,
             posX: 0.0, posY: 0.0, posZ: 0.0,
             yawDeg: 0, pitchDeg: 0, rollDeg: 0,
-            width: 3.8, height: 5.4, length: 3.1,
+            width: 3.6, height: 5.4, length: 2.9,
             cliffProfile: 'vertical',
             facetCount: 10,
             roundness: 0.14,
@@ -251,7 +253,7 @@ export const ROCK2_NODE_CATALOG = [
                 title: 'Cliff Buttress Monolith',
                 badge: 'BASE ROCK',
                 glyph: 'Layers',
-                hint: 'Single plain cliff block — attach a Spline or Linear Array generator to fuse a full multi-buttress cliff wall.',
+                hint: 'Single plain cliff buttress — attach Spline Generator above and drag 3D knots in the viewport to shape cliffs & canyon walls.',
                 controls: [
                     {
                         type: 'select', key: 'cliffProfile', label: 'Cliff Block Profile',
@@ -279,7 +281,7 @@ export const ROCK2_NODE_CATALOG = [
         shortBadge: 'BASALT',
         glyph: 'Boxes',
         accent: '#9aa8bd',
-        desc: 'Single plain 4/5/6/7/8-sided polygonal basalt prism — pair with Hexagonal Array or Splatter for colonnades',
+        desc: 'Single plain 4/5/6/7/8-sided polygonal basalt prism — pair with Hexagonal Array or Spline for colonnades',
         defaults: {
             stoneTone: 'basalt',
             seed: 5512,
@@ -395,7 +397,7 @@ export const ROCK2_NODE_CATALOG = [
                 title: 'Tabular Slab & Flatiron',
                 badge: 'BASE ROCK',
                 glyph: 'Scan',
-                hint: 'Single plain stone slab — pair with Linear Stepped Array to stack sedimentary strata benches.',
+                hint: 'Single plain stone slab — pair with Array or Spline to build tilted hogback ridges or strata benches.',
                 controls: [
                     {
                         type: 'select', key: 'planShape', label: 'Slab Plan Silhouette',
@@ -473,16 +475,75 @@ export function getRock2NodeSpec(type)
 }
 
 /*==========================================================================================================================================
-               3. COMPOSABLE PER-LAYER DISTRIBUTION GENERATORS (SPLINE / ARRAY / SPLATTER / SCATTER)
+               3. INTERACTIVE 3D SPLINE KNOT PRESETS & COMPOSABLE PER-LAYER DISTRIBUTION GENERATORS
 ==========================================================================================================================================*/
 
-export const ROCK2_GENERATOR_OPTIONS = [
-    ['Single Rock (No Generator)', 'none'],
-    ['Spline Path Generator', 'spline'],
-    ['Array Generator (Linear / Grid / Hex / Radial)', 'array'],
-    ['Splatter Generator (Clump / Talus Fan)', 'splatter'],
-    ['Scatter Generator (Relaxed Area Field)', 'scatter']
+export const ROCK2_ROCK_POOL_OPTIONS = [
+    ['Varied Shapes of Base Rock', 'varied_base'],
+    ['Mixed Boulders, Cobbles, Slabs & Clasts', 'mixed_boulders'],
+    ['Mixed Canyon Outcrop (Cliff + Boulder + Slab + Spire)', 'mixed_outcrop'],
+    ['Exact Base Rock Only (No Shape Mutation)', 'uniform_base']
 ];
+
+const ROCK_POOLS = {
+    mixed_boulders: ['big_boulder', 'smooth_rock', 'small_rock', 'rock_slab'],
+    mixed_outcrop:  ['cliff_block', 'big_boulder', 'rock_slab', 'spire_pinnacle']
+};
+
+/**
+ * Builds editable 3D Catmull-Rom knots `[{ x, y, z, scale }]` for quick cliff & canyon spline presets.
+ */
+export function buildRock2SplinePresetKnots(preset = 'arc', span = 9.2, depth = 2.0)
+{
+    const half = span * 0.5;
+    if (preset === 'scurve')
+    {
+        return [
+            { x: -half,        y: 0.0, z:  depth * 0.55, scale: 1.0 },
+            { x: -half * 0.50, y: 0.0, z: -depth * 0.75, scale: 1.05 },
+            { x:  0.0,         y: 0.0, z:  0.0,          scale: 1.0 },
+            { x:  half * 0.50, y: 0.0, z:  depth * 0.75, scale: 1.05 },
+            { x:  half,        y: 0.0, z: -depth * 0.55, scale: 1.0 }
+        ];
+    }
+    if (preset === 'box_canyon')
+    {
+        return [
+            { x: -half * 0.88, y: 0.0, z:  depth * 1.35, scale: 0.95 },
+            { x: -half * 0.82, y: 0.0, z: -depth * 0.75, scale: 1.05 },
+            { x:  0.0,         y: 0.0, z: -depth * 1.25, scale: 1.12 },
+            { x:  half * 0.82, y: 0.0, z: -depth * 0.75, scale: 1.05 },
+            { x:  half * 0.88, y: 0.0, z:  depth * 1.35, scale: 0.95 }
+        ];
+    }
+    if (preset === 'line')
+    {
+        return [
+            { x: -half,         y: 0.0, z: 0.0, scale: 1.0 },
+            { x: -half * 0.333, y: 0.0, z: 0.0, scale: 1.0 },
+            { x:  half * 0.333, y: 0.0, z: 0.0, scale: 1.0 },
+            { x:  half,         y: 0.0, z: 0.0, scale: 1.0 }
+        ];
+    }
+    if (preset === 'ring')
+    {
+        const R = Math.max(1.2, span * 0.42);
+        const pts = [];
+        for (let i = 0; i < 6; i++)
+        {
+            const a = (i / 6) * Math.PI * 2.0;
+            pts.push({ x: Math.cos(a) * R, y: 0.0, z: Math.sin(a) * R, scale: 1.0 });
+        }
+        return pts;
+    }
+    // Default 'arc': natural curved cliff / canyon amphitheater wall
+    return [
+        { x: -half,        y: 0.0, z:  depth * 0.55, scale: 0.96 },
+        { x: -half * 0.36, y: 0.0, z: -depth * 0.52, scale: 1.04 },
+        { x:  half * 0.36, y: 0.0, z: -depth * 0.52, scale: 1.04 },
+        { x:  half,        y: 0.0, z:  depth * 0.55, scale: 0.96 }
+    ];
+}
 
 export const ROCK2_GENERATOR_DEFAULTS = {
     none: {
@@ -491,54 +552,61 @@ export const ROCK2_GENERATOR_DEFAULTS = {
     spline: {
         type: 'spline',
         seed: 701,
-        splineShape: 'arc',     // 'arc' | 'scurve' | 'line' | 'ring' | 'custom'
-        count: 6,
-        pathLength: 9.0,
-        curveBend: 2.2,
-        ringRadius: 3.8,
-        elevationRise: 0.0,
-        startX: -4.5, startY: 0.0, startZ: 0.8,
-        midX: 0.0,    midY: 0.4,   midZ: -1.8,
-        endX: 4.5,    endY: 0.0,   endZ: 0.8,
+        splinePreset: 'arc',
+        closedLoop: 0,
+        knots: buildRock2SplinePresetKnots('arc', 9.2, 2.0),
+        count: 7,
         alignToTangent: 1,
         yawOffsetDeg: 0,
-        lateralJitter: 0.0,
-        scaleStart: 1.0,
-        scaleEnd: 1.0,
+        spacingJitter: 0.14,
+        lateralJitter: 0.08,
+        rockPoolMode: 'varied_base',
+        shapeVariety: 0.68,
+        aspectVariation: 0.22,
         scaleVariation: 0.14,
-        heightVariation: 0.16,
-        yawVariationDeg: 10,
-        tiltVariationDeg: 4,
-        intraBlend: 0.20,
+        heightVariation: 0.18,
+        yawVariationDeg: 9,
+        tiltVariationDeg: 3.5,
+        intraBlend: 0.24,
         uniqueSeeds: 1
     },
     array: {
         type: 'array',
         seed: 809,
-        arrayMode: 'linear',    // 'linear' | 'grid2d' | 'grid3d' | 'hex' | 'radial'
-        countX: 5,
+        arrayMode: 'line',      // 'line' | 'grid2d' | 'grid3d' | 'hex' | 'radial'
+        // Interactive 3D Viewport Line Endpoints (A -> B)
+        startX: -4.8, startY: 0.0, startZ: 0.0,
+        endX:    4.8, endY:   0.0, endZ:   0.0,
+        countX: 6,
         countY: 2,
         countZ: 3,
-        stepX: 2.2,
-        stepY: 0.65,
-        stepZ: 2.2,
-        rowStagger: 0.0,
-        progressiveYawDeg: 0,
-        scaleDecay: 0.0,
-        hexRings: 2,            // 1->7, 2->19, 3->37, 4->61 columns
+        stepX: 2.4,
+        stepY: 1.6,
+        stepZ: 2.4,
+        rowStagger: 0.35,
+        // Per-rock variation & spacing randomness (defaults produce genuinely DIFFERENT, randomly angled rocks!)
+        rockPoolMode: 'varied_base',
+        shapeVariety: 0.82,
+        aspectVariation: 0.32,
+        scaleMin: 0.72,
+        scaleMax: 1.28,
+        spacingJitter: 0.35,
+        lateralJitter: 0.24,
+        heightVariation: 0.22,
+        yawJitterDeg: 180,
+        tiltJitterDeg: 12,
+        // Hex / Radial specific
+        hexRings: 2,
         cellSpacing: 1.02,
         terraceSteps: 5,
         terraceDrop: 0.55,
         radialLeanDeg: 3,
         radialCount: 8,
-        ringRadius: 3.6,
+        ringRadius: 3.8,
         arcAngleDeg: 360,
-        faceCenter: 1,
-        posJitter: 0.0,
-        heightVariation: 0.12,
-        scaleVariation: 0.10,
-        yawJitterDeg: 8,
-        tiltJitterDeg: 3,
+        faceCenter: 0,
+        posJitter: 0.18,
+        scaleVariation: 0.22,
         intraBlend: 0.0,
         uniqueSeeds: 1
     },
@@ -553,6 +621,9 @@ export const ROCK2_GENERATOR_DEFAULTS = {
         fanAzimuthDeg: 0,
         pileHeight: 0.35,
         radialScaleFalloff: 0.45,
+        rockPoolMode: 'varied_base',
+        shapeVariety: 0.78,
+        aspectVariation: 0.28,
         scaleMin: 0.45,
         scaleMax: 1.25,
         yawRandom: 1.0,
@@ -569,6 +640,9 @@ export const ROCK2_GENERATOR_DEFAULTS = {
         scatterLength: 6.2,
         minSpacing: 0.72,
         moundHeight: 0.0,
+        rockPoolMode: 'varied_base',
+        shapeVariety: 0.80,
+        aspectVariation: 0.30,
         scaleMin: 0.45,
         scaleMax: 1.30,
         sizeBias: 1.55,
@@ -580,21 +654,90 @@ export const ROCK2_GENERATOR_DEFAULTS = {
     }
 };
 
+export function normalizeSplineKnots(rawKnots, fallbackPreset = 'arc', pathLength = 9.2, curveBend = 2.0)
+{
+    if (Array.isArray(rawKnots) && rawKnots.length >= 2)
+    {
+        return rawKnots.map(k => ({
+            x: Number.isFinite(k.x) ? k.x : 0.0,
+            y: Number.isFinite(k.y) ? k.y : 0.0,
+            z: Number.isFinite(k.z) ? k.z : 0.0,
+            scale: Number.isFinite(k.scale) ? clamp(k.scale, 0.2, 3.0) : 1.0
+        }));
+    }
+    return buildRock2SplinePresetKnots(fallbackPreset, pathLength, curveBend);
+}
+
 export function createRock2Generator(type = 'none', overrides = {})
 {
     const cleanType = ROCK2_GENERATOR_DEFAULTS[type] ? type : 'none';
-    return {
-        ...ROCK2_GENERATOR_DEFAULTS[cleanType],
-        ...overrides,
-        type: cleanType
-    };
+    const base = JSON.parse(JSON.stringify(ROCK2_GENERATOR_DEFAULTS[cleanType]));
+    const merged = { ...base, ...overrides, type: cleanType };
+
+    if (cleanType === 'spline')
+    {
+        const preset = overrides.splinePreset || overrides.splineShape || merged.splinePreset || 'arc';
+        merged.splinePreset = preset;
+        if (preset === 'ring' && overrides.closedLoop === undefined && !Array.isArray(overrides.knots))
+        {
+            merged.closedLoop = 1;
+        }
+        if (Array.isArray(overrides.knots) && overrides.knots.length >= 2)
+        {
+            merged.knots = normalizeSplineKnots(overrides.knots);
+        }
+        else if (overrides.splineShape || overrides.splinePreset || overrides.pathLength !== undefined || overrides.curveBend !== undefined || overrides.ringRadius !== undefined)
+        {
+            const span = overrides.ringRadius !== undefined ? overrides.ringRadius * 2.38 : (overrides.pathLength ?? 9.2);
+            const bend = overrides.curveBend ?? 2.0;
+            if (preset === 'custom' && overrides.startX !== undefined)
+            {
+                merged.knots = [
+                    { x: overrides.startX ?? -4.5, y: overrides.startY ?? 0.0, z: overrides.startZ ?? 0.8, scale: overrides.scaleStart ?? 1.0 },
+                    { x: overrides.midX ?? 0.0,    y: overrides.midY ?? 0.4,   z: overrides.midZ ?? -1.8,  scale: lerp(overrides.scaleStart ?? 1.0, overrides.scaleEnd ?? 1.0, 0.5) },
+                    { x: overrides.endX ?? 4.5,    y: overrides.endY ?? 0.0,   z: overrides.endZ ?? 0.8,   scale: overrides.scaleEnd ?? 1.0 }
+                ];
+            }
+            else
+            {
+                merged.knots = buildRock2SplinePresetKnots(preset, span, bend);
+            }
+        }
+        else
+        {
+            merged.knots = normalizeSplineKnots(merged.knots);
+        }
+    }
+    else if (cleanType === 'array')
+    {
+        // Upgrade legacy 'linear' stepX/stepY/stepZ into explicit 3D viewport endpoints (startX/Y/Z -> endX/Y/Z)
+        if (merged.arrayMode === 'linear')
+        {
+            merged.arrayMode = 'line';
+            if (overrides.startX === undefined && overrides.endX === undefined &&
+                (overrides.stepX !== undefined || overrides.stepY !== undefined || overrides.stepZ !== undefined))
+            {
+                const n = Math.max(2, Math.round(merged.countX ?? 5));
+                const spanX = (overrides.stepX ?? 2.0) * (n - 1);
+                const spanY = (overrides.stepY ?? 0.0) * (n - 1);
+                const spanZ = (overrides.stepZ ?? 0.0) * (n - 1);
+                merged.startX = -spanX * 0.5;
+                merged.startY = 0.0;
+                merged.startZ = -spanZ * 0.5;
+                merged.endX = spanX * 0.5;
+                merged.endY = spanY;
+                merged.endZ = spanZ * 0.5;
+            }
+        }
+    }
+
+    return merged;
 }
 
 let _nextRock2LayerSeq = 1;
 
 export function createRock2Layer(type = 'big_boulder', overrides = {})
 {
-    // Gracefully upgrade any legacy type IDs and never permit arches
     let cleanType = type;
     if (cleanType === 'small_rocks') cleanType = 'small_rock';
     else if (cleanType === 'cliff_face') cleanType = 'cliff_block';
@@ -642,32 +785,38 @@ export function cloneRock2Layer(layer)
 }
 
 /*==========================================================================================================================================
-                     4. STARTER LAYER-STACK PRESETS (BASE ROCKS + COMPOSABLE GENERATORS · ZERO ARCHES)
+                     4. STARTER LAYER-STACK PRESETS (3D VIEWPORT SPLINES + VARIED ARRAYS · ZERO ARCHES)
 ==========================================================================================================================================*/
 
 export const ROCK2_STARTER_STACKS = [
     {
         id: 'stack-cliff-outcrop',
-        name: '01 · Cliff Spline + Boulder + Talus Splatter',
-        badge: '3-LAYER STACK',
+        name: '01 · Canyon Cliff Spline + Boulder + Talus',
+        badge: '3D SPLINE CLIFF',
         buildLayers: () => [
             createRock2Layer('cliff_block', {
-                name: 'Curved Cliff Wall (Spline)',
+                name: 'Curved Canyon Wall (3D Spline)',
                 combineMode: 'union',
                 stoneTone: 'sandstone',
                 seed: 7042,
-                posZ: -1.2,
-                width: 3.2, height: 5.4, length: 2.9,
+                posZ: -1.0,
+                width: 3.1, height: 5.5, length: 2.8,
                 cliffProfile: 'vertical', roundness: 0.14, batterTaper: 0.14,
                 generator: createRock2Generator('spline', {
-                    splineShape: 'arc',
-                    count: 5,
-                    pathLength: 8.6,
-                    curveBend: 1.6,
+                    splinePreset: 'arc',
+                    knots: [
+                        { x: -4.8, y: 0.0, z:  1.15, scale: 0.94 },
+                        { x: -1.6, y: 0.2, z: -0.95, scale: 1.06 },
+                        { x:  1.6, y: 0.1, z: -0.95, scale: 1.04 },
+                        { x:  4.8, y: 0.0, z:  1.15, scale: 0.92 }
+                    ],
+                    count: 6,
                     alignToTangent: 1,
+                    spacingJitter: 0.10,
+                    shapeVariety: 0.72,
                     heightVariation: 0.18,
                     scaleVariation: 0.12,
-                    intraBlend: 0.24,
+                    intraBlend: 0.26,
                     uniqueSeeds: 1
                 })
             }),
@@ -677,9 +826,9 @@ export const ROCK2_STARTER_STACKS = [
                 blendRadius: 0.42,
                 stoneTone: 'sandstone',
                 seed: 2188,
-                posX: -1.5, posY: 0.0, posZ: 1.05,
+                posX: -1.45, posY: 0.0, posZ: 1.05,
                 yawDeg: 22,
-                width: 3.5, height: 2.7, length: 3.0,
+                width: 3.4, height: 2.6, length: 2.9,
                 boulderStyle: 'angular', roundness: 0.22
             }),
             createRock2Layer('small_rock', {
@@ -706,8 +855,66 @@ export const ROCK2_STARTER_STACKS = [
         ]
     },
     {
+        id: 'stack-varied-array',
+        name: '02 · Varied Boulders Along Array Line',
+        badge: 'RANDOM ARRAY',
+        buildLayers: () => [
+            createRock2Layer('big_boulder', {
+                name: 'Randomised Boulder Ridge (Array)',
+                combineMode: 'union',
+                stoneTone: 'granite',
+                seed: 2410,
+                width: 2.4, height: 2.1, length: 2.2,
+                boulderStyle: 'angular', roundness: 0.26,
+                generator: createRock2Generator('array', {
+                    arrayMode: 'line',
+                    startX: -5.4, startY: 0.0, startZ:  0.8,
+                    endX:    5.4, endY:   0.0, endZ: -0.8,
+                    countX: 6,
+                    rockPoolMode: 'mixed_boulders',
+                    shapeVariety: 0.88,
+                    aspectVariation: 0.35,
+                    scaleMin: 0.68,
+                    scaleMax: 1.35,
+                    spacingJitter: 0.38,
+                    lateralJitter: 0.32,
+                    yawJitterDeg: 180,
+                    tiltJitterDeg: 14,
+                    intraBlend: 0.0,
+                    uniqueSeeds: 1
+                })
+            })
+        ]
+    },
+    {
+        id: 'stack-canyon-swall',
+        name: '03 · Winding Canyon Face (S-Spline)',
+        badge: 'CANYON SPLINE',
+        buildLayers: () => [
+            createRock2Layer('cliff_block', {
+                name: 'S-Curve Canyon Escarpment',
+                combineMode: 'union',
+                stoneTone: 'redSlate',
+                seed: 7315,
+                width: 2.9, height: 5.6, length: 2.6,
+                cliffProfile: 'overhang', roundness: 0.12, overhangLean: 0.22,
+                generator: createRock2Generator('spline', {
+                    splinePreset: 'scurve',
+                    knots: buildRock2SplinePresetKnots('scurve', 11.0, 2.3),
+                    count: 8,
+                    alignToTangent: 1,
+                    spacingJitter: 0.08,
+                    shapeVariety: 0.75,
+                    heightVariation: 0.20,
+                    intraBlend: 0.28,
+                    uniqueSeeds: 1
+                })
+            })
+        ]
+    },
+    {
         id: 'stack-basalt',
-        name: '02 · Basalt Column + Hex Array',
+        name: '04 · Basalt Column + Hex Array',
         badge: 'HEX ARRAY',
         buildLayers: () => [
             createRock2Layer('basalt_column', {
@@ -724,8 +931,10 @@ export const ROCK2_STARTER_STACKS = [
                     terraceSteps: 6,
                     terraceDrop: 0.62,
                     radialLeanDeg: 2.5,
+                    shapeVariety: 0.35,
                     heightVariation: 0.10,
                     scaleVariation: 0.04,
+                    posJitter: 0.0,
                     yawJitterDeg: 4,
                     tiltJitterDeg: 1,
                     uniqueSeeds: 1
@@ -735,7 +944,7 @@ export const ROCK2_STARTER_STACKS = [
     },
     {
         id: 'stack-big-boulder',
-        name: '03 · Plain Big Boulder',
+        name: '05 · Plain Big Boulder (Single)',
         badge: 'SINGLE ROCK',
         buildLayers: () => [
             createRock2Layer('big_boulder', {
@@ -750,7 +959,7 @@ export const ROCK2_STARTER_STACKS = [
     },
     {
         id: 'stack-smooth-rock',
-        name: '04 · Plain Smooth Cobble',
+        name: '06 · Plain Smooth Cobble (Single)',
         badge: 'SINGLE ROCK',
         buildLayers: () => [
             createRock2Layer('smooth_rock', {
@@ -765,7 +974,7 @@ export const ROCK2_STARTER_STACKS = [
     },
     {
         id: 'stack-small-rocks',
-        name: '05 · Small Rock + Scatter Field',
+        name: '07 · Small Rock + Scatter Field',
         badge: 'SCATTER',
         buildLayers: () => [
             createRock2Layer('small_rock', {
@@ -780,64 +989,10 @@ export const ROCK2_STARTER_STACKS = [
                     scatterWidth: 6.4,
                     scatterLength: 5.8,
                     minSpacing: 0.75,
+                    shapeVariety: 0.85,
                     scaleMin: 0.45,
                     scaleMax: 1.35,
                     sizeBias: 1.5,
-                    uniqueSeeds: 1
-                })
-            })
-        ]
-    },
-    {
-        id: 'stack-stepped-slabs',
-        name: '06 · Stepped Slabs (Linear Array)',
-        badge: 'LINEAR ARRAY',
-        buildLayers: () => [
-            createRock2Layer('rock_slab', {
-                name: 'Stepped Sedimentary Benches',
-                combineMode: 'union',
-                stoneTone: 'redSlate',
-                seed: 4410,
-                posZ: 1.8,
-                width: 5.6, height: 0.95, length: 2.8,
-                planShape: 'plate', dipAngleDeg: 8, roundness: 0.14,
-                generator: createRock2Generator('array', {
-                    arrayMode: 'linear',
-                    countX: 4,
-                    stepX: 0.15,
-                    stepY: 0.72,
-                    stepZ: -1.45,
-                    scaleDecay: 0.08,
-                    intraBlend: 0.14,
-                    uniqueSeeds: 1
-                })
-            })
-        ]
-    },
-    {
-        id: 'stack-cobble-spline',
-        name: '07 · Smooth Cobbles on S-Spline',
-        badge: 'SPLINE',
-        buildLayers: () => [
-            createRock2Layer('smooth_rock', {
-                name: 'S-Curve Riverbed Cobbles',
-                combineMode: 'union',
-                stoneTone: 'cobble',
-                seed: 3390,
-                width: 2.1, height: 1.35, length: 1.75,
-                smoothStyle: 'cobble', roundness: 0.88, flatBottom: 0.72,
-                generator: createRock2Generator('spline', {
-                    splineShape: 'scurve',
-                    count: 7,
-                    pathLength: 9.6,
-                    curveBend: 2.1,
-                    alignToTangent: 1,
-                    lateralJitter: 0.35,
-                    scaleStart: 1.15,
-                    scaleEnd: 0.68,
-                    scaleVariation: 0.18,
-                    yawVariationDeg: 28,
-                    intraBlend: 0.0,
                     uniqueSeeds: 1
                 })
             })
@@ -851,7 +1006,7 @@ export function createDefaultRock2Document(starterId = 'stack-cliff-outcrop')
     const layers = starter.buildLayers();
     return {
         format: 'frontier-rockformation-2.0',
-        version: 2,
+        version: 3,
         starterId: starter.id,
         name: starter.name,
         meshResolution: 84,
@@ -865,7 +1020,7 @@ export function serializeRock2Document(doc)
 {
     return {
         format: 'frontier-rockformation-2.0',
-        version: 2,
+        version: 3,
         starterId: doc.starterId || 'stack-cliff-outcrop',
         name: doc.name || 'RockFormation 2.0 Stack',
         meshResolution: doc.meshResolution ?? 84,
@@ -896,21 +1051,11 @@ export function deserializeRock2Document(raw)
         .map(l =>
         {
             let gen = l.generator;
-            // Upgrade v1 multi-rock layers cleanly into Base Rock + Generator!
             if (!gen)
             {
-                if (l.type === 'small_rocks')
-                {
-                    gen = createRock2Generator('scatter', { count: l.params?.rockCount ?? 12 });
-                }
-                else if (l.type === 'columnar_basalt')
-                {
-                    gen = createRock2Generator('array', { arrayMode: 'hex', hexRings: 2 });
-                }
-                else
-                {
-                    gen = createRock2Generator('none');
-                }
+                if (l.type === 'small_rocks') gen = createRock2Generator('scatter', { count: l.params?.rockCount ?? 12 });
+                else if (l.type === 'columnar_basalt') gen = createRock2Generator('array', { arrayMode: 'hex', hexRings: 2 });
+                else gen = createRock2Generator('none');
             }
             return createRock2Layer(l.type || 'big_boulder', {
                 id: l.id,
@@ -927,7 +1072,7 @@ export function deserializeRock2Document(raw)
     if (layers.length === 0) return createDefaultRock2Document();
     return {
         format: 'frontier-rockformation-2.0',
-        version: 2,
+        version: 3,
         starterId: raw.starterId || 'stack-cliff-outcrop',
         name: raw.name || 'Imported Rock Stack',
         meshResolution: clamp(raw.meshResolution ?? 84, 36, 140),
@@ -938,10 +1083,10 @@ export function deserializeRock2Document(raw)
 }
 
 /*==========================================================================================================================================
-                            5. RIGID EULER MATRICES & GENERATOR INSTANCE EVALUATOR
+               5. RIGID MATRICES, ARC-LENGTH 3D CATMULL-ROM SPLINE & RANDOMIZED GENERATOR EVALUATOR
 ==========================================================================================================================================*/
 
-function buildEulerMatrix3(yawDeg = 0, pitchDeg = 0, rollDeg = 0)
+export function buildRock2EulerMatrix3(yawDeg = 0, pitchDeg = 0, rollDeg = 0)
 {
     const y = yawDeg * DEG2RAD;
     const p = pitchDeg * DEG2RAD;
@@ -950,7 +1095,6 @@ function buildEulerMatrix3(yawDeg = 0, pitchDeg = 0, rollDeg = 0)
     const cp = Math.cos(p), sp = Math.sin(p);
     const cr = Math.cos(r), sr = Math.sin(r);
 
-    // R = Ry(yaw) * Rx(pitch) * Rz(roll)
     return [
         cy * cr + sy * sp * sr,  -cy * sr + sy * sp * cr,  sy * cp,
         cp * sr,                  cp * cr,                -sp,
@@ -991,7 +1135,7 @@ function invertRigidTransform(R, pivot)
     return { invR, invT };
 }
 
-function forwardPoint(R, pivot, lx, ly, lz)
+export function forwardRock2Point(R, pivot, lx, ly, lz)
 {
     return [
         R[0] * lx + R[1] * ly + R[2] * lz + pivot[0],
@@ -1000,79 +1144,165 @@ function forwardPoint(R, pivot, lx, ly, lz)
     ];
 }
 
-function sampleSplinePointAndTangent(g, t)
+export function inverseRock2Vector(R, wx, wy, wz)
 {
-    const shape = g.splineShape || 'arc';
-    const L = Math.max(0.5, g.pathLength ?? 9.0);
-    const bend = g.curveBend ?? 2.2;
-    const rise = g.elevationRise ?? 0.0;
+    return [
+        R[0] * wx + R[3] * wy + R[6] * wz,
+        R[1] * wx + R[4] * wy + R[7] * wz,
+        R[2] * wx + R[5] * wy + R[8] * wz
+    ];
+}
 
-    if (shape === 'ring')
+function catmullRomScalar(p0, p1, p2, p3, t)
+{
+    const t2 = t * t;
+    const t3 = t2 * t;
+    return 0.5 * (
+        (2.0 * p1) +
+        (-p0 + p2) * t +
+        (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2 +
+        (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3
+    );
+}
+
+/**
+ * Evaluates a dense arc-length table for an interactive multi-knot 3D Catmull-Rom Spline (`g.knots`).
+ * Shared 1:1 by the Pure-SDF Compiler AND the 3D Viewport Spline Gizmo Overlay!
+ */
+export function buildRock2SplineArcTable(gOrKnots, samplesPerSeg = 20)
+{
+    const isArrayInput = Array.isArray(gOrKnots);
+    const knots = normalizeSplineKnots(isArrayInput ? gOrKnots : gOrKnots?.knots);
+    const n = knots.length;
+    const closed = isArrayInput
+        ? (typeof samplesPerSeg === 'boolean' ? (samplesPerSeg && n >= 3) : false)
+        : ((gOrKnots?.closedLoop ?? 0) > 0.5 && n >= 3);
+    const segSamples = typeof samplesPerSeg === 'number' ? Math.max(4, Math.round(samplesPerSeg)) : 20;
+    const segCount = closed ? n : Math.max(1, n - 1);
+
+    const getK = idx =>
     {
-        const R = Math.max(0.4, g.ringRadius ?? 3.8);
-        const ang = t * Math.PI * 2.0;
-        return {
-            x: Math.cos(ang) * R,
-            y: rise * Math.sin(ang * 0.5),
-            z: Math.sin(ang) * R,
-            tx: -Math.sin(ang),
-            tz: Math.cos(ang)
-        };
+        if (closed) return knots[((idx % n) + n) % n];
+        if (idx < 0)
+        {
+            return {
+                x: 2 * knots[0].x - knots[1].x,
+                y: 2 * knots[0].y - knots[1].y,
+                z: 2 * knots[0].z - knots[1].z,
+                scale: knots[0].scale
+            };
+        }
+        if (idx >= n)
+        {
+            return {
+                x: 2 * knots[n - 1].x - knots[n - 2].x,
+                y: 2 * knots[n - 1].y - knots[n - 2].y,
+                z: 2 * knots[n - 1].z - knots[n - 2].z,
+                scale: knots[n - 1].scale
+            };
+        }
+        return knots[idx];
+    };
+
+    const samples = [];
+    let totalLen = 0.0;
+
+    const totalSteps = segCount * segSamples;
+    for (let s = 0; s <= totalSteps; s++)
+    {
+        const uSeg = Math.min(segCount - 1e-6, (s / totalSteps) * segCount);
+        const seg = Math.min(segCount - 1, Math.floor(uSeg));
+        const t = uSeg - seg;
+
+        const k0 = getK(seg - 1);
+        const k1 = getK(seg);
+        const k2 = getK(seg + 1);
+        const k3 = getK(seg + 2);
+
+        const x = catmullRomScalar(k0.x, k1.x, k2.x, k3.x, t);
+        const y = catmullRomScalar(k0.y, k1.y, k2.y, k3.y, t);
+        const z = catmullRomScalar(k0.z, k1.z, k2.z, k3.z, t);
+        const sc = clamp(catmullRomScalar(k0.scale ?? 1, k1.scale ?? 1, k2.scale ?? 1, k3.scale ?? 1, t), 0.2, 3.0);
+
+        if (samples.length > 0)
+        {
+            const prev = samples[samples.length - 1];
+            totalLen += Math.hypot(x - prev.x, y - prev.y, z - prev.z);
+        }
+        samples.push({ x, y, z, scale: sc, arc: totalLen, segIndex: seg, segT: t });
     }
 
-    if (shape === 'line')
+    // Compute smooth horizontal unit tangents (tx, tz) for cliff-face alignment
+    for (let i = 0; i < samples.length; i++)
     {
-        return {
-            x: (t - 0.5) * L,
-            y: t * rise,
-            z: 0.0,
-            tx: 1.0,
-            tz: 0.0
-        };
+        const a = samples[Math.max(0, i - 1)];
+        const b = samples[Math.min(samples.length - 1, i + 1)];
+        let dx = b.x - a.x;
+        let dz = b.z - a.z;
+        const hl = Math.hypot(dx, dz);
+        if (hl < 1e-5) { dx = 1.0; dz = 0.0; }
+        else { dx /= hl; dz /= hl; }
+        samples[i].tx = dx;
+        samples[i].tz = dz;
     }
 
-    if (shape === 'scurve')
+    return { knots, closed, totalLen: Math.max(1e-4, totalLen), samples };
+}
+
+export function sampleRock2SplineAtNormalizedArc(arcTable, uNorm)
+{
+    const { samples, totalLen, closed } = arcTable;
+    let u = uNorm;
+    if (closed) u = ((u % 1.0) + 1.0) % 1.0;
+    else u = clamp(u, 0.0, 1.0);
+
+    const targetArc = u * totalLen;
+    let lo = 0, hi = samples.length - 1;
+    while (lo + 1 < hi)
     {
-        const x = (t - 0.5) * L;
-        const z = Math.sin((t - 0.5) * Math.PI * 2.0) * bend * 0.55;
-        const dzdt = Math.cos((t - 0.5) * Math.PI * 2.0) * Math.PI * 2.0 * bend * 0.55;
-        const tl = Math.hypot(L, dzdt) || 1;
-        return {
-            x,
-            y: t * rise,
-            z,
-            tx: L / tl,
-            tz: dzdt / tl
-        };
+        const mid = (lo + hi) >> 1;
+        if (samples[mid].arc <= targetArc) lo = mid;
+        else hi = mid;
     }
+    const s0 = samples[lo], s1 = samples[hi];
+    const span = Math.max(1e-6, s1.arc - s0.arc);
+    const f = clamp((targetArc - s0.arc) / span, 0.0, 1.0);
 
-    // Quadratic Bezier for 'arc' or 'custom'
-    let p0x = -L * 0.5, p0y = 0.0, p0z = bend * 0.25;
-    let p1x = 0.0,      p1y = rise * 0.5, p1z = -bend * 0.75;
-    let p2x = L * 0.5,  p2y = rise, p2z = bend * 0.25;
+    let tx = lerp(s0.tx, s1.tx, f);
+    let tz = lerp(s0.tz, s1.tz, f);
+    const tl = Math.hypot(tx, tz) || 1;
+    tx /= tl; tz /= tl;
 
-    if (shape === 'custom')
+    return {
+        x: lerp(s0.x, s1.x, f),
+        y: lerp(s0.y, s1.y, f),
+        z: lerp(s0.z, s1.z, f),
+        scale: lerp(s0.scale, s1.scale, f),
+        tx,
+        ty: 0.0,
+        tz
+    };
+}
+
+function chooseInstanceRockType(baseType, poolMode, instRng, index)
+{
+    if (!poolMode || poolMode === 'varied_base' || poolMode === 'uniform_base')
     {
-        p0x = g.startX ?? -4.5; p0y = g.startY ?? 0.0; p0z = g.startZ ?? 0.8;
-        p1x = g.midX ?? 0.0;    p1y = g.midY ?? 0.4;   p1z = g.midZ ?? -1.8;
-        p2x = g.endX ?? 4.5;    p2y = g.endY ?? 0.0;   p2z = g.endZ ?? 0.8;
+        return baseType;
     }
-
-    const u = 1.0 - t;
-    const x = u * u * p0x + 2 * u * t * p1x + t * t * p2x;
-    const y = u * u * p0y + 2 * u * t * p1y + t * t * p2y;
-    const z = u * u * p0z + 2 * u * t * p1z + t * t * p2z;
-    const dx = 2 * u * (p1x - p0x) + 2 * t * (p2x - p1x);
-    const dz = 2 * u * (p1z - p0z) + 2 * t * (p2z - p1z);
-    const tl = Math.hypot(dx, dz) || 1;
-    return { x, y, z, tx: dx / tl, tz: dz / tl };
+    const pool = ROCK_POOLS[poolMode];
+    if (!pool || pool.length === 0) return baseType;
+    // Stratified shuffle so adjacent rocks in an array are guaranteed diverse!
+    const pickIdx = (index + instRng.int(0, pool.length)) % pool.length;
+    return pool[pickIdx];
 }
 
 /**
  * Evaluates a layer's placement generator (`none`, `spline`, `array`, `splatter`, `scatter`)
  * into an ordered array of local rock instance descriptors + `intraBlend`.
+ * Every multi-rock generator produces genuinely distinct per-instance shapes, proportions & orientations!
  */
-export function evaluateRock2GeneratorInstances(generator, baseRockParams)
+export function evaluateRock2GeneratorInstances(generator, baseRockParams, baseType = 'big_boulder')
 {
     const g = generator || { type: 'none' };
     const type = g.type || 'none';
@@ -1085,91 +1315,126 @@ export function evaluateRock2GeneratorInstances(generator, baseRockParams)
                 pos: [0, 0, 0],
                 yawDeg: 0, pitchDeg: 0, rollDeg: 0,
                 scaleX: 1, scaleY: 1, scaleZ: 1,
-                seedOffset: 0
+                seedOffset: 0,
+                shapeVariety: 0.0,
+                rockType: baseType
             }]
         };
     }
 
-    const rng = createRng((g.seed ?? 701) ^ ((baseRockParams?.seed ?? 101) * 31));
+    const rng = createRng(((g.seed ?? 701) * 2654435761) ^ ((baseRockParams?.seed ?? 101) * 40503));
     const unique = (g.uniqueSeeds ?? 1) > 0.5;
+    const poolMode = g.rockPoolMode || 'varied_base';
+    const shapeVariety = poolMode === 'uniform_base' ? 0.0 : clamp(g.shapeVariety ?? 0.75, 0.0, 1.0);
+    const aspectVar = poolMode === 'uniform_base' ? 0.0 : clamp(g.aspectVariation ?? 0.28, 0.0, 0.75);
     const instances = [];
 
     if (type === 'spline')
     {
-        const count = clamp(Math.round(g.count ?? 6), 2, 48);
-        const closed = g.splineShape === 'ring';
+        const count = clamp(Math.round(g.count ?? 7), 2, 56);
+        const arcTable = buildRock2SplineArcTable(g, 20);
+        const closed = arcTable.closed;
+        const spJitter = clamp(g.spacingJitter ?? 0.14, 0.0, 0.85);
+        const latJit = g.lateralJitter ?? 0.08;
         const sVar = clamp(g.scaleVariation ?? 0.14, 0.0, 0.85);
-        const hVar = clamp(g.heightVariation ?? 0.16, 0.0, 0.85);
-        const yawVar = g.yawVariationDeg ?? 10;
-        const tiltVar = g.tiltVariationDeg ?? 4;
-        const latJit = g.lateralJitter ?? 0.0;
+        const hVar = clamp(g.heightVariation ?? 0.18, 0.0, 0.85);
+        const yawVar = g.yawVariationDeg ?? 9;
+        const tiltVar = g.tiltVariationDeg ?? 3.5;
         const align = (g.alignToTangent ?? 1) > 0.5;
         const yawOff = g.yawOffsetDeg ?? 0;
 
+        const stepU = closed ? (1.0 / count) : (count > 1 ? 1.0 / (count - 1) : 0.0);
+
         for (let i = 0; i < count; i++)
         {
-            const t = closed ? (i / count) : (count === 1 ? 0.5 : i / (count - 1));
-            const sp = sampleSplinePointAndTangent(g, t);
+            const baseU = closed ? (i * stepU) : (count === 1 ? 0.5 : i * stepU);
+            // Keep first & last anchors crisp at low jitter so cliff ends match the viewport endpoints cleanly
+            const endMask = (!closed && (i === 0 || i === count - 1)) ? 0.25 : 1.0;
+            const uJit = baseU + rng.signed() * stepU * 0.44 * spJitter * endMask;
+            const sp = sampleRock2SplineAtNormalizedArc(arcTable, uJit);
+
             const nx = -sp.tz, nz = sp.tx;
             const lat = rng.signed() * latJit;
 
-            const rampS = Math.max(0.15, lerp(g.scaleStart ?? 1.0, g.scaleEnd ?? 1.0, t));
-            const sUni = Math.max(0.18, rampS * (1.0 + rng.signed() * sVar));
-            const sH = Math.max(0.18, rampS * (1.0 + rng.signed() * hVar));
+            const knotScale = sp.scale ?? 1.0;
+            const sBase = Math.max(0.18, knotScale * (1.0 + rng.signed() * sVar));
+            const ax = 1.0 + rng.signed() * aspectVar * 0.65;
+            const az = 1.0 + rng.signed() * aspectVar * 0.65;
+            const sH = Math.max(0.18, knotScale * (1.0 + rng.signed() * hVar));
 
-            // Tangent angle: rock +X aligns along spline tangent (`tx, tz`), so +Z cliff front faces outward normal!
             const tangYawDeg = align ? (-Math.atan2(sp.tz, sp.tx) / DEG2RAD) : 0.0;
+            const rType = chooseInstanceRockType(baseType, poolMode, rng, i);
 
             instances.push({
                 pos: [sp.x + nx * lat, sp.y, sp.z + nz * lat],
                 yawDeg: tangYawDeg + yawOff + rng.signed() * yawVar,
                 pitchDeg: rng.signed() * tiltVar,
                 rollDeg: rng.signed() * tiltVar,
-                scaleX: sUni,
+                scaleX: Math.max(0.16, sBase * ax),
                 scaleY: sH,
-                scaleZ: sUni,
-                seedOffset: unique ? i * 7919 : 0
+                scaleZ: Math.max(0.16, sBase * az),
+                seedOffset: unique ? (i + 1) * 7919 : 0,
+                shapeVariety,
+                rockType: rType
             });
         }
-        return { intraBlend: clamp(g.intraBlend ?? 0.20, 0.0, 2.5), instances };
+        return { intraBlend: clamp(g.intraBlend ?? 0.24, 0.0, 2.5), instances };
     }
 
     if (type === 'array')
     {
-        const mode = g.arrayMode || 'linear';
-        const posJit = g.posJitter ?? 0.0;
-        const hVar = clamp(g.heightVariation ?? 0.12, 0.0, 0.85);
-        const sVar = clamp(g.scaleVariation ?? 0.10, 0.0, 0.85);
-        const yawJit = g.yawJitterDeg ?? 8;
-        const tiltJit = g.tiltJitterDeg ?? 3;
+        const mode = (g.arrayMode === 'linear' || !g.arrayMode) ? 'line' : g.arrayMode;
+        const hVar = clamp(g.heightVariation ?? 0.20, 0.0, 0.85);
+        const yawJit = g.yawJitterDeg ?? 180;
+        const tiltJit = g.tiltJitterDeg ?? 12;
 
-        if (mode === 'linear')
+        if (mode === 'line')
         {
-            const n = clamp(Math.round(g.countX ?? 5), 2, 48);
-            const sx = g.stepX ?? 2.2;
-            const sy = g.stepY ?? 0.0;
-            const sz = g.stepZ ?? 0.0;
-            const progYaw = g.progressiveYawDeg ?? 0;
-            const decay = clamp(g.scaleDecay ?? 0.0, -0.5, 0.85);
-            const mid = (n - 1) * 0.5;
+            const n = clamp(Math.round(g.countX ?? 6), 2, 48);
+            const ax = g.startX ?? -4.8, ay = g.startY ?? 0.0, az = g.startZ ?? 0.0;
+            const bx = g.endX ?? 4.8,    by = g.endY ?? 0.0,   bz = g.endZ ?? 0.0;
+            const dx = bx - ax, dy = by - ay, dz = bz - az;
+            const horizLen = Math.hypot(dx, dz);
+            const tx = horizLen > 1e-4 ? dx / horizLen : 1.0;
+            const tz = horizLen > 1e-4 ? dz / horizLen : 0.0;
+            const nx = -tz, nz = tx;
+
+            const spJitter = clamp(g.spacingJitter ?? 0.35, 0.0, 0.95);
+            const latJit = g.lateralJitter ?? 0.24;
+            const sMin = Math.min(g.scaleMin ?? 0.72, g.scaleMax ?? 1.28);
+            const sMax = Math.max(g.scaleMin ?? 0.72, g.scaleMax ?? 1.28);
+            const stepT = n > 1 ? 1.0 / (n - 1) : 0.0;
+            const lineYawDeg = -Math.atan2(tz, tx) / DEG2RAD;
 
             for (let i = 0; i < n; i++)
             {
-                const t = n > 1 ? i / (n - 1) : 0.0;
-                const baseS = Math.max(0.18, 1.0 - decay * t);
+                const baseT = n > 1 ? i * stepT : 0.5;
+                //Jitter along the A->B line while keeping endpoints bounded near A and B
+                const endWeight = (i === 0 || i === n - 1) ? 0.35 : 1.0;
+                const t = clamp(baseT + rng.signed() * stepT * 0.46 * spJitter * endWeight, 0.0, 1.0);
+                const lat = rng.signed() * latJit;
+
+                const uniS = lerp(sMin, sMax, rng.float());
+                const wAspect = 1.0 + rng.signed() * aspectVar;
+                const lAspect = 1.0 + rng.signed() * aspectVar;
+                const hAspect = 1.0 + rng.signed() * hVar;
+                const rType = chooseInstanceRockType(baseType, poolMode, rng, i);
+
                 instances.push({
                     pos: [
-                        (i - mid) * sx + rng.signed() * posJit,
-                        i * sy,
-                        (i - mid) * sz + rng.signed() * posJit
+                        ax + dx * t + nx * lat,
+                        ay + dy * t,
+                        az + dz * t + nz * lat
                     ],
-                    yawDeg: i * progYaw + rng.signed() * yawJit,
+                    yawDeg: lineYawDeg + rng.signed() * yawJit,
                     pitchDeg: rng.signed() * tiltJit,
                     rollDeg: rng.signed() * tiltJit,
-                    scaleX: Math.max(0.18, baseS * (1.0 + rng.signed() * sVar)),
-                    scaleY: Math.max(0.18, baseS * (1.0 + rng.signed() * hVar)),
-                    scaleZ: Math.max(0.18, baseS * (1.0 + rng.signed() * sVar)),
-                    seedOffset: unique ? i * 7919 : 0
+                    scaleX: Math.max(0.16, uniS * wAspect),
+                    scaleY: Math.max(0.16, uniS * hAspect),
+                    scaleZ: Math.max(0.16, uniS * lAspect),
+                    seedOffset: unique ? (i + 1) * 7919 : 0,
+                    shapeVariety,
+                    rockType: rType
                 });
             }
         }
@@ -1178,10 +1443,12 @@ export function evaluateRock2GeneratorInstances(generator, baseRockParams)
             const nx = clamp(Math.round(g.countX ?? 3), 1, 10);
             const ny = mode === 'grid3d' ? clamp(Math.round(g.countY ?? 2), 1, 5) : 1;
             const nz = clamp(Math.round(g.countZ ?? 3), 1, 10);
-            const dx = g.stepX ?? 2.2;
-            const dy = g.stepY ?? 1.8;
-            const dz = g.stepZ ?? 2.2;
-            const stag = g.rowStagger ?? 0.0;
+            const dx = g.stepX ?? 2.4;
+            const dy = g.stepY ?? 1.6;
+            const dz = g.stepZ ?? 2.4;
+            const stag = g.rowStagger ?? 0.35;
+            const posJit = g.posJitter ?? 0.18;
+            const sVar = clamp(g.scaleVariation ?? 0.22, 0.0, 0.85);
             let idx = 0;
 
             for (let iy = 0; iy < ny; iy++)
@@ -1193,6 +1460,7 @@ export function evaluateRock2GeneratorInstances(generator, baseRockParams)
                     {
                         if (instances.length >= 64) break;
                         const s = Math.max(0.18, 1.0 + rng.signed() * sVar);
+                        const rType = chooseInstanceRockType(baseType, poolMode, rng, idx);
                         instances.push({
                             pos: [
                                 (ix - (nx - 1) * 0.5) * dx + rowOff + rng.signed() * posJit,
@@ -1202,10 +1470,12 @@ export function evaluateRock2GeneratorInstances(generator, baseRockParams)
                             yawDeg: rng.signed() * yawJit,
                             pitchDeg: rng.signed() * tiltJit,
                             rollDeg: rng.signed() * tiltJit,
-                            scaleX: s,
-                            scaleY: Math.max(0.18, 1.0 + rng.signed() * hVar),
-                            scaleZ: s,
-                            seedOffset: unique ? (idx++) * 7919 : 0
+                            scaleX: Math.max(0.16, s * (1.0 + rng.signed() * aspectVar)),
+                            scaleY: Math.max(0.16, s * (1.0 + rng.signed() * hVar)),
+                            scaleZ: Math.max(0.16, s * (1.0 + rng.signed() * aspectVar)),
+                            seedOffset: unique ? (++idx) * 7919 : 0,
+                            shapeVariety,
+                            rockType: rType
                         });
                     }
                 }
@@ -1213,12 +1483,13 @@ export function evaluateRock2GeneratorInstances(generator, baseRockParams)
         }
         else if (mode === 'hex')
         {
-            // Axial hex lattice (q, r) with distance-based terrace steps (ideal for Basalt Columns or Cobble Causeways!)
             const rings = clamp(Math.round(g.hexRings ?? 2), 1, 4);
             const spacing = Math.max(0.25, g.cellSpacing ?? 1.02);
             const steps = clamp(Math.round(g.terraceSteps ?? 5), 1, 14);
             const drop = clamp(g.terraceDrop ?? 0.55, 0.0, 0.90);
             const lean = g.radialLeanDeg ?? 2.5;
+            const posJit = g.posJitter ?? 0.0;
+            const sVar = clamp(g.scaleVariation ?? 0.05, 0.0, 0.65);
             const maxRad = Math.max(1.0, rings * spacing);
             let idx = 0;
 
@@ -1232,18 +1503,15 @@ export function evaluateRock2GeneratorInstances(generator, baseRockParams)
                     const lx = spacing * (q + r * 0.5);
                     const lz = spacing * (r * 0.8660254);
                     const distNorm = clamp(Math.hypot(lx, lz) / maxRad, 0.0, 1.0);
-                    // Slight front-to-back cliff bias + radial mound falloff
                     const frontBias = clamp((lz / maxRad) * 0.28, -0.25, 0.30);
                     let hFrac = clamp(1.0 - drop * (distNorm * 0.72 + Math.max(0, frontBias)), 0.16, 1.0);
-                    if (steps > 1)
-                    {
-                        hFrac = Math.max(0.16, Math.round(hFrac * steps) / steps);
-                    }
+                    if (steps > 1) hFrac = Math.max(0.16, Math.round(hFrac * steps) / steps);
                     hFrac = Math.max(0.15, hFrac * (1.0 + rng.signed() * hVar));
                     const s = Math.max(0.20, 1.0 + rng.signed() * sVar);
 
                     const nx = maxRad > 1e-4 ? lx / maxRad : 0;
                     const nz = maxRad > 1e-4 ? lz / maxRad : 0;
+                    const rType = chooseInstanceRockType(baseType, poolMode, rng, idx);
 
                     instances.push({
                         pos: [lx + rng.signed() * posJit, 0.0, lz + rng.signed() * posJit],
@@ -1253,7 +1521,9 @@ export function evaluateRock2GeneratorInstances(generator, baseRockParams)
                         scaleX: s,
                         scaleY: hFrac,
                         scaleZ: s,
-                        seedOffset: unique ? (idx++) * 7919 : 0
+                        seedOffset: unique ? (++idx) * 7919 : 0,
+                        shapeVariety: shapeVariety * 0.45,
+                        rockType: rType
                     });
                 }
             }
@@ -1261,29 +1531,36 @@ export function evaluateRock2GeneratorInstances(generator, baseRockParams)
         else if (mode === 'radial')
         {
             const n = clamp(Math.round(g.radialCount ?? 8), 3, 40);
-            const rad = Math.max(0.3, g.ringRadius ?? 3.6);
+            const rad = Math.max(0.3, g.ringRadius ?? 3.8);
             const arc = clamp(g.arcAngleDeg ?? 360, 30, 360);
             const fullCircle = arc >= 359.5;
-            const face = (g.faceCenter ?? 1) > 0.5;
+            const face = (g.faceCenter ?? 0) > 0.5;
+            const posJit = g.posJitter ?? 0.18;
+            const sVar = clamp(g.scaleVariation ?? 0.22, 0.0, 0.85);
+            const spJit = clamp(g.spacingJitter ?? 0.25, 0.0, 0.90);
+            const stepU = fullCircle ? (1.0 / n) : (n > 1 ? 1.0 / (n - 1) : 0.0);
 
             for (let i = 0; i < n; i++)
             {
-                const t = fullCircle ? (i / n) : (n > 1 ? i / (n - 1) : 0.5);
+                const t = clamp((i * stepU) + rng.signed() * stepU * 0.42 * spJit, 0.0, 1.0);
                 const deg = -arc * 0.5 + t * arc;
                 const a = deg * DEG2RAD;
                 const lx = Math.sin(a) * rad + rng.signed() * posJit;
                 const lz = Math.cos(a) * rad + rng.signed() * posJit;
                 const s = Math.max(0.18, 1.0 + rng.signed() * sVar);
+                const rType = chooseInstanceRockType(baseType, poolMode, rng, i);
 
                 instances.push({
                     pos: [lx, 0.0, lz],
                     yawDeg: (face ? deg : 0) + rng.signed() * yawJit,
                     pitchDeg: rng.signed() * tiltJit,
                     rollDeg: rng.signed() * tiltJit,
-                    scaleX: s,
-                    scaleY: Math.max(0.18, 1.0 + rng.signed() * hVar),
-                    scaleZ: s,
-                    seedOffset: unique ? i * 7919 : 0
+                    scaleX: Math.max(0.16, s * (1.0 + rng.signed() * aspectVar)),
+                    scaleY: Math.max(0.18, s * (1.0 + rng.signed() * hVar)),
+                    scaleZ: Math.max(0.16, s * (1.0 + rng.signed() * aspectVar)),
+                    seedOffset: unique ? (i + 1) * 7919 : 0,
+                    shapeVariety,
+                    rockType: rType
                 });
             }
         }
@@ -1306,7 +1583,6 @@ export function evaluateRock2GeneratorInstances(generator, baseRockParams)
         const embed = clamp(g.embedDepth ?? 0.12, 0.0, 0.75);
         const baseH = baseRockParams?.height ?? 1.0;
 
-        // Optional sub-cluster centers for 'clusters' mode
         const clusterCenters = [];
         if (mode === 'clusters')
         {
@@ -1356,7 +1632,6 @@ export function evaluateRock2GeneratorInstances(generator, baseRockParams)
             }
             else
             {
-                // 'burst': golden-angle phyllotaxis + jitter so rocks never overlap identically at center
                 const u = i === 0 && innerR < 0.05 ? 0.0 : Math.pow((i + rng.float() * 0.65) / count, 0.62);
                 const r = lerp(innerR, outerR, clamp(u, 0, 1));
                 const ang = i * 2.3999632 + rng.signed() * 0.32;
@@ -1368,18 +1643,21 @@ export function evaluateRock2GeneratorInstances(generator, baseRockParams)
             const envScale = clamp(1.0 - falloff * radNorm, 0.22, 1.85);
             const randScale = lerp(sMin, sMax, Math.pow(rng.float(), 1.25));
             const s = Math.max(0.15, randScale * envScale);
-            const sY = Math.max(0.15, s * rng.range(0.84, 1.16));
+            const sY = Math.max(0.15, s * (1.0 + rng.signed() * aspectVar * 0.8));
             const ly = pileH * Math.max(0.0, 1.0 - radNorm * radNorm) - embed * baseH * sY;
+            const rType = chooseInstanceRockType(baseType, poolMode, rng, i);
 
             instances.push({
                 pos: [lx, ly, lz],
                 yawDeg: rng.signed() * 180.0 * yawRand,
                 pitchDeg: rng.signed() * tiltRand,
                 rollDeg: rng.signed() * tiltRand,
-                scaleX: s * rng.range(0.88, 1.14),
+                scaleX: Math.max(0.14, s * (1.0 + rng.signed() * aspectVar)),
                 scaleY: sY,
-                scaleZ: s * rng.range(0.88, 1.14),
-                seedOffset: unique ? i * 7919 : 0
+                scaleZ: Math.max(0.14, s * (1.0 + rng.signed() * aspectVar)),
+                seedOffset: unique ? (i + 1) * 7919 : 0,
+                shapeVariety,
+                rockType: rType
             });
         }
 
@@ -1432,18 +1710,21 @@ export function evaluateRock2GeneratorInstances(generator, baseRockParams)
             placed.push({ x: bestX, z: bestZ, r: myFoot });
 
             const rNorm2 = clamp((bestX * bestX) / (halfW * halfW) + (bestZ * bestZ) / (halfL * halfL), 0, 1);
-            const sY = Math.max(0.15, s * rng.range(0.82, 1.18));
+            const sY = Math.max(0.15, s * (1.0 + rng.signed() * aspectVar * 0.8));
             const ly = moundH * (1.0 - rNorm2) - embed * baseH * sY;
+            const rType = chooseInstanceRockType(baseType, poolMode, rng, i);
 
             instances.push({
                 pos: [bestX, ly, bestZ],
                 yawDeg: rng.signed() * 180.0 * yawRand,
                 pitchDeg: rng.signed() * tiltRand,
                 rollDeg: rng.signed() * tiltRand,
-                scaleX: s * rng.range(0.88, 1.14),
+                scaleX: Math.max(0.14, s * (1.0 + rng.signed() * aspectVar)),
                 scaleY: sY,
-                scaleZ: s * rng.range(0.88, 1.14),
-                seedOffset: unique ? i * 7919 : 0
+                scaleZ: Math.max(0.14, s * (1.0 + rng.signed() * aspectVar)),
+                seedOffset: unique ? (i + 1) * 7919 : 0,
+                shapeVariety,
+                rockType: rType
             });
         }
 
@@ -1452,8 +1733,139 @@ export function evaluateRock2GeneratorInstances(generator, baseRockParams)
 
     return {
         intraBlend: 0.0,
-        instances: [{ pos: [0, 0, 0], yawDeg: 0, pitchDeg: 0, rollDeg: 0, scaleX: 1, scaleY: 1, scaleZ: 1, seedOffset: 0 }]
+        instances: [{
+            pos: [0, 0, 0], yawDeg: 0, pitchDeg: 0, rollDeg: 0,
+            scaleX: 1, scaleY: 1, scaleZ: 1, seedOffset: 0, shapeVariety: 0, rockType: baseType
+        }]
     };
+}
+
+/**
+ * Applies deterministic per-rock shape mutation so arrayed/splined/scattered rocks are genuinely different rocks,
+ * never identical clones repeated X times!
+ */
+function buildMutatedInstanceParams(rockType, layerParams, inst)
+{
+    const targetSpec = getRock2NodeSpec(rockType);
+    // Start from target rock defaults overlaid with matching layer params
+    const out = { ...targetSpec.defaults };
+    if (rockType === layerParams._sourceType)
+    {
+        Object.assign(out, layerParams);
+    }
+    else
+    {
+        out.stoneTone = layerParams.stoneTone;
+    }
+
+    out.width  = Math.max(0.08, (layerParams.width ?? 4.0) * inst.scaleX);
+    out.height = Math.max(0.08, (layerParams.height ?? 3.5) * inst.scaleY);
+    out.length = Math.max(0.08, (layerParams.length ?? 4.0) * inst.scaleZ);
+    out.seed   = ((layerParams.seed ?? 2104) + (inst.seedOffset || 0)) >>> 0;
+
+    // When mixing a slab or small rock into a boulder array, adapt vertical ratio naturally
+    if (rockType !== layerParams._sourceType)
+    {
+        if (rockType === 'rock_slab') out.height *= 0.42;
+        else if (rockType === 'small_rock') { out.width *= 0.62; out.height *= 0.55; out.length *= 0.62; }
+        else if (rockType === 'spire_pinnacle') { out.width *= 0.65; out.height *= 1.35; out.length *= 0.65; }
+    }
+
+    const v = clamp(inst.shapeVariety ?? 0.0, 0.0, 1.0);
+    if (v <= 0.01 || inst.seedOffset === 0) return out;
+
+    const mrng = createRng(out.seed ^ 0x9e3779b9);
+
+    if (rockType === 'big_boulder')
+    {
+        if (v > 0.45 && mrng.float() < v * 0.75)
+        {
+            const styles = ['angular', 'subrounded', 'prow', 'blocky'];
+            out.boulderStyle = styles[mrng.int(0, styles.length)];
+        }
+        out.facetCount   = clamp(Math.round((out.facetCount ?? 12) + mrng.signed() * 6 * v), 9, 22);
+        out.roundness    = clamp((out.roundness ?? 0.24) + mrng.signed() * 0.24 * v, 0.08, 0.85);
+        out.angularity   = clamp((out.angularity ?? 0.22) + mrng.signed() * 0.14 * v, 0.05, 0.42);
+        out.taper        = clamp((out.taper ?? 0.08) + mrng.signed() * 0.30 * v, -0.35, 0.55);
+        out.overhangProw = clamp((out.overhangProw ?? 0.0) + mrng.signed() * 0.26 * v, -0.45, 0.45);
+        out.asymmetry    = clamp((out.asymmetry ?? 0.0) + mrng.signed() * 0.34 * v, -0.50, 0.50);
+        out.flatTop      = clamp((out.flatTop ?? 0.0) + Math.max(0, mrng.signed() * 0.35 * v), 0.0, 0.65);
+    }
+    else if (rockType === 'cliff_block')
+    {
+        if (v > 0.50 && mrng.float() < v * 0.65)
+        {
+            const profiles = ['vertical', 'overhang', 'rampart', 'mesa', 'prow'];
+            out.cliffProfile = profiles[mrng.int(0, profiles.length)];
+        }
+        out.facetCount   = clamp(Math.round((out.facetCount ?? 11) + mrng.signed() * 5 * v), 9, 18);
+        out.roundness    = clamp((out.roundness ?? 0.14) + mrng.signed() * 0.09 * v, 0.03, 0.42);
+        out.overhangLean = clamp((out.overhangLean ?? 0.08) + mrng.signed() * 0.22 * v, -0.35, 0.45);
+        out.batterTaper  = clamp((out.batterTaper ?? 0.14) + mrng.signed() * 0.20 * v, -0.25, 0.48);
+        out.crestSlope   = clamp((out.crestSlope ?? 0.08) + mrng.signed() * 0.26 * v, -0.40, 0.40);
+        out.prowWedge    = clamp((out.prowWedge ?? 0.15) + mrng.signed() * 0.22 * v, 0.02, 0.52);
+    }
+    else if (rockType === 'smooth_rock')
+    {
+        if (v > 0.45 && mrng.float() < v * 0.75)
+        {
+            const styles = ['cobble', 'dome', 'pillow', 'egg', 'lens'];
+            out.smoothStyle = styles[mrng.int(0, styles.length)];
+        }
+        out.squarenessHoriz = clamp((out.squarenessHoriz ?? 0.95) + mrng.signed() * 0.32 * v, 0.45, 1.45);
+        out.squarenessVert  = clamp((out.squarenessVert ?? 0.92) + mrng.signed() * 0.28 * v, 0.45, 1.40);
+        out.softFacets      = clamp((out.softFacets ?? 0.16) + mrng.signed() * 0.22 * v, 0.0, 0.55);
+        out.taper           = clamp((out.taper ?? 0.10) + mrng.signed() * 0.24 * v, -0.30, 0.48);
+        out.bend            = clamp((out.bend ?? 0.0) + mrng.signed() * 0.25 * v, -0.40, 0.40);
+        out.asymmetry       = clamp((out.asymmetry ?? 0.06) + mrng.signed() * 0.25 * v, -0.40, 0.40);
+    }
+    else if (rockType === 'small_rock')
+    {
+        if (v > 0.40 && mrng.float() < v * 0.80)
+        {
+            const styles = ['angular', 'pebble', 'shard', 'chip'];
+            out.clastStyle = styles[mrng.int(0, styles.length)];
+        }
+        out.facetCount = clamp(Math.round((out.facetCount ?? 9) + mrng.signed() * 4 * v), 8, 16);
+        out.roundness  = clamp((out.roundness ?? 0.26) + mrng.signed() * 0.30 * v, 0.08, 0.88);
+        out.flatness   = clamp((out.flatness ?? 0.22) + mrng.signed() * 0.28 * v, 0.0, 0.68);
+        out.elongation = clamp((out.elongation ?? 0.10) + mrng.signed() * 0.30 * v, -0.30, 0.55);
+        out.asymmetry  = clamp((out.asymmetry ?? 0.12) + mrng.signed() * 0.28 * v, -0.45, 0.45);
+    }
+    else if (rockType === 'rock_slab')
+    {
+        if (v > 0.45 && mrng.float() < v * 0.70)
+        {
+            const shapes = ['plate', 'ledge', 'flagstone'];
+            out.planShape = shapes[mrng.int(0, shapes.length)];
+        }
+        out.dipAngleDeg = clamp((out.dipAngleDeg ?? 16) + mrng.signed() * 14 * v, -55, 55);
+        out.edgeTaper   = clamp((out.edgeTaper ?? 0.22) + mrng.signed() * 0.24 * v, -0.30, 0.55);
+        out.bend        = clamp((out.bend ?? 0.0) + mrng.signed() * 0.18 * v, -0.30, 0.30);
+    }
+    else if (rockType === 'spire_pinnacle')
+    {
+        out.facetSides = clamp(Math.round((out.facetSides ?? 7) + mrng.signed() * 3 * v), 4, 12);
+        out.taper      = clamp((out.taper ?? 0.58) + mrng.signed() * 0.22 * v, 0.15, 0.85);
+        out.waistPinch = clamp((out.waistPinch ?? 0.0) + mrng.signed() * 0.25 * v, -0.20, 0.50);
+        out.twistDeg   = clamp((out.twistDeg ?? 14) + mrng.signed() * 28 * v, -70, 70);
+        out.bendX      = clamp((out.bendX ?? 0.10) + mrng.signed() * 0.20 * v, -0.35, 0.35);
+    }
+    else if (rockType === 'basalt_column')
+    {
+        if (v > 0.30) out.polygonSides = [5, 6, 6, 7][mrng.int(0, 4)];
+        out.irregularity = clamp((out.irregularity ?? 0.08) + mrng.signed() * 0.08 * v, 0.02, 0.26);
+        out.capTilt      = clamp((out.capTilt ?? 0.10) + mrng.signed() * 0.12 * v, 0.0, 0.38);
+    }
+    else if (rockType === 'custom_sculpt_rock')
+    {
+        out.analyticBlend = clamp((out.analyticBlend ?? 0.50) + mrng.signed() * 0.32 * v, 0.05, 0.95);
+        out.taper         = clamp((out.taper ?? 0.12) + mrng.signed() * 0.30 * v, -0.45, 0.65);
+        out.twistDeg      = clamp((out.twistDeg ?? 0.0) + mrng.signed() * 35 * v, -90, 90);
+        out.skewX         = clamp((out.skewX ?? 0.0) + mrng.signed() * 0.28 * v, -0.45, 0.45);
+    }
+
+    return out;
 }
 
 /*==========================================================================================================================================
@@ -1546,7 +1958,7 @@ function compilePlainPrimitive(opts)
         {
             for (let iz = 0; iz < 2; iz++)
             {
-                const wp = forwardPoint(R, pivot, xs[ix], ys[iy], zs[iz]);
+                const wp = forwardRock2Point(R, pivot, xs[ix], ys[iy], zs[iz]);
                 if (wp[0] < wMinX) wMinX = wp[0]; if (wp[0] > wMaxX) wMaxX = wp[0];
                 if (wp[1] < wMinY) wMinY = wp[1]; if (wp[1] > wMaxY) wMaxY = wp[1];
                 if (wp[2] < wMinZ) wMinZ = wp[2]; if (wp[2] > wMaxZ) wMaxZ = wp[2];
@@ -1604,27 +2016,10 @@ function buildSingleBigBoulder(p, worldR, worldPivot, rng)
     let prow = p.overhangProw ?? 0.0;
     let strikeDip = 0.22;
 
-    if (style === 'subrounded')
-    {
-        roundness = Math.max(roundness, 0.58);
-        disp *= 0.65;
-    }
-    else if (style === 'prow')
-    {
-        prow += 0.34;
-        taper -= 0.14;
-        strikeDip = 0.48;
-    }
-    else if (style === 'blocky')
-    {
-        disp *= 0.35;
-        strikeDip = 0.08;
-    }
-    else if (style === 'pedestal')
-    {
-        taper -= 0.22;
-        pinch = 0.34;
-    }
+    if (style === 'subrounded') { roundness = Math.max(roundness, 0.58); disp *= 0.65; }
+    else if (style === 'prow') { prow += 0.34; taper -= 0.14; strikeDip = 0.48; }
+    else if (style === 'blocky') { disp *= 0.35; strikeDip = 0.08; }
+    else if (style === 'pedestal') { taper -= 0.22; pinch = 0.34; }
 
     const flatBottom = (p.flatBottom ?? 1.0) > 0.5;
     const bf = buildStrikeDipFrame(rng.float() * Math.PI * 2, strikeDip + rng.signed() * 0.12);
@@ -1685,26 +2080,10 @@ function buildSingleSmoothRock(p, worldR, worldPivot, rng)
     let taper = p.taper ?? 0.10;
     const softFacets = p.softFacets ?? 0.16;
 
-    if (style === 'dome')
-    {
-        expH = 0.95; expV = 0.88;
-        taper += 0.16;
-    }
-    else if (style === 'pillow')
-    {
-        expH = Math.min(expH, 0.58);
-        expV = Math.min(expV, 0.56);
-    }
-    else if (style === 'egg')
-    {
-        expH = 1.05; expV = 1.05;
-        taper += 0.28;
-    }
-    else if (style === 'lens')
-    {
-        ry *= 0.52;
-        expH = 1.02; expV = 0.96;
-    }
+    if (style === 'dome') { expH = 0.95; expV = 0.88; taper += 0.16; }
+    else if (style === 'pillow') { expH = Math.min(expH, 0.58); expV = Math.min(expV, 0.56); }
+    else if (style === 'egg') { expH = 1.05; expV = 1.05; taper += 0.28; }
+    else if (style === 'lens') { ry *= 0.52; expH = 1.02; expV = 0.96; }
 
     const cy = flatCut > 0.02 ? ry * (1.0 - 0.22 * flatCut) : ry;
     let poly = null;
@@ -1758,22 +2137,9 @@ function buildSingleSmallRock(p, worldR, worldPivot, rng)
     let disp = 0.24;
     let taper = 0.10;
 
-    if (style === 'pebble')
-    {
-        roundness = Math.max(roundness, 0.76);
-        disp = 0.12;
-    }
-    else if (style === 'shard')
-    {
-        roundness = Math.min(roundness, 0.12);
-        facets = Math.min(facets, 8);
-        disp = 0.34;
-        taper = 0.32;
-    }
-    else if (style === 'chip')
-    {
-        disp = 0.18;
-    }
+    if (style === 'pebble') { roundness = Math.max(roundness, 0.76); disp = 0.12; }
+    else if (style === 'shard') { roundness = Math.min(roundness, 0.12); facets = Math.min(facets, 8); disp = 0.34; taper = 0.32; }
+    else if (style === 'chip') { disp = 0.18; }
 
     const flatCut = clamp(p.flatBottom ?? 0.65, 0.0, 1.0);
     const cy = flatCut > 0.05 ? ry * (1.0 - 0.18 * flatCut) : ry;
@@ -1822,20 +2188,9 @@ function buildSingleCliffBlock(p, worldR, worldPivot, rng)
     let overhang = p.overhangLean ?? 0.08;
     let taper = p.batterTaper ?? 0.14;
 
-    if (profile === 'overhang')
-    {
-        overhang = Math.max(overhang, 0.32);
-        taper = Math.min(taper, -0.14);
-    }
-    else if (profile === 'rampart')
-    {
-        overhang = Math.min(overhang, -0.24);
-        taper = Math.max(taper, 0.30);
-    }
-    else if (profile === 'prow')
-    {
-        overhang += 0.18;
-    }
+    if (profile === 'overhang') { overhang = Math.max(overhang, 0.32); taper = Math.min(taper, -0.14); }
+    else if (profile === 'rampart') { overhang = Math.min(overhang, -0.24); taper = Math.max(taper, 0.30); }
+    else if (profile === 'prow') { overhang += 0.18; }
 
     const bf = buildStrikeDipFrame(rng.signed() * 0.25, 0.10 + prow * 0.32);
     let poly = sculptGeologicalParentPoly(
@@ -1874,7 +2229,7 @@ function buildSingleCliffBlock(p, worldR, worldPivot, rng)
 function buildSingleBasaltColumn(p, worldR, worldPivot, rng)
 {
     const fixedSides = Number(p.polygonSides ?? 6);
-    const sides = fixedSides > 0 ? fixedSides : (5 + (rng.int(0, 3)));
+    const sides = fixedSides > 0 ? fixedSides : (5 + rng.int(0, 3));
     const rx = Math.max(0.10, p.width * 0.5);
     const rz = Math.max(0.10, p.length * 0.5);
     const h = p.height;
@@ -2017,9 +2372,9 @@ function buildSingleRockSlab(p, worldR, worldPivot, rng)
         );
     }
 
-    const dipR = mulMat3(worldR, buildEulerMatrix3(0, dipDeg, 0));
+    const dipR = mulMat3(worldR, buildRock2EulerMatrix3(0, dipDeg, 0));
     const liftY = ry + Math.abs(Math.sin(dipDeg * DEG2RAD)) * rz * 0.45;
-    const slabPivot = forwardPoint(worldR, worldPivot, 0, liftY, 0);
+    const slabPivot = forwardRock2Point(worldR, worldPivot, 0, liftY, 0);
 
     return compilePlainPrimitive({
         poly,
@@ -2130,11 +2485,11 @@ export function compileRock2Stack(doc)
         if (hasSolo && !lyr.solo) continue;
 
         const spec = getRock2NodeSpec(lyr.type);
-        const p = { ...spec.defaults, ...(lyr.params || {}) };
-        const layerR = buildEulerMatrix3(p.yawDeg ?? 0, p.pitchDeg ?? 0, p.rollDeg ?? 0);
+        const p = { ...spec.defaults, ...(lyr.params || {}), _sourceType: spec.type };
+        const layerR = buildRock2EulerMatrix3(p.yawDeg ?? 0, p.pitchDeg ?? 0, p.rollDeg ?? 0);
         const layerPivot = [p.posX ?? 0.0, p.posY ?? 0.0, p.posZ ?? 0.0];
 
-        const { intraBlend, instances } = evaluateRock2GeneratorInstances(lyr.generator, p);
+        const { intraBlend, instances } = evaluateRock2GeneratorInstances(lyr.generator, p, spec.type);
         const room = Math.max(0, MAX_STACK_PRIMITIVES - allPrimitives.length);
         if (room <= 0) break;
 
@@ -2142,19 +2497,14 @@ export function compileRock2Stack(doc)
         for (let k = 0; k < instances.length && layerPrims.length < room; k++)
         {
             const inst = instances[k];
-            const localInstR = buildEulerMatrix3(inst.yawDeg, inst.pitchDeg, inst.rollDeg);
+            const localInstR = buildRock2EulerMatrix3(inst.yawDeg, inst.pitchDeg, inst.rollDeg);
             const worldR = mulMat3(layerR, localInstR);
-            const worldPivot = forwardPoint(layerR, layerPivot, inst.pos[0], inst.pos[1], inst.pos[2]);
+            const worldPivot = forwardRock2Point(layerR, layerPivot, inst.pos[0], inst.pos[1], inst.pos[2]);
 
-            const instParams = {
-                ...p,
-                width: Math.max(0.08, (p.width ?? 4.0) * inst.scaleX),
-                height: Math.max(0.08, (p.height ?? 3.5) * inst.scaleY),
-                length: Math.max(0.08, (p.length ?? 4.0) * inst.scaleZ),
-                seed: ((p.seed ?? 2104) + inst.seedOffset) >>> 0
-            };
+            const instRockType = inst.rockType || spec.type;
+            const instParams = buildMutatedInstanceParams(instRockType, p, inst);
 
-            const pr = buildAtomicBaseRockPrimitive(spec.type, instParams, worldR, worldPivot);
+            const pr = buildAtomicBaseRockPrimitive(instRockType, instParams, worldR, worldPivot);
             if (pr) layerPrims.push(pr);
         }
 
@@ -2238,10 +2588,6 @@ function chamferMin(a, b, r)
     return Math.min(m, (a + b - r) * 0.70710678);
 }
 
-/**
- * Evaluates a single compiled plain rock primitive at world `(wx, wy, wz)`.
- * Exact 1:1 algebraic match with `evalPlainPrimitive` in `RockFormation2Viewport.js`!
- */
 export function evalRock2PrimitiveSdf(prim, wx, wy, wz)
 {
     const invR = prim.invR, invT = prim.invT;
@@ -2323,7 +2669,7 @@ export function evalRock2PrimitiveSdf(prim, wx, wy, wz)
 
         const ux = Math.max(1e-5, Math.abs(qx) / Math.max(0.04, prim.sqRx) + 1e-5);
         const uy = Math.max(1e-5, Math.abs(qy - prim.sqCy) / Math.max(0.04, prim.sqRy) + 1e-5);
-        const uz = Math.max(1e-5, Math.abs(qz) / Math.max(0.04, prim.sqRz) + 1e-5);
+        const uz = Math.max(1e-5, Math.abs(qz) / Math.max(0.04, prim.sqRz) + 1.0e-5);
 
         const A = Math.max(1e-6, Math.pow(ux, p1) + Math.pow(uz, p1));
         const B = Math.max(1e-6, Math.pow(A, m12) + Math.pow(uy, p2));
@@ -2354,10 +2700,6 @@ export function evalRock2PrimitiveSdf(prim, wx, wy, wz)
     return dLocal * scaleFactor;
 }
 
-/**
- * Evaluates the full ordered Layer Stack at world `(wx, wy, wz)`.
- * Optionally writes blended stone RGB tone into `outColor = { r, g, b }`.
- */
 export function evalRock2StackSdf(compiledStack, wx, wy, wz, outColor = null)
 {
     const { compiledLayers, primitives } = compiledStack;
@@ -2401,11 +2743,7 @@ export function evalRock2StackSdf(compiledStack, wx, wy, wz, outColor = null)
 
         if (op === 0)
         {
-            if (dLyr < dAcc)
-            {
-                dAcc = dLyr;
-                cr = lr; cg = lg; cb = lbCol;
-            }
+            if (dLyr < dAcc) { dAcc = dLyr; cr = lr; cg = lg; cb = lbCol; }
         }
         else if (op === 1)
         {
@@ -2473,48 +2811,40 @@ export function packRock2StackGpuBuffers(compiledStack)
         const b = primitives[i];
         const off = i * 40;
 
-        // Col 0: (cx, cy, cz, radius)
         blockTexData[off + 0] = b.cx;
         blockTexData[off + 1] = b.cy;
         blockTexData[off + 2] = b.cz;
         blockTexData[off + 3] = b.radius;
 
-        // Col 1: (planeStart, numPlanes, kLse, baseBevel)
         blockTexData[off + 4] = planeCursor;
         blockTexData[off + 5] = b.numPlanes;
         blockTexData[off + 6] = b.kLse;
         blockTexData[off + 7] = b.baseBevel;
 
-        // Col 2..4: invR rows + invT
         blockTexData[off + 8]  = b.invR[0]; blockTexData[off + 9]  = b.invR[1]; blockTexData[off + 10] = b.invR[2]; blockTexData[off + 11] = b.invT[0];
         blockTexData[off + 12] = b.invR[3]; blockTexData[off + 13] = b.invR[4]; blockTexData[off + 14] = b.invR[5]; blockTexData[off + 15] = b.invT[1];
         blockTexData[off + 16] = b.invR[6]; blockTexData[off + 17] = b.invR[7]; blockTexData[off + 18] = b.invR[8]; blockTexData[off + 19] = b.invT[2];
 
-        // Col 5: (sqRx, sqRy, sqRz, sqCy)
         blockTexData[off + 20] = b.sqRx;
         blockTexData[off + 21] = b.sqRy;
         blockTexData[off + 22] = b.sqRz;
         blockTexData[off + 23] = b.sqCy;
 
-        // Col 6: (sqWeight, sqExpH, sqExpV, primOp)
         blockTexData[off + 24] = b.sqWeight;
         blockTexData[off + 25] = b.sqExpH;
         blockTexData[off + 26] = b.sqExpV;
         blockTexData[off + 27] = b.primOp;
 
-        // Col 7: (baseY, refH, taper, pinch)
         blockTexData[off + 28] = b.baseY;
         blockTexData[off + 29] = b.refH;
         blockTexData[off + 30] = b.taper;
         blockTexData[off + 31] = b.pinch;
 
-        // Col 8: (twistRad, bendX, bendZ, skewX)
         blockTexData[off + 32] = b.twistRad;
         blockTexData[off + 33] = b.bendX;
         blockTexData[off + 34] = b.bendZ;
         blockTexData[off + 35] = b.skewX;
 
-        // Col 9: (sharpBase, flatBaseCut, hasDeform, deformPenalty)
         blockTexData[off + 36] = b.sharpBase;
         blockTexData[off + 37] = b.flatBaseCut;
         blockTexData[off + 38] = b.hasDeform ? 1.0 : 0.0;
