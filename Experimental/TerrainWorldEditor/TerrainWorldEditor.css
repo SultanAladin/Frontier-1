@@ -52,14 +52,16 @@
 .terrain-stage-grid.mode-2d {
     grid-template-columns: 1fr;
 }
-.terrain-stage-grid.mode-2d .stage-pane-3d {
+.terrain-stage-grid.mode-2d .stage-pane-3d,
+.terrain-stage-grid.mode-2d .stage-pane-fracture {
     display: none;
 }
 
 .terrain-stage-grid.mode-3d {
     grid-template-columns: 1fr;
 }
-.terrain-stage-grid.mode-3d .stage-pane-2d {
+.terrain-stage-grid.mode-3d .stage-pane-2d,
+.terrain-stage-grid.mode-3d .stage-pane-fracture {
     display: none;
 }
 
@@ -68,6 +70,20 @@
 }
 .terrain-stage-grid.mode-split .stage-pane-2d {
     border-right: 1px solid var(--line-strong);
+}
+.terrain-stage-grid.mode-split .stage-pane-fracture {
+    display: none;
+}
+
+.terrain-stage-grid.mode-fracture {
+    grid-template-columns: 1fr;
+}
+.terrain-stage-grid.mode-fracture .stage-pane-2d,
+.terrain-stage-grid.mode-fracture .stage-pane-3d {
+    display: none;
+}
+.terrain-stage-grid.mode-fracture .stage-pane-fracture {
+    display: block;
 }
 
 .stage-pane {
@@ -368,3 +384,119 @@
     flex: none;
     box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35) inset;
 }
+
+/*------------------------------------------------------------------------------------------------------------------------
+                                 PURE-SDF FRACTURE LAB VIEWPORT & ARCHETYPE CARDS
+------------------------------------------------------------------------------------------------------------------------*/
+.fracture-floating-bar {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 4;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 8px;
+    border-radius: 999px;
+    background: rgba(16, 17, 20, 0.86);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.11);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.48);
+    max-width: calc(100% - 24px);
+    flex-wrap: nowrap;
+}
+.fracture-pill-btn {
+    padding: 5px 11px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.045);
+    color: #d7d7d7;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease;
+}
+.fracture-pill-btn:hover {
+    background: rgba(255, 255, 255, 0.11);
+    color: #ffffff;
+}
+.fracture-pill-btn.active {
+    background: #eff4cf;
+    border-color: #eff4cf;
+    color: #161710;
+}
+.fracture-pill-btn.cutaway-on {
+    background: rgba(232, 194, 122, 0.22);
+    border-color: rgba(232, 194, 122, 0.65);
+    color: #f6dca6;
+}
+.fracture-lens-select {
+    height: 26px;
+    padding: 0 9px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    background: rgba(255, 255, 255, 0.05);
+    color: #e6e6e6;
+    font-size: 11px;
+    font-family: inherit;
+    cursor: pointer;
+}
+
+.fracture-preset-card {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    width: 100%;
+    padding: 9px 11px;
+    margin-bottom: 6px;
+    border-radius: 13px;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    background: rgba(255, 255, 255, 0.035);
+    color: #dadada;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.12s ease;
+}
+.fracture-preset-card:hover {
+    background: rgba(255, 255, 255, 0.075);
+    border-color: rgba(255, 255, 255, 0.15);
+}
+.fracture-preset-card.selected {
+    background: rgba(239, 244, 207, 0.11);
+    border-color: rgba(239, 244, 207, 0.52);
+}
+.fracture-preset-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+}
+.fracture-preset-head strong {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #f3f4ef;
+}
+.fracture-preset-card small {
+    font-size: 10.5px;
+    line-height: 1.38;
+    color: #989ca5;
+}
+.fracture-stamp-cta {
+    width: 100%;
+    padding: 9px 12px;
+    border-radius: 12px;
+    border: 1px solid #eff4cf;
+    background: #eff4cf;
+    color: #161710;
+    font-size: 11.5px;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: center;
+    transition: filter 0.14s ease;
+}
+.fracture-stamp-cta:hover {
+    filter: brightness(1.06);
+}
+

@@ -5,6 +5,13 @@
 // Real-Time SDF Sculpting (2.5D + True 3D Overhang/Cave SDF), Thin-Slab Triangle Mesher, and 3 Demo Open-World Masks.
 
 import { ComputeRegionMaskSdf2D, MakeTerrainUid } from './WorldMask2D.js';
+import {
+    createDefaultFractureParams,
+    buildFracturedFormation,
+    bakeFracturedFormationQefMesh
+} from './RockCliff/PureSdfFractureEngine.js';
+
+const RockFormationQefCache = new WeakMap();
 
 export const Clamp = (V, Lo, Hi) => (V < Lo ? Lo : V > Hi ? Hi : V);
 export const Mix = (A, B, T) => A + (B - A) * T;
@@ -284,8 +291,9 @@ export const LAYER_TYPE_META = {
     voronoi:      { label: 'Voronoi / Mesa Blocks', badge: 'CELLULAR', glyph: 'Boxes', accent: '#5ac8fa' },
     billow:       { label: 'Billow Hills & Dunes', badge: 'FOLDED', glyph: 'Wind', accent: '#a3d977' },
     terrace:      { label: 'Terrace & Strata', badge: 'STRATA', glyph: 'Layers', accent: '#d6a2e8' },
-    spline:       { label: 'Spline Landform', badge: 'SPLINE', glyph: 'Spline', accent: '#3ec46d' },
-    sculpt:       { label: 'SDF Sculpt Layer', badge: 'SCULPT', glyph: 'Brush', accent: '#ff7b7b' }
+    spline:         { label: 'Spline Landform', badge: 'SPLINE', glyph: 'Spline', accent: '#3ec46d' },
+    sculpt:         { label: 'SDF Sculpt Layer', badge: 'SCULPT', glyph: 'Brush', accent: '#ff7b7b' },
+    rock_formation: { label: 'Pure-SDF Fractured Rock', badge: 'SDF ROCK', glyph: 'Boxes', accent: '#eff4cf' }
 };
 
 export function CreateTerrainLayer(Type = 'multifractal', Overrides = {})
@@ -382,6 +390,21 @@ export function CreateTerrainLayer(Type = 'multifractal', Overrides = {})
             bankSmooth: Overrides.bankSmooth ?? 0.62,
             meander: Overrides.meander ?? 0.14,
             points: (Overrides.points || []).map(P => P.slice())
+        };
+    }
+    if (Type === 'rock_formation')
+    {
+        return {
+            ...Base,
+            worldX: Overrides.worldX ?? 0.0,
+            worldZ: Overrides.worldZ ?? 0.0,
+            worldScaleM: Overrides.worldScaleM ?? 165.0,
+            yawDeg: Overrides.yawDeg ?? 0.0,
+            embedDepthM: Overrides.embedDepthM ?? 8.0,
+            fractureParams: {
+                ...createDefaultFractureParams(Overrides.fractureParams?.presetId || 'cracked-monolith'),
+                ...(Overrides.fractureParams || {})
+            }
         };
     }
     // 'sculpt'
@@ -732,6 +755,11 @@ export function EvaluateTerrainRegion(World, Region, PreviewLayerIdForFalloff = 
                         Heights[Idx] = Math.max(SlabBottom + 0.6, Mix(CurH, BasinElev - 6.0 * Profile, Profile * MaskW));
                         if (Profile > 0.35) WaterChannel[Idx] = Math.max(WaterChannel[Idx], Profile * MaskW);
                     }
+                    continue;
+                }
+
+                if (Type === 'rock_formation')
+                {
                     continue;
                 }
 
@@ -1312,6 +1340,9 @@ export function ExtractRegionTriangleMesh(World, Region, Options = {})
     // Extract 3D Volumetric Spline Rock Bridges / Overhang Tubes ('arch3d' spline layers!)
     Append3DSplineTubeMeshes(Region, PosList, NormList, ColList, AuxList, IdxList);
 
+    // Extract Pure-SDF Fractured Rock & Cliff Formations ('rock_formation' layers via QEF Dual Contouring!)
+    AppendPureSdfRockFormationLayers(Region, Rt, PosList, NormList, ColList, AuxList, IdxList);
+
     return {
         positions: new Float32Array(PosList),
         normals: new Float32Array(NormList),
@@ -1321,6 +1352,75 @@ export function ExtractRegionTriangleMesh(World, Region, Options = {})
         vertexCount: PosList.length / 3,
         triangleCount: IdxList.length / 3
     };
+}
+
+function AppendPureSdfRockFormationLayers(Region, Rt, PosList, NormList, ColList, AuxList, IdxList)
+{
+    if (!Region || !Region.stack || !Rt) return;
+    const B = Region.bounds;
+
+    for (const Layer of Region.stack)
+    {
+        if (!Layer || Layer.enabled === false || Layer.type !== 'rock_formation') continue;
+
+        const Fp = Layer.fractureParams || createDefaultFractureParams('cracked-monolith');
+        const CacheKey = JSON.stringify({ ...Fp, cutawayEnabled: false });
+        let Cached = RockFormationQefCache.get(Layer);
+        if (!Cached || Cached.key !== CacheKey)
+        {
+            const Formation = buildFracturedFormation({ ...Fp, cutawayEnabled: false });
+            const Baked = bakeFracturedFormationQefMesh(Formation, { resolution: Clamp(Fp.meshResolution || 64, 42, 88) });
+            Cached = { key: CacheKey, mesh: Baked.mesh, scale: Formation.params.scale };
+            RockFormationQefCache.set(Layer, Cached);
+        }
+
+        const M = Cached.mesh;
+        if (!M || !M.indices || M.indices.length === 0) continue;
+
+        const Wx0 = Number.isFinite(Layer.worldX) ? Layer.worldX : (B.x + B.width * 0.5);
+        const Wz0 = Number.isFinite(Layer.worldZ) ? Layer.worldZ : (B.z + B.depth * 0.5);
+        const U = Clamp((Wx0 - B.x) / Math.max(1e-4, Rt.stepX), 0, Rt.nx - 1.001);
+        const V = Clamp((Wz0 - B.z) / Math.max(1e-4, Rt.stepZ), 0, Rt.nz - 1.001);
+        const Ix = Math.floor(U), Iz = Math.floor(V);
+        const BaseTerrY = Rt.heights[Iz * Rt.nx + Ix] - (Number(Layer.embedDepthM) ?? 8.0);
+
+        const ScaleMul = Math.max(12.0, Number(Layer.worldScaleM) || 165.0) / Math.max(0.5, Cached.scale);
+        const YawRad = ((Number(Layer.yawDeg) || 0.0) * Math.PI) / 180.0;
+        const Cy = Math.cos(YawRad), Sy = Math.sin(YawRad);
+
+        const BaseVert = PosList.length / 3;
+        const NumV = M.positions.length / 3;
+
+        for (let I = 0; I < NumV; ++I)
+        {
+            const P3 = I * 3, C4 = I * 4;
+            const Lx = M.positions[P3] * ScaleMul;
+            const Ly = M.positions[P3 + 1] * ScaleMul;
+            const Lz = M.positions[P3 + 2] * ScaleMul;
+
+            const Rx = Lx * Cy + Lz * Sy;
+            const Rz = -Lx * Sy + Lz * Cy;
+            PosList.push(Wx0 + Rx, BaseTerrY + Ly, Wz0 + Rz);
+
+            const Nx = M.normals[P3], Ny = M.normals[P3 + 1], Nz = M.normals[P3 + 2];
+            NormList.push(Nx * Cy + Nz * Sy, Ny, -Nx * Sy + Nz * Cy);
+
+            const Ao = M.colors ? M.colors[C4] : 0.85;
+            // Convert sRGB-like rock albedo into TerrainOceanViewport's calibrated linear dark-studio space
+            const CR = Math.pow(Clamp(M.albedos[P3], 0.02, 1.0), 1.8) * (0.35 + 0.65 * Ao) * 0.68;
+            const CG = Math.pow(Clamp(M.albedos[P3 + 1], 0.02, 1.0), 1.8) * (0.35 + 0.65 * Ao) * 0.68;
+            const CB = Math.pow(Clamp(M.albedos[P3 + 2], 0.02, 1.0), 1.8) * (0.35 + 0.65 * Ao) * 0.68;
+            ColList.push(CR, CG, CB);
+
+            const SlopeDeg = Math.acos(Clamp(Ny, -1.0, 1.0)) * 57.2957795;
+            AuxList.push(1.0, Clamp(SlopeDeg / 90.0, 0.0, 1.0), 0.0, 0.0);
+        }
+
+        for (let I = 0; I < M.indices.length; ++I)
+        {
+            IdxList.push(BaseVert + M.indices[I]);
+        }
+    }
 }
 
 /**

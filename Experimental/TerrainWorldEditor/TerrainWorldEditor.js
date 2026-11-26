@@ -45,6 +45,19 @@ import {
     MakeSelectRow,
     MakeBoundaryFalloffGraph
 } from './StudioControls.js';
+import {
+    FRACTURE_PRESETS,
+    getFracturePreset,
+    createDefaultFractureParams,
+    buildFracturedFormation,
+    bakeFracturedFormationQefMesh
+} from './Engine/RockCliff/PureSdfFractureEngine.js';
+import {
+    exportFractureMeshObj,
+    exportFractureMeshBinaryStl,
+    exportFractureMeshGlb
+} from './Engine/RockCliff/Core/QefDualContour.js';
+import { FractureLabViewport } from './Engine/RockCliff/FractureLabViewport.js';
 
 const MASK_PALETTE = ['#58b982', '#5ac8fa', '#a3d977', '#e8c27a', '#f0935b', '#d6a2e8'];
 
@@ -69,10 +82,23 @@ class TerrainWorldStudioApp
         this.world = new WorldMask2D();
         SeedThreeDemoTerrains(this.world);
 
-        this.workspaceMode = 'split'; // '2d' | '3d' | 'split'
-        this.inspectorTab = 'layers'; // 'layers' | 'spline' | 'slab' | 'stage' | 'sim' | 'texturing'
+        const UrlParams = new URLSearchParams(window.location.search);
+        const ReqWs = UrlParams.get('ws') || UrlParams.get('mode');
+        this.workspaceMode = (ReqWs === '2d' || ReqWs === '3d' || ReqWs === 'split') ? ReqWs : 'fracture';
+        this.inspectorTab = this.workspaceMode === 'fracture' ? 'fracture' : 'layers';
         this.outlinerFilter = 'all';  // 'all' | 'terrains' | 'splines' | 'masks'
         this.outlinerSearch = '';
+
+        // ---- Pure-SDF Brittle Fracture & Thermal Cracking Lab State ----
+        this.fracture = {
+            params: createDefaultFractureParams('cracked-monolith'),
+            formation: null,
+            qefMesh: null,
+            qefStats: null,
+            qefDirty: true,
+            _qefTimer: null,
+            savedOpenState: null
+        };
 
         // ---- Physically based erosion simulation state (solo OR shared-weather group) ----
         this.sim = {
@@ -259,12 +285,23 @@ class TerrainWorldStudioApp
 
         if (InitSpline) this.view3D.activeSplineLayerId = InitSpline.id;
 
+        // 3. Initialize Pure-SDF Brittle Fracture & QEF Dual-Contour 3D Lab Viewport
+        const FracCanvas = document.getElementById('CanvasFracture');
+        if (FracCanvas)
+        {
+            this.fractureView = new FractureLabViewport(FracCanvas);
+            this._rebuildFractureFormationNow(true);
+            this._bindFractureViewportToolbar();
+        }
+
         this._mountStaticGlyphs();
         this._buildViewportToolRails();
         this._buildQuickAddLibrary();
         this._buildPresetStrip();
         this._bindHeaderAndTransport();
         this._populateMapLensOptions();
+        this.setWorkspaceMode(this.workspaceMode);
+        this._syncInspectorTabButtons();
         this.refreshChrome();
         this.rebuildInspector();
 
@@ -272,6 +309,7 @@ class TerrainWorldStudioApp
         {
             this.map2D.frameAllRegions();
             this.view3D.frameVisibleWorld();
+            this.fractureView?.frameFormation();
             this.refreshChrome();
         });
 
@@ -463,6 +501,31 @@ class TerrainWorldStudioApp
         if (!Strip) return;
         Strip.innerHTML = '';
 
+        const CounterEl = document.getElementById('stroke-counter');
+        if (this.workspaceMode === 'fracture')
+        {
+            if (CounterEl) CounterEl.textContent = '6 PURE-SDF ARCHETYPES';
+            const ActiveId = this.fracture?.params?.presetId || 'cracked-monolith';
+            for (const P of FRACTURE_PRESETS)
+            {
+                const Chip = MakeEl('button', 'history-chip' + (P.id === ActiveId ? ' current' : ''), P.name);
+                Chip.type = 'button';
+                Chip.addEventListener('click', () => this._selectFracturePreset(P.id));
+                Strip.appendChild(Chip);
+            }
+            const SliceChip = MakeEl('button', 'history-chip', 'Toggle Cutaway V-Tip Slice');
+            SliceChip.type = 'button';
+            SliceChip.addEventListener('click', () => document.getElementById('frac-cutaway-btn')?.click());
+            Strip.appendChild(SliceChip);
+
+            const StampChip = MakeEl('button', 'history-chip', 'Stamp onto Terrain ↗');
+            StampChip.type = 'button';
+            StampChip.addEventListener('click', () => this._stampFractureToActiveTerrain());
+            Strip.appendChild(StampChip);
+            return;
+        }
+
+        if (CounterEl) CounterEl.textContent = '3 DEMO MASKS';
         const Chips = [
             ['All 3 Demo Terrains', () => { this.view3D.viewScope = 'all'; document.getElementById('scope-select').value = 'all'; this.view3D.frameVisibleWorld(); this.refreshChrome(); }],
             ['Solo: Highland Massif (Soft Falloff)', () => this._focusSingleRegion(0)],
@@ -820,16 +883,39 @@ class TerrainWorldStudioApp
     ======================================================================================================================================*/
     setWorkspaceMode(Mode)
     {
+        const Prev = this.workspaceMode;
         this.workspaceMode = Mode;
         const Grid = document.getElementById('StageGrid');
-        Grid.classList.remove('mode-2d', 'mode-3d', 'mode-split');
+        Grid.classList.remove('mode-2d', 'mode-3d', 'mode-split', 'mode-fracture');
         Grid.classList.add(`mode-${Mode}`);
 
         for (const Btn of document.querySelectorAll('.top-nav .nav-button[data-ws]'))
         {
             Btn.classList.toggle('active', Btn.dataset.ws === Mode);
         }
-        requestAnimationFrame(() => this.map2D.requestRedraw());
+
+        if (Mode === 'fracture' && this.inspectorTab !== 'fracture')
+        {
+            this.inspectorTab = 'fracture';
+            this._syncInspectorTabButtons();
+        }
+        else if (Mode !== 'fracture' && Prev === 'fracture' && this.inspectorTab === 'fracture')
+        {
+            this.inspectorTab = 'layers';
+            this._syncInspectorTabButtons();
+        }
+
+        this._buildPresetStrip();
+        if (this.map2D && this.view3D)
+        {
+            this.refreshChrome();
+            this.rebuildInspector();
+            requestAnimationFrame(() =>
+            {
+                this.map2D.requestRedraw();
+                if (Mode === 'fracture') this.fractureView?.frameFormation();
+            });
+        }
     }
 
     select2DTool(ToolId)
@@ -987,6 +1073,11 @@ class TerrainWorldStudioApp
         });
         document.getElementById('focus-btn')?.addEventListener('click', () =>
         {
+            if (this.workspaceMode === 'fracture')
+            {
+                this.fractureView?.frameFormation();
+                return;
+            }
             this.map2D.frameAllRegions();
             this.view3D.frameVisibleWorld();
         });
@@ -1065,6 +1156,7 @@ class TerrainWorldStudioApp
             const V = parseFloat(ExpRange.value);
             SyncExpFill(V);
             this.view3D.exposure = V;
+            if (this.fractureView) this.fractureView.exposure = V;
         });
 
         document.getElementById('dock-atmos-select')?.addEventListener('change', E =>
@@ -1142,6 +1234,7 @@ class TerrainWorldStudioApp
             if (E.key === '1') this.setWorkspaceMode('2d');
             else if (E.key === '2') this.setWorkspaceMode('3d');
             else if (E.key === '3') this.setWorkspaceMode('split');
+            else if (E.key === '4') this.setWorkspaceMode('fracture');
             else if (E.key === 'Tab')
             {
                 E.preventDefault();
@@ -1188,6 +1281,11 @@ class TerrainWorldStudioApp
 
     _exportObj()
     {
+        if (this.workspaceMode === 'fracture')
+        {
+            this._exportFractureAsset('obj');
+            return;
+        }
         const Targets = this.view3D.getVisibleRegions();
         const { text } = ExportWorldTerrainsObj(this.world, Targets.length ? Targets : this.world.regions);
         this._triggerDownload(new Blob([text], { type: 'text/plain' }), 'frontier-sdf-terrains.obj');
@@ -1195,6 +1293,11 @@ class TerrainWorldStudioApp
 
     _exportStl()
     {
+        if (this.workspaceMode === 'fracture')
+        {
+            this._exportFractureAsset('stl');
+            return;
+        }
         const Targets = this.view3D.getVisibleRegions();
         const { bytes } = ExportWorldTerrainsBinaryStl(this.world, Targets.length ? Targets : this.world.regions);
         this._triggerDownload(new Blob([bytes], { type: 'application/octet-stream' }), 'frontier-sdf-terrains.stl');
@@ -1239,10 +1342,18 @@ class TerrainWorldStudioApp
                         else Next.add(R.id);
                     }
                     else { Next.clear(); Next.add(R.id); }
+                    if (this.workspaceMode === 'fracture') this.setWorkspaceMode('split');
                     this._setRegionSelection(R.id, Array.from(Next));
                 });
                 TabsEl.appendChild(Tab);
             }
+        }
+
+        // If Pure-SDF Fracture Lab is active, populate Left Outliner with the 6 Pure-SDF Fracture Archetypes!
+        if (this.workspaceMode === 'fracture')
+        {
+            this._buildFractureOutliner();
+            return;
         }
 
         // 2. Census Stats & Subtitle
@@ -1483,6 +1594,12 @@ class TerrainWorldStudioApp
         Content.innerHTML = '';
         this._activeKnotYSlider = null;
 
+        if (this.inspectorTab === 'fracture')
+        {
+            this._buildFractureInspectorTab(Content);
+            return;
+        }
+
         const Region = this.getActiveRegion();
         if (!Region) return;
 
@@ -1697,6 +1814,41 @@ class TerrainWorldStudioApp
                 this.rebuildInspector();
             });
             GenGroup.Body.appendChild(JumpBtn);
+        }
+        else if (ActiveLayer.type === 'rock_formation')
+        {
+            const B = Region.bounds;
+            GenGroup.Body.appendChild(MakeSliderPillRow('Formation World Scale', 35, 420, 5, ActiveLayer.worldScaleM ?? 165, 0, 'm', V =>
+            {
+                ActiveLayer.worldScaleM = V;
+                Region.meshDirty = true;
+            }, () => this.refreshChrome()));
+            GenGroup.Body.appendChild(MakeSliderPillRow('Yaw Orientation', 0, 360, 2, ActiveLayer.yawDeg ?? 0, 0, '°', V =>
+            {
+                ActiveLayer.yawDeg = V;
+                Region.meshDirty = true;
+            }, () => this.refreshChrome()));
+            GenGroup.Body.appendChild(MakeSliderPillRow('World Position X', Math.round(B.x), Math.round(B.x + B.width), 5, ActiveLayer.worldX ?? (B.x + B.width * 0.5), 0, 'm', V =>
+            {
+                ActiveLayer.worldX = V;
+                Region.meshDirty = true;
+            }, () => this.refreshChrome()));
+            GenGroup.Body.appendChild(MakeSliderPillRow('World Position Z', Math.round(B.z), Math.round(B.z + B.depth), 5, ActiveLayer.worldZ ?? (B.z + B.depth * 0.5), 0, 'm', V =>
+            {
+                ActiveLayer.worldZ = V;
+                Region.meshDirty = true;
+            }, () => this.refreshChrome()));
+            const EditFracBtn = MakeEl('button', 'button export-button', 'Edit in Pure-SDF Fracture Lab ↗');
+            EditFracBtn.type = 'button';
+            EditFracBtn.style.width = '100%';
+            EditFracBtn.style.justifyContent = 'center';
+            EditFracBtn.addEventListener('click', () =>
+            {
+                this.fracture.params = { ...ActiveLayer.fractureParams };
+                this._rebuildFractureFormationNow(true);
+                this.setWorkspaceMode('fracture');
+            });
+            GenGroup.Body.appendChild(EditFracBtn);
         }
 
         if (['multifractal', 'ridged', 'voronoi', 'billow'].includes(ActiveLayer.type))
@@ -2572,6 +2724,521 @@ class TerrainWorldStudioApp
     }
 
     /*======================================================================================================================================
+                             PURE-SDF BRITTLE FRACTURE, THERMAL CRAZING & QEF DUAL-CONTOUR LAB CONTROLLER
+    ======================================================================================================================================*/
+    _rebuildFractureFormationNow(Reframe = false)
+    {
+        if (!this.fracture) return;
+        const F = buildFracturedFormation(this.fracture.params);
+        this.fracture.formation = F;
+        this.fracture.qefDirty = true;
+
+        if (this.fractureView)
+        {
+            this.fractureView.setFormation(F);
+            if (Reframe) this.fractureView.frameFormation();
+        }
+
+        const Preset = getFracturePreset(this.fracture.params.presetId);
+        const HudName = document.getElementById('hud-fracture-preset');
+        if (HudName) HudName.textContent = Preset.name;
+        const HudBlk = document.getElementById('hud-frac-blocks');
+        if (HudBlk) HudBlk.textContent = String(F.blocks.length);
+
+        if (this.fractureView?.renderMode === 'qef-mesh')
+        {
+            this._scheduleFractureQefBake(150);
+        }
+        else
+        {
+            const HudTris = document.getElementById('hud-frac-tris');
+            if (HudTris)
+            {
+                HudTris.textContent = this.fracture.qefStats
+                    ? `${(this.fracture.qefStats.triangles / 1000).toFixed(1)}k`
+                    : 'GPU SDF';
+            }
+        }
+    }
+
+    _scheduleFractureQefBake(DelayMs = 150)
+    {
+        if (this.fracture._qefTimer) clearTimeout(this.fracture._qefTimer);
+        this.fracture._qefTimer = setTimeout(() =>
+        {
+            this.fracture._qefTimer = null;
+            this._bakeFractureQefMeshNow();
+            if (this.inspectorTab === 'fracture') this.rebuildInspector();
+            this.refreshChrome();
+        }, DelayMs);
+    }
+
+    _bakeFractureQefMeshNow(ResOverride = null)
+    {
+        if (!this.fracture?.formation) this._rebuildFractureFormationNow(false);
+        const Res = ResOverride ?? this.fracture.params.meshResolution ?? 72;
+        const Baked = bakeFracturedFormationQefMesh(this.fracture.formation, { resolution: Res });
+        this.fracture.qefMesh = Baked.mesh;
+        this.fracture.qefStats = Baked.sdfStats;
+        this.fracture.qefDirty = false;
+        this.fractureView?.uploadQefMesh(Baked.mesh, Baked.sdfStats);
+
+        const HudTris = document.getElementById('hud-frac-tris');
+        if (HudTris) HudTris.textContent = `${(Baked.sdfStats.triangles / 1000).toFixed(1)}k`;
+        return Baked;
+    }
+
+    _selectFracturePreset(PresetId)
+    {
+        const KeepCutaway = !!this.fracture.params.cutawayEnabled;
+        this.fracture.params = createDefaultFractureParams(PresetId);
+        this.fracture.params.cutawayEnabled = KeepCutaway;
+        this.fracture.savedOpenState = null;
+        this.fracture.qefStats = null;
+        this._rebuildFractureFormationNow(true);
+        if (this.fractureView?.renderMode === 'qef-mesh')
+        {
+            this._bakeFractureQefMeshNow();
+        }
+        this._syncFractureToolbarButtons();
+        this._buildPresetStrip();
+        this.refreshChrome();
+        this.rebuildInspector();
+    }
+
+    _syncFractureToolbarButtons()
+    {
+        const IsQef = this.fractureView?.renderMode === 'qef-mesh';
+        document.getElementById('frac-mode-ray-btn')?.classList.toggle('active', !IsQef);
+        document.getElementById('frac-mode-qef-btn')?.classList.toggle('active', !!IsQef);
+        document.getElementById('frac-wire-btn')?.classList.toggle('active', !!(IsQef && this.fractureView?.showWireframe));
+        document.getElementById('frac-cutaway-btn')?.classList.toggle('cutaway-on', !!this.fracture?.params?.cutawayEnabled);
+        const LensSel = document.getElementById('frac-lens-select');
+        if (LensSel && this.fractureView) LensSel.value = String(this.fractureView.lensMode);
+    }
+
+    _bindFractureViewportToolbar()
+    {
+        document.getElementById('frac-mode-ray-btn')?.addEventListener('click', () =>
+        {
+            if (!this.fractureView) return;
+            this.fractureView.renderMode = 'raymarch';
+            this._syncFractureToolbarButtons();
+            this.rebuildInspector();
+            this.refreshChrome();
+        });
+
+        document.getElementById('frac-mode-qef-btn')?.addEventListener('click', () =>
+        {
+            if (!this.fractureView) return;
+            this.fractureView.renderMode = 'qef-mesh';
+            if (this.fracture.qefDirty || !this.fracture.qefMesh)
+            {
+                this._bakeFractureQefMeshNow();
+            }
+            this._syncFractureToolbarButtons();
+            this.rebuildInspector();
+            this.refreshChrome();
+        });
+
+        document.getElementById('frac-wire-btn')?.addEventListener('click', () =>
+        {
+            if (!this.fractureView) return;
+            if (this.fractureView.renderMode !== 'qef-mesh')
+            {
+                this.fractureView.renderMode = 'qef-mesh';
+                if (this.fracture.qefDirty || !this.fracture.qefMesh) this._bakeFractureQefMeshNow();
+                this.fractureView.showWireframe = true;
+            }
+            else
+            {
+                this.fractureView.showWireframe = !this.fractureView.showWireframe;
+            }
+            this._syncFractureToolbarButtons();
+            this.rebuildInspector();
+        });
+
+        document.getElementById('frac-cutaway-btn')?.addEventListener('click', () =>
+        {
+            this.fracture.params.cutawayEnabled = !this.fracture.params.cutawayEnabled;
+            this._rebuildFractureFormationNow(false);
+            this._syncFractureToolbarButtons();
+            this.rebuildInspector();
+        });
+
+        document.getElementById('frac-lens-select')?.addEventListener('change', E =>
+        {
+            if (!this.fractureView) return;
+            this.fractureView.lensMode = Number(E.target.value) | 0;
+        });
+    }
+
+    _exportFractureAsset(Format = 'glb')
+    {
+        if (this.fracture.qefDirty || !this.fracture.qefMesh)
+        {
+            this._bakeFractureQefMeshNow();
+        }
+        const Mesh = this.fracture.qefMesh;
+        if (!Mesh) return;
+        const BaseName = `pure-sdf-${this.fracture.params.presetId}-${this.fracture.params.seed}`;
+        if (Format === 'obj')
+        {
+            const Text = exportFractureMeshObj(Mesh, BaseName);
+            this._triggerDownload(new Blob([Text], { type: 'text/plain' }), `${BaseName}.obj`);
+        }
+        else if (Format === 'stl')
+        {
+            const Bytes = exportFractureMeshBinaryStl(Mesh, BaseName);
+            this._triggerDownload(new Blob([Bytes], { type: 'application/octet-stream' }), `${BaseName}.stl`);
+        }
+        else
+        {
+            const Bytes = exportFractureMeshGlb(Mesh, this.fracture.params, this.fracture.qefStats || {});
+            this._triggerDownload(new Blob([Bytes], { type: 'model/gltf-binary' }), `${BaseName}.glb`);
+        }
+    }
+
+    _stampFractureToActiveTerrain()
+    {
+        const Reg = this.getActiveRegion();
+        if (!Reg) return;
+        this.pushUndoSnapshot();
+
+        const Preset = getFracturePreset(this.fracture.params.presetId);
+        const B = Reg.bounds;
+        // Find highest central highland spot inside `Reg` so the fractured monolith crowns the terrain dramatically!
+        let BestWx = B.x + B.width * 0.50;
+        let BestWz = B.z + B.depth * 0.50;
+        if (Reg.runtime?.heights)
+        {
+            const Rt = Reg.runtime;
+            let BestH = -1e9;
+            for (let Z = Math.floor(Rt.nz * 0.25); Z < Math.floor(Rt.nz * 0.75); Z += 3)
+            {
+                for (let X = Math.floor(Rt.nx * 0.25); X < Math.floor(Rt.nx * 0.75); X += 3)
+                {
+                    const Idx = Z * Rt.nx + X;
+                    if (Rt.sdf2D[Idx] < -40 && Rt.heights[Idx] > BestH)
+                    {
+                        BestH = Rt.heights[Idx];
+                        BestWx = Math.round(B.x + X * Rt.stepX);
+                        BestWz = Math.round(B.z + Z * Rt.stepZ);
+                    }
+                }
+            }
+        }
+
+        const RockLayer = CreateTerrainLayer('rock_formation', {
+            name: `SDF Cliff · ${Preset.name.replace(/^\d+\s*·\s*/, '')}`,
+            worldX: BestWx,
+            worldZ: BestWz,
+            worldScaleM: 185.0,
+            yawDeg: 18.0,
+            embedDepthM: 9.0,
+            fractureParams: {
+                ...this.fracture.params,
+                cutawayEnabled: false,
+                meshResolution: 68
+            }
+        });
+
+        Reg.stack.push(RockLayer);
+        this.activeLayerId = RockLayer.id;
+        EvaluateTerrainRegion(this.world, Reg, RockLayer.id);
+        Reg.meshDirty = true;
+
+        this.inspectorTab = 'layers';
+        this._syncInspectorTabButtons();
+        this.setWorkspaceMode('3d');
+        this.view3D.viewScope = 'solo';
+        const ScopeSel = document.getElementById('scope-select');
+        if (ScopeSel) ScopeSel.value = 'solo';
+        this.view3D.frameRegion(Reg);
+        this.refreshChrome();
+        this.rebuildInspector();
+    }
+
+    _buildFractureOutliner()
+    {
+        const F = this.fracture.formation;
+        const Stats = this.fracture.qefStats;
+        const Preset = getFracturePreset(this.fracture.params.presetId);
+
+        document.getElementById('stat-terrains-on').textContent = String(F ? F.blocks.length : 0);
+        document.getElementById('stat-layers-total').textContent = String(F ? F.totalPlanes : 0);
+        document.getElementById('outliner-subtitle').textContent = `${FRACTURE_PRESETS.length} Pure-SDF Archetypes · 0 Mesh→SDF`;
+
+        const Outliner = document.getElementById('OutlinerContent');
+        Outliner.innerHTML = '';
+
+        const Group = MakeEl('div', 'tree-group');
+        Group.appendChild(MakeEl('div', 'tree-group-title', [
+            ConstructGlyph('Boxes'),
+            MakeEl('span', '', 'Pure-SDF Fracture Archetypes'),
+            MakeEl('span', 'group-count', String(FRACTURE_PRESETS.length))
+        ]));
+
+        const Q = (this.outlinerSearch || '').toLowerCase();
+        for (const P of FRACTURE_PRESETS)
+        {
+            if (Q && !P.name.toLowerCase().includes(Q) && !P.subtitle.toLowerCase().includes(Q)) continue;
+            const IsSel = P.id === this.fracture.params.presetId;
+            const Card = MakeEl('button', 'fracture-preset-card' + (IsSel ? ' selected' : ''));
+            Card.type = 'button';
+            Card.append(
+                MakeEl('div', 'fracture-preset-head', [
+                    MakeEl('strong', '', P.name),
+                    MakeEl('span', 'preset-badge', P.badge)
+                ]),
+                MakeEl('small', '', P.subtitle)
+            );
+            Card.addEventListener('click', () => this._selectFracturePreset(P.id));
+            Group.appendChild(Card);
+        }
+        Outliner.appendChild(Group);
+
+        // Sync Right Object Header & Bottom Status Bar
+        document.getElementById('inspector-crumb').textContent = 'Inspector / Pure-SDF Fracture Lab';
+        const NameInp = document.getElementById('object-name');
+        if (NameInp && document.activeElement !== NameInp) NameInp.value = Preset.name;
+        document.getElementById('object-type').textContent =
+            `PURE SDF · ${F ? F.blocks.length : 0} BLOCKS · ${F ? F.totalPlanes : 0} HALF-SPACES · 0 MESH→SDF`;
+
+        document.getElementById('status-main').textContent = `Pure-SDF Fracture Lab · ${Preset.name}`;
+        document.getElementById('status-tiles').textContent = Stats
+            ? `4³ Active Bricks: ${Stats.activeBricks}/${Stats.totalBricks} (${Stats.brickOccupancyPct}%)`
+            : `GPU Pure-SDF Raymarcher · ${F ? F.blocks.length : 0} Polyhedral Blocks`;
+        document.getElementById('status-slab').textContent =
+            `Skin Depth δ_T = ${(this.fracture.params.thermalSkinDepth ?? 0.44).toFixed(2)} m · ΔT = ${Math.round(this.fracture.params.thermalDeltaT ?? 38)} °C`;
+    }
+
+    _buildFractureInspectorTab(Content)
+    {
+        const P = this.fracture.params;
+        const F = this.fracture.formation;
+        const Stats = this.fracture.qefStats;
+        const IsQef = this.fractureView?.renderMode === 'qef-mesh';
+
+        // 1. Top KPI Trio (#eff4cf highlight card)
+        const Trio = MakeEl('div', 'kpi-trio', [
+            MakeEl('div', 'kpi-card highlight', [
+                MakeEl('span', 'kpi-label', 'Jigsaw Blocks'),
+                MakeEl('strong', 'kpi-val', String(F ? F.blocks.length : 0)),
+                MakeEl('span', 'kpi-sub', `${F ? F.totalPlanes : 0} SDF half-spaces`)
+            ]),
+            MakeEl('div', 'kpi-card', [
+                MakeEl('span', 'kpi-label', IsQef ? 'QEF Triangles' : 'Render Mode'),
+                MakeEl('strong', 'kpi-val', Stats ? `${(Stats.triangles / 1000).toFixed(1)}k` : '60 FPS'),
+                MakeEl('span', 'kpi-sub', Stats ? `${Stats.bakeMs} ms QEF bake` : 'Live GPU SDF')
+            ]),
+            MakeEl('div', 'kpi-card', [
+                MakeEl('span', 'kpi-label', 'Mesh→SDF'),
+                MakeEl('strong', 'kpi-val', '0'),
+                MakeEl('span', 'kpi-sub', '100% Pure SDF')
+            ])
+        ]);
+        Content.appendChild(Trio);
+
+        // 2. 4 Quick-Toggle Feature Tiles
+        const Switches = MakeEl('div', 'property-switches');
+        const MakeTile = (Label, Glyph, IsOn, OnClick) =>
+        {
+            const B = MakeEl('button', 'property-switch' + (IsOn ? '' : ' is-off'));
+            B.type = 'button';
+            B.append(
+                MakeEl('span', 'switch-icon', ConstructGlyph(Glyph)),
+                MakeEl('span', 'switch-name', Label),
+                MakeEl('span', 'switch-state', IsOn ? 'ON' : 'OFF')
+            );
+            B.addEventListener('click', OnClick);
+            return B;
+        };
+        const IsClosedJigsaw = (P.chasmAperture <= 0.001 && P.hingeTiltDeg <= 0.01 && P.faultHeave <= 0.001);
+        Switches.append(
+            MakeTile('QEF Mesh', 'Boxes', !!IsQef, () =>
+            {
+                document.getElementById(IsQef ? 'frac-mode-ray-btn' : 'frac-mode-qef-btn')?.click();
+            }),
+            MakeTile('Wireframe', 'Scan', !!(IsQef && this.fractureView?.showWireframe), () =>
+            {
+                document.getElementById('frac-wire-btn')?.click();
+            }),
+            MakeTile('Cutaway', 'Layers', !!P.cutawayEnabled, () =>
+            {
+                document.getElementById('frac-cutaway-btn')?.click();
+            }),
+            MakeTile('Fit Test', 'Focus', IsClosedJigsaw, () =>
+            {
+                if (!IsClosedJigsaw)
+                {
+                    this.fracture.savedOpenState = {
+                        chasmAperture: P.chasmAperture,
+                        hingeTiltDeg: P.hingeTiltDeg,
+                        faultHeave: P.faultHeave
+                    };
+                    P.chasmAperture = 0.0;
+                    P.hingeTiltDeg = 0.0;
+                    P.faultHeave = 0.0;
+                }
+                else
+                {
+                    const Saved = this.fracture.savedOpenState || getFracturePreset(P.presetId).defaults;
+                    P.chasmAperture = Saved.chasmAperture ?? 0.58;
+                    P.hingeTiltDeg = Saved.hingeTiltDeg ?? 5.5;
+                    P.faultHeave = Saved.faultHeave ?? 0.48;
+                }
+                this._rebuildFractureFormationNow(false);
+                this.rebuildInspector();
+                this.refreshChrome();
+            })
+        );
+        Content.appendChild(Switches);
+
+        const OnChangeLive = () =>
+        {
+            this._rebuildFractureFormationNow(false);
+        };
+        const OnCommit = () =>
+        {
+            this.refreshChrome();
+        };
+
+        // 3. Group A: Kinematic Domain-Pullback Jigsaw Cleaving (T_k^{-1} p)
+        const KinGroup = MakePropertyGroup(
+            'Kinematic Jigsaw Cleaving (T⁻¹ Pullback)',
+            'Boxes',
+            'BRITTLE',
+            true,
+            'Splits unified parent rock along 3D fault planes; inverse rigid pullback keeps opposing jigsaw walls & strata locked 1-to-1.'
+        );
+        KinGroup.Body.appendChild(MakeSelectRow(
+            'Showcase Archetype',
+            FRACTURE_PRESETS.map(Pr => [Pr.name, Pr.id]),
+            P.presetId,
+            Val => this._selectFracturePreset(Val)
+        ));
+        KinGroup.Body.appendChild(MakeSliderPillRow('Chasm Split Aperture', 0.0, 1.0, 0.01, P.chasmAperture, 2, 'w', V => { P.chasmAperture = V; OnChangeLive(); }, OnCommit));
+        KinGroup.Body.appendChild(MakeSliderPillRow('Basal Hinge Tilt', 0.0, 14.0, 0.1, P.hingeTiltDeg, 1, '°', V => { P.hingeTiltDeg = V; OnChangeLive(); }, OnCommit));
+        KinGroup.Body.appendChild(MakeSliderPillRow('Normal-Fault Heave Drop', 0.0, 1.0, 0.01, P.faultHeave, 2, 'w', V => { P.faultHeave = V; OnChangeLive(); }, OnCommit));
+        KinGroup.Body.appendChild(MakeSliderPillRow('Jigsaw Wall Roughness', 0.0, 1.0, 0.01, P.jigsawRoughness, 2, 'w', V => { P.jigsawRoughness = V; OnChangeLive(); }, OnCommit));
+        KinGroup.Body.appendChild(MakeSliderPillRow('Plumose Arrest Hackles', 0.0, 1.0, 0.01, P.plumoseStrength, 2, 'w', V => { P.plumoseStrength = V; OnChangeLive(); }, OnCommit));
+        KinGroup.Body.appendChild(MakeSliderPillRow('45° Rim Arris Chamfer', 0.0, 1.0, 0.01, P.edgeChamfer, 2, 'w', V => { P.edgeChamfer = V; OnChangeLive(); }, OnCommit));
+        Content.appendChild(KinGroup.Group);
+
+        // 4. Group B: Diurnal ΔT Thermal Shock, 90° T-Junctions & V-Tipped Skin Cracks
+        const ThermGroup = MakePropertyGroup(
+            'Thermal ΔT & 90° T-Junction Skin Cracks',
+            'Activity',
+            `ΔT ${Math.round(P.thermalDeltaT)}°C`,
+            true,
+            'V-tipped crack aperture decays inward as a(p) = a_surf · exp(φ₀ / δ_T); Tier-2 cross-joints arrest at 90° T-junctions.'
+        );
+        ThermGroup.Body.appendChild(MakeSliderPillRow('Diurnal Thermal ΔT', 0, 85, 1, P.thermalDeltaT, 0, '°C', V => { P.thermalDeltaT = V; OnChangeLive(); }, OnCommit));
+        ThermGroup.Body.appendChild(MakeSliderPillRow('90° T-Junction Crazing', 0.0, 1.0, 0.01, P.crazing90Strength, 2, 'w', V => { P.crazing90Strength = V; OnChangeLive(); }, OnCommit));
+        ThermGroup.Body.appendChild(MakeSliderPillRow('90° Cell Spacing', 0.22, 1.40, 0.02, P.crazingSpacing, 2, 'm', V => { P.crazingSpacing = V; OnChangeLive(); }, OnCommit));
+        ThermGroup.Body.appendChild(MakeSliderPillRow('Skin Depth δ_T (V-Tip)', 0.08, 1.20, 0.02, P.thermalSkinDepth, 2, 'm', V => { P.thermalSkinDepth = V; OnChangeLive(); }, OnCommit));
+        ThermGroup.Body.appendChild(MakeSliderPillRow('3D Voronoi Stress Joints', 0.0, 1.0, 0.01, P.voronoiJointStrength, 2, 'w', V => { P.voronoiJointStrength = V; OnChangeLive(); }, OnCommit));
+        ThermGroup.Body.appendChild(MakeSliderPillRow('Solar Insolation Bias', 0.0, 1.0, 0.01, P.directionalBias, 2, 'w', V => { P.directionalBias = V; OnChangeLive(); }, OnCommit));
+        ThermGroup.Body.appendChild(MakeSliderPillRow('Sun Azimuth', 0, 360, 2, P.sunAzimuthDeg, 0, '°', V => { P.sunAzimuthDeg = V; OnChangeLive(); }, OnCommit));
+        Content.appendChild(ThermGroup.Group);
+
+        // 5. Group C: Onion-Skin Exfoliation, Spall Calving & Volumetric Cutaway Slice
+        const ExfolGroup = MakePropertyGroup(
+            'Onion-Skin Exfoliation & Cutaway Slice',
+            'Layers',
+            P.cutawayEnabled ? 'SLICED' : 'SOLID',
+            true,
+            'Concentric unloading shells parallel to φ₀ = 0 plus live cross-section slicing to inspect V-tipped cracks inside the solid SDF.'
+        );
+        ExfolGroup.Body.appendChild(MakeSliderPillRow('Onion-Skin Exfoliation', 0.0, 1.0, 0.01, P.exfoliationStrength, 2, 'w', V => { P.exfoliationStrength = V; OnChangeLive(); }, OnCommit));
+        ExfolGroup.Body.appendChild(MakeSliderPillRow('Basal Spalls & Chocks', 0.0, 1.0, 0.01, P.spallCalving, 2, 'w', V => { P.spallCalving = V; OnChangeLive(); }, OnCommit));
+        ExfolGroup.Body.appendChild(MakeSelectRow('Cutaway Slice Axis', [
+            ['Disabled (Full Solid Formation)', 'off'],
+            ['Slice X-Axis (Inspect Interior φ₀ & V-Tips)', 'x'],
+            ['Slice Z-Axis (Cross-Chasm Section)', 'z']
+        ], !P.cutawayEnabled ? 'off' : ((P.cutawayAxis ?? 0) === 0 ? 'x' : 'z'), Val =>
+        {
+            if (Val === 'off') P.cutawayEnabled = false;
+            else { P.cutawayEnabled = true; P.cutawayAxis = Val === 'x' ? 0 : 2; }
+            this._syncFractureToolbarButtons();
+            OnChangeLive();
+            this.rebuildInspector();
+        }));
+        ExfolGroup.Body.appendChild(MakeSliderPillRow('Cutaway Slice Offset', -2.6, 2.6, 0.02, P.cutawayOffset, 2, 'm', V =>
+        {
+            P.cutawayOffset = V;
+            if (!P.cutawayEnabled)
+            {
+                P.cutawayEnabled = true;
+                this._syncFractureToolbarButtons();
+            }
+            OnChangeLive();
+        }, OnCommit));
+        Content.appendChild(ExfolGroup.Group);
+
+        // 6. Group D: Sparse 4³-Brick QEF Dual Contouring, Export & Open-World Terrain Stamp
+        const BakeGroup = MakePropertyGroup(
+            'QEF Dual-Contour Polygonizer & Export',
+            'Mountain',
+            `RES ${P.meshResolution}`,
+            true,
+            'Extracts sharp-creased game-ready triangles strictly once at the end via 4³ Sparse Bricks + 3×3 Tikhonov QEF Dual Contouring.'
+        );
+        BakeGroup.Body.appendChild(MakeSliderPillRow('QEF Voxel Grid Res', 44, 116, 4, P.meshResolution, 0, 'vx', V =>
+        {
+            P.meshResolution = V;
+            this.fracture.qefDirty = true;
+            if (this.fractureView?.renderMode === 'qef-mesh') this._scheduleFractureQefBake(180);
+        }, OnCommit));
+
+        const BakeRow = MakeEl('div', 'studio-btn-row');
+        const BakeBtn = MakeEl('button', 'button export-button', 'Bake & View QEF Mesh');
+        BakeBtn.type = 'button';
+        BakeBtn.addEventListener('click', () =>
+        {
+            this._bakeFractureQefMeshNow();
+            if (this.fractureView) this.fractureView.renderMode = 'qef-mesh';
+            this._syncFractureToolbarButtons();
+            this.rebuildInspector();
+            this.refreshChrome();
+        });
+        const SeedBtn = MakeEl('button', 'button', `New Seed (#${P.seed})`);
+        SeedBtn.type = 'button';
+        SeedBtn.addEventListener('click', () =>
+        {
+            P.seed = Math.floor(1000 + Math.random() * 89999);
+            this._rebuildFractureFormationNow(false);
+            if (this.fractureView?.renderMode === 'qef-mesh') this._bakeFractureQefMeshNow();
+            this.rebuildInspector();
+            this.refreshChrome();
+        });
+        BakeRow.append(BakeBtn, SeedBtn);
+        BakeGroup.Body.appendChild(BakeRow);
+
+        const ExpRow = MakeEl('div', 'studio-btn-row');
+        const BtnGlb = MakeEl('button', 'button', 'Export .GLB');
+        BtnGlb.type = 'button';
+        BtnGlb.addEventListener('click', () => this._exportFractureAsset('glb'));
+        const BtnObj = MakeEl('button', 'button', 'Export .OBJ');
+        BtnObj.type = 'button';
+        BtnObj.addEventListener('click', () => this._exportFractureAsset('obj'));
+        const BtnStl = MakeEl('button', 'button', 'Export .STL');
+        BtnStl.type = 'button';
+        BtnStl.addEventListener('click', () => this._exportFractureAsset('stl'));
+        ExpRow.append(BtnGlb, BtnObj, BtnStl);
+        BakeGroup.Body.appendChild(ExpRow);
+
+        const StampBtn = MakeEl('button', 'fracture-stamp-cta', 'Stamp Fractured Cliff onto Active Open-World Terrain ↗');
+        StampBtn.type = 'button';
+        StampBtn.style.marginTop = '6px';
+        StampBtn.addEventListener('click', () => this._stampFractureToActiveTerrain());
+        BakeGroup.Body.appendChild(StampBtn);
+
+        Content.appendChild(BakeGroup.Group);
+    }
+
+    /*======================================================================================================================================
                                                       MAIN RENDER LOOP & TELEMETRY
     ======================================================================================================================================*/
     _startMainLoop()
@@ -2600,8 +3267,15 @@ class TerrainWorldStudioApp
             }
             else LastSimT = Now;
 
-            if (this.workspaceMode !== '3d') this.map2D.render();
-            if (this.workspaceMode !== '2d') this.view3D.render(this.activeLayerId);
+            if (this.workspaceMode === 'fracture')
+            {
+                this.fractureView?.render();
+            }
+            else
+            {
+                if (this.workspaceMode !== '3d') this.map2D.render();
+                if (this.workspaceMode !== '2d') this.view3D.render(this.activeLayerId);
+            }
 
             Frames++;
             if (Now - LastFpsT >= 500)
@@ -2609,11 +3283,27 @@ class TerrainWorldStudioApp
                 const Fps = Math.round((Frames * 1000) / (Now - LastFpsT));
                 Frames = 0;
                 LastFpsT = Now;
-                const Tris = this.view3D.totalVisibleTriangles;
-                const Verts = this.view3D.totalVisibleVertices;
-                if (EnginePill) EnginePill.textContent = `THIN-SLAB · ${Fps} FPS`;
-                if (HudTris) HudTris.textContent = `${(Tris / 1000).toFixed(1)}k`;
-                if (StatMesh) StatMesh.textContent = `Triangles: ${Tris.toLocaleString()} · Vertices: ${Verts.toLocaleString()}`;
+
+                if (this.workspaceMode === 'fracture')
+                {
+                    const IsQef = this.fractureView?.renderMode === 'qef-mesh';
+                    const S = this.fracture?.qefStats;
+                    if (EnginePill) EnginePill.textContent = IsQef ? `QEF DUAL-CONTOUR · ${Fps} FPS` : `PURE-SDF RAYMARCH · ${Fps} FPS`;
+                    if (StatMesh)
+                    {
+                        StatMesh.textContent = S
+                            ? `QEF Triangles: ${S.triangles.toLocaleString()} · Vertices: ${S.vertices.toLocaleString()} · 0 Mesh→SDF`
+                            : `GPU Pure-SDF Raymarching · ${this.fracture?.formation?.blocks?.length || 0} Blocks · 0 Mesh→SDF`;
+                    }
+                }
+                else
+                {
+                    const Tris = this.view3D.totalVisibleTriangles;
+                    const Verts = this.view3D.totalVisibleVertices;
+                    if (EnginePill) EnginePill.textContent = `THIN-SLAB · ${Fps} FPS`;
+                    if (HudTris) HudTris.textContent = `${(Tris / 1000).toFixed(1)}k`;
+                    if (StatMesh) StatMesh.textContent = `Triangles: ${Tris.toLocaleString()} · Vertices: ${Verts.toLocaleString()}`;
+                }
             }
             requestAnimationFrame(Tick);
         };

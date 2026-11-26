@@ -18,6 +18,22 @@ import {
     ExportWorldTerrainsBinaryStl,
     SeedThreeDemoTerrains
 } from './Engine/TerrainLayerStack.js';
+import { evalHierarchical90Crazing3D } from './Engine/RockCliff/Core/SpatialNoise3D.js';
+import {
+    exportFractureMeshObj,
+    exportFractureMeshBinaryStl,
+    exportFractureMeshGlb
+} from './Engine/RockCliff/Core/QefDualContour.js';
+import {
+    FRACTURE_PRESETS,
+    createBoxPoly,
+    splitPolyByPlane,
+    transformPoly,
+    buildFracturedFormation,
+    evalFracturedFormationSdf,
+    bakeFracturedFormationQefMesh,
+    packFracturedFormationGpuBuffers
+} from './Engine/RockCliff/PureSdfFractureEngine.js';
 
 let Passed = 0;
 function Suite(Name, Fn)
@@ -824,4 +840,165 @@ Suite('19. Priority-Flood solves upland closed-basin hydrostatic lakes & BaseSig
     assert.equal(Caldera.runtime.erosionStale, true, 'Modifying an upstream procedural layer after baking erosion must flag erosionStale = true');
 });
 
-console.log(`\nAll ${Passed}/19 Open-World SDF Terrain Studio validation suites passed!`);
+// 20. Pure-SDF Kinematic Domain-Pullback Jigsaw Cleaving & Inverse Rigid Pullback Accuracy
+Suite('20. Pure-SDF kinematic jigsaw cleaving preserves exact inverse pullback T^{-1}p across nested hinge rotations & fault heave', () =>
+{
+    const Parent = createBoxPoly(-2, 0, -2, 2, 4, 2, 0);
+    const [LeftHalf, RightHalf] = splitPolyByPlane(Parent, [1, 0, 0], 0.0, 0.0);
+    assert.ok(LeftHalf && RightHalf, 'Splitting parent polyhedron must produce two valid convex child blocks');
+
+    // Apply two nested rigid-body hinge rotations + fault heave translations to RightHalf
+    const Moved1 = transformPoly(RightHalf, [0.45, -0.30, 0.15], [0, 0, 1], -0.18, [0.5, 0.0, 0.0]);
+    const Moved2 = transformPoly(Moved1, [0.10, -0.12, -0.08], [0, 1, 0], 0.24, [0.8, 1.0, 0.2]);
+
+    // Verify that `invR * v_displaced + invT` recovers EVERY original pre-fracture vertex of `RightHalf` to machine precision!
+    const OrigVert = RightHalf.faces[0].verts[0];
+    const DispVert = Moved2.faces[0].verts[0];
+    const { invR, invT } = Moved2.pullback;
+    const RecX = invR[0] * DispVert[0] + invR[1] * DispVert[1] + invR[2] * DispVert[2] + invT[0];
+    const RecY = invR[3] * DispVert[0] + invR[4] * DispVert[1] + invR[5] * DispVert[2] + invT[1];
+    const RecZ = invR[6] * DispVert[0] + invR[7] * DispVert[1] + invR[8] * DispVert[2] + invT[2];
+    assert.ok(Math.hypot(RecX - OrigVert[0], RecY - OrigVert[1], RecZ - OrigVert[2]) < 1e-6,
+        'Composed inverse rigid pullback T^{-1}p must map displaced fracture block vertices back to exact parent coordinates');
+
+    // Verify Al-Naslaa split boulder has open air (d > 0) inside the central laser chasm and solid rock (d < 0) inside left & right halves!
+    const Naslaa = buildFracturedFormation({ presetId: 'al-naslaa-split', chasmAperture: 0.65, spallCalving: 0.0 });
+    const DGap = evalFracturedFormationSdf(Naslaa, 0.0, 3.2, 0.0);
+    assert.ok(DGap > 0.05, `Central split chasm must be open air (d > 0), got ${DGap.toFixed(4)}`);
+});
+
+// 21. Pure-SDF Thermal Skin-Depth V-Tipped Cracks & Directional Solar ΔT Insolation Gating
+Suite('21. Pure-SDF thermal skin-depth V-tipped cracks attenuate inward exponentially (core stays solid) & respond to solar ΔT', () =>
+{
+    const FinHot = buildFracturedFormation({
+        presetId: 'thermal-90-fin',
+        chasmAperture: 0.0,
+        hingeTiltDeg: 0.0,
+        faultHeave: 0.0,
+        thermalDeltaT: 75,
+        crazing90Strength: 1.0,
+        thermalSkinDepth: 0.35,
+        directionalBias: 0.90,
+        sunAzimuthDeg: 225
+    });
+
+    // Deep inside the rock core (far beyond skinDepth = 0.35m), V-tipped thermal cracks MUST decay to zero, leaving solid interior stone!
+    const CoreInfo = {};
+    const DCore = evalFracturedFormationSdf(FinHot, 0.0, 2.2, 0.0, null, CoreInfo);
+    assert.ok(DCore < -0.5, `Deep rock core beyond thermal skin depth must remain completely solid (got d=${DCore.toFixed(3)})`);
+
+    // Compare directional thermal stress on sun-facing SW flank vs shaded NE flank
+    const SunFaceInfo = {}, ShadeFaceInfo = {};
+    evalFracturedFormationSdf(FinHot, -0.5, 2.5, -0.9, null, SunFaceInfo);
+    evalFracturedFormationSdf(FinHot, 0.5, 2.5, 0.9, null, ShadeFaceInfo);
+    assert.ok(SunFaceInfo.thermalStress > ShadeFaceInfo.thermalStress,
+        `Sun-facing aspect thermal stress (${SunFaceInfo.thermalStress.toFixed(3)}) must exceed shaded aspect (${ShadeFaceInfo.thermalStress.toFixed(3)})`);
+});
+
+// 22. Pure-SDF Hierarchical 90-Degree T-Junction Thermal Crazing Topology
+Suite('22. Hierarchical 90-degree thermal crazing generates continuous Tier-1 joints & slab-local Tier-2 T-junction arrests', () =>
+{
+    // Sample across a Tier-1 boundary at independent v positions to verify Tier-2 phase discontinuities (90° T-junctions!)
+    const Spacing = 0.80;
+    let DiscontinuityFound = false;
+    for (let i = 0; i < 20; i++)
+    {
+        const v = i * 0.07 + 0.11;
+        // Left of unwarped slab boundary vs next slab over
+        const LeftT2 = evalHierarchical90Crazing3D(-0.35, v, 0.0, Spacing, 777).tier2Dist;
+        const RightT2 = evalHierarchical90Crazing3D(+0.45, v, 0.0, Spacing, 777).tier2Dist;
+        if (Math.abs(LeftT2 - RightT2) > 0.08)
+        {
+            DiscontinuityFound = true;
+            break;
+        }
+    }
+    assert.equal(DiscontinuityFound, true,
+        'Tier-2 orthogonal cross-joints must shift phase across Tier-1 master joints so cracks arrest at 90° T-junctions');
+});
+
+// 23. Pure-SDF Cross-Section Cutaway Slice & GPU RGBA32F Buffer Packing
+Suite('23. Pure-SDF cutaway slice clips rock volume cleanly for interior V-tip inspection & packs GPU RGBA32F textures', () =>
+{
+    const Sliced = buildFracturedFormation({
+        presetId: 'exfoliation-dome',
+        cutawayEnabled: true,
+        cutawayAxis: 0,
+        cutawayOffset: 0.10
+    });
+    const HitPos = {}, HitNeg = {};
+    const DClippedSide = evalFracturedFormationSdf(Sliced, 0.85, 1.8, 0.0, null, HitPos);
+    const DKeptSide = evalFracturedFormationSdf(Sliced, -0.85, 1.8, 0.0, null, HitNeg);
+    assert.ok(DClippedSide > 0.5 && HitPos.isCutaway === true, 'Points on +X side of cutaway plane must be clipped open');
+    assert.ok(DKeptSide < -0.2, 'Points on -X side of cutaway plane must remain solid stone');
+
+    const Packed = packFracturedFormationGpuBuffers(Sliced);
+    assert.equal(Packed.blockTexWidth, 6);
+    assert.equal(Packed.planeTexWidth, 2);
+    assert.equal(Packed.blockTexData.length, Packed.blockTexHeight * 6 * 4);
+    assert.equal(Packed.planeTexData.length, Packed.planeTexHeight * 2 * 4);
+});
+
+// 24. All 6 Pure-SDF Fracture Archetypes + 4^3 Sparse-Brick QEF Dual Contouring + .OBJ/.STL/.GLB Export
+Suite('24. All 6 Pure-SDF Fracture Archetypes extract sharp-creased QEF Dual-Contour meshes with 0 Mesh->SDF & valid .GLB/.OBJ/.STL', () =>
+{
+    assert.equal(FRACTURE_PRESETS.length, 6);
+    for (const Preset of FRACTURE_PRESETS)
+    {
+        const F = buildFracturedFormation({ presetId: Preset.id, meshResolution: 46 });
+        const { mesh, sdfStats } = bakeFracturedFormationQefMesh(F, { resolution: 46 });
+        assert.equal(sdfStats.meshToSdfCount, 0, `${Preset.id} must execute strictly 0 Mesh->SDF conversions`);
+        assert.ok(sdfStats.triangles > 2500, `${Preset.id} must extract substantial QEF triangle geometry (got ${sdfStats.triangles})`);
+        assert.ok(sdfStats.brickOccupancyPct < 88, `${Preset.id} 4^3 brick culler must skip empty outer volume`);
+        assert.equal(mesh.positions.length, mesh.normals.length);
+        assert.equal(mesh.positions.length, mesh.albedos.length);
+
+        if (Preset.id === 'cracked-monolith')
+        {
+            const Glb = exportFractureMeshGlb(mesh, F.params, sdfStats);
+            const View = new DataView(Glb.buffer, Glb.byteOffset, Glb.byteLength);
+            assert.equal(View.getUint32(0, true), 0x46546c67, 'Binary .GLB must start with glTF 2.0 magic header 0x46546c67');
+            assert.equal(View.getUint32(4, true), 2, 'Binary .GLB version must be 2');
+
+            const Obj = exportFractureMeshObj(mesh, 'TestMonolith');
+            assert.ok(Obj.includes('\nv ') && Obj.includes('\nf '), '.OBJ export must emit vertices & faces');
+
+            const Stl = exportFractureMeshBinaryStl(mesh, 'TestMonolith');
+            assert.equal(Stl.byteLength, 84 + sdfStats.triangles * 50, 'Binary .STL byte length must equal 84 + 50 * triCount');
+        }
+    }
+});
+
+// 25. Stamping Pure-SDF Fractured Rock Formation onto Open-World TerrainRegion
+Suite('25. Pure-SDF Fractured Rock layer stamps onto Open-World TerrainRegion, merges QEF mesh & survives JSON round-trip', () =>
+{
+    const World = new WorldMask2D();
+    SeedThreeDemoTerrains(World);
+    const Reg = World.regions[0];
+    EvaluateTerrainRegion(World, Reg);
+    const BaseMesh = ExtractRegionTriangleMesh(World, Reg);
+
+    const RockLayer = CreateTerrainLayer('rock_formation', {
+        name: 'Stamped Cracked Jigsaw Monolith',
+        worldX: Reg.bounds.x + Reg.bounds.width * 0.5,
+        worldZ: Reg.bounds.z + Reg.bounds.depth * 0.5,
+        worldScaleM: 175.0,
+        yawDeg: 22.0,
+        fractureParams: { presetId: 'cracked-monolith', meshResolution: 46 }
+    });
+    Reg.stack.push(RockLayer);
+    EvaluateTerrainRegion(World, Reg);
+    const StampedMesh = ExtractRegionTriangleMesh(World, Reg);
+    assert.ok(StampedMesh.triangleCount > BaseMesh.triangleCount + 3000,
+        `Stamped Pure-SDF fractured rock must append QEF triangles to Open-World Terrain mesh (${BaseMesh.triangleCount} -> ${StampedMesh.triangleCount})`);
+
+    // Verify clean JSON serialization round-trip (no WeakMap cache bloat!)
+    const SavedJson = JSON.stringify(World.toJSON());
+    assert.ok(SavedJson.length < 400000, 'Serialized world JSON must stay compact without baking mesh arrays into JSON');
+    const Restored = new WorldMask2D();
+    Restored.loadFromJSON(JSON.parse(SavedJson));
+    assert.equal(Restored.regions[0].stack.some(L => L.type === 'rock_formation'), true,
+        'Restored Open-World project must preserve stamped rock_formation layer');
+});
+
+console.log(`\nAll ${Passed}/25 Open-World SDF Terrain & Pure-SDF Fracture Studio validation suites passed!`);

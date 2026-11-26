@@ -31,7 +31,8 @@
             <nav class="top-nav" aria-label="Workspace views">
                 <button class="nav-button" data-ws="2d" type="button">2D Mask <small>1</small></button>
                 <button class="nav-button" data-ws="3d" type="button">3D Landscape <small>2</small></button>
-                <button class="nav-button active" data-ws="split" type="button">Split 2D + 3D <small>3</small></button>
+                <button class="nav-button" data-ws="split" type="button">Split 2D + 3D <small>3</small></button>
+                <button class="nav-button active" data-ws="fracture" type="button">SDF Fracture Lab <small>4</small></button>
                 <a class="nav-button" href="../SdfSculptEditor/index.html" style="text-decoration:none">3D Clay Studio ↗</a>
             </nav>
 
@@ -142,8 +143,8 @@
                     </div>
                 </div>
 
-                <!-- Seamless 2D | 3D | Split Stage -->
-                <div class="terrain-stage-grid mode-split" id="StageGrid">
+                <!-- Seamless 2D | 3D | Split | Pure-SDF Fracture Lab Stage -->
+                <div class="terrain-stage-grid mode-fracture" id="StageGrid">
                     <!-- 2D Infinite World Mask Pane -->
                     <div class="stage-pane stage-pane-2d" id="Pane2D">
                         <canvas id="Canvas2D" aria-label="Infinite 2D World Mask &amp; Terrain Bounds Editor"></canvas>
@@ -190,6 +191,40 @@
 
                         <div class="viewport-help">
                             <span>Drag Green Y ↕ Arrow: move spline up/down</span><i>·</i><span>Shift+Click terrain: add knot</span><i>·</i><span>Drag sky/RMB: orbit</span>
+                        </div>
+                    </div>
+
+                    <!-- Pure-SDF Brittle Fracture & Thermal Cracking Lab Pane -->
+                    <div class="stage-pane stage-pane-fracture" id="PaneFracture">
+                        <canvas id="CanvasFracture" aria-label="Pure-SDF Brittle Fracture &amp; QEF Dual-Contour 3D Viewport"></canvas>
+
+                        <div class="viewport-caption">
+                            <span class="live-pill"><i></i><span>PURE-SDF FRACTURE LAB</span></span>
+                            <span id="hud-fracture-preset">01 · Cracked Jigsaw Monolith</span>
+                            <small id="hud-fracture-zero" class="tabular">0 Mesh→SDF</small>
+                        </div>
+
+                        <div class="fracture-floating-bar" role="toolbar" aria-label="Pure-SDF Fracture Render &amp; Diagnostic Controls">
+                            <button id="frac-mode-ray-btn" class="fracture-pill-btn active" type="button" title="Real-time 60 FPS GPU Pure-SDF Raymarcher">60 FPS GPU SDF</button>
+                            <button id="frac-mode-qef-btn" class="fracture-pill-btn" type="button" title="Ported 4^3 Sparse-Brick QEF Dual-Contoured Manifold Mesh">QEF Dual-Contour Mesh</button>
+                            <button id="frac-wire-btn" class="fracture-pill-btn" type="button" title="Overlay QEF sharp-crease wireframe">Wireframe</button>
+                            <button id="frac-cutaway-btn" class="fracture-pill-btn" type="button" title="Slice solid SDF volume open to inspect inward-tapering V-tipped thermal cracks &amp; exfoliation shells">Cutaway Slice</button>
+                            <select id="frac-lens-select" class="fracture-lens-select" aria-label="Fracture diagnostic lens">
+                                <option value="0" selected>Lens · Rind vs Fresh Split PBR</option>
+                                <option value="1">Lens · Fresh Fracture Mask</option>
+                                <option value="2">Lens · Solar ΔT Thermal Shock</option>
+                                <option value="3">Lens · Volumetric 3D SDF AO</option>
+                                <option value="4">Lens · Normals &amp; 90° Dihedrals</option>
+                            </select>
+                        </div>
+
+                        <div class="viewport-right-hud" id="FractureHud">
+                            <span class="hud-pill">Blocks<b id="hud-frac-blocks">30</b></span>
+                            <span class="hud-pill">QEF Tris<b id="hud-frac-tris">—</b></span>
+                        </div>
+
+                        <div class="viewport-help">
+                            <span>Drag: orbit 360°</span><i>·</i><span>Shift+Drag / MMB: pan</span><i>·</i><span>Wheel: zoom</span><i>·</i><span>Sliders: live 60 FPS Pure-SDF fracture</span>
                         </div>
                     </div>
                 </div>
@@ -255,7 +290,8 @@
                 </div>
 
                 <div class="inspector-tabs" id="inspector-tabs" role="tablist" aria-label="Inspector categories">
-                    <button data-itab="layers" class="active" type="button">Layers &amp; Falloff</button>
+                    <button data-itab="fracture" class="active" type="button">SDF Fracture</button>
+                    <button data-itab="layers" type="button">Layers &amp; Falloff</button>
                     <button data-itab="spline" type="button">Spline &amp; Gizmo</button>
                     <button data-itab="slab" type="button">Thin-Slab</button>
                     <button data-itab="sim" type="button">Simulation</button>
