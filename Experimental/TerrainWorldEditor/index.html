@@ -14,23 +14,23 @@
     <meta http-equiv="Expires" content="0" />
     <title>SDF Terrain Studio — Frontier Experimental Remastered</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23161616'/%3E%3Cpath d='M5 23l7-12 5 7 4-5 6 10z' fill='%23eff4cf'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="./TerrainWorldEditor.css?v=20261127d" />
+    <link rel="stylesheet" href="./TerrainWorldEditor.css?v=20261127e" />
     <script type="importmap">
     {
         "imports": {
-            "./Engine/RockCliff/Core/SpatialNoise3D.js": "./Engine/RockCliff/Core/SpatialNoise3D.js?v=20261127d",
-            "./Engine/RockCliff/Core/SparseSdfBrickGrid.js": "./Engine/RockCliff/Core/SparseSdfBrickGrid.js?v=20261127d",
-            "./Engine/RockCliff/Core/QefDualContour.js": "./Engine/RockCliff/Core/QefDualContour.js?v=20261127d",
-            "./Engine/RockCliff/PureSdfFractureEngine.js": "./Engine/RockCliff/PureSdfFractureEngine.js?v=20261127d",
-            "./Engine/RockCliff/FractureLabViewport.js": "./Engine/RockCliff/FractureLabViewport.js?v=20261127d",
-            "./Engine/RockCliff/RockFormationStackEngine.js": "./Engine/RockCliff/RockFormationStackEngine.js?v=20261127d",
-            "./Engine/RockCliff/RockFormation2Viewport.js": "./Engine/RockCliff/RockFormation2Viewport.js?v=20261127d",
-            "./Engine/TerrainLayerStack.js": "./Engine/TerrainLayerStack.js?v=20261127d",
-            "./StudioControls.js": "./StudioControls.js?v=20261127d"
+            "./Engine/RockCliff/Core/SpatialNoise3D.js": "./Engine/RockCliff/Core/SpatialNoise3D.js?v=20261127e",
+            "./Engine/RockCliff/Core/SparseSdfBrickGrid.js": "./Engine/RockCliff/Core/SparseSdfBrickGrid.js?v=20261127e",
+            "./Engine/RockCliff/Core/QefDualContour.js": "./Engine/RockCliff/Core/QefDualContour.js?v=20261127e",
+            "./Engine/RockCliff/PureSdfFractureEngine.js": "./Engine/RockCliff/PureSdfFractureEngine.js?v=20261127e",
+            "./Engine/RockCliff/FractureLabViewport.js": "./Engine/RockCliff/FractureLabViewport.js?v=20261127e",
+            "./Engine/RockCliff/RockFormationStackEngine.js": "./Engine/RockCliff/RockFormationStackEngine.js?v=20261127e",
+            "./Engine/RockCliff/RockFormation2Viewport.js": "./Engine/RockCliff/RockFormation2Viewport.js?v=20261127e",
+            "./Engine/TerrainLayerStack.js": "./Engine/TerrainLayerStack.js?v=20261127e",
+            "./StudioControls.js": "./StudioControls.js?v=20261127e"
         }
     }
     </script>
-    <script type="module" src="./TerrainWorldEditor.js?v=20261127d"></script>
+    <script type="module" src="./TerrainWorldEditor.js?v=20261127e"></script>
 </head>
 <body class="ws-rock2">
     <div id="app">
@@ -258,10 +258,29 @@
                             <small id="hud-rock2-pure" class="tabular">Layer Stack · Plain SDF</small>
                         </div>
 
+                        <div class="rock2-gizmo-rail" id="Rock2GizmoRail" role="toolbar" aria-label="RockFormation 2.0 Layer Select &amp; Transform Gizmo Tools">
+                            <button id="rock2-tool-path" class="rock2-gizmo-tool-btn active" type="button" title="Select Rock Layer &amp; Edit 3D Spline / Arch / Cloud / Array Handles (Q)">
+                                <span>Path</span><kbd>Q</kbd>
+                            </button>
+                            <button id="rock2-tool-move" class="rock2-gizmo-tool-btn" type="button" title="Move / Translate Selected Layer in 3D (W)">
+                                <span>Move</span><kbd>W</kbd>
+                            </button>
+                            <button id="rock2-tool-rotate" class="rock2-gizmo-tool-btn" type="button" title="Rotate Selected Layer Yaw / Pitch / Roll in 3D (E)">
+                                <span>Rotate</span><kbd>E</kbd>
+                            </button>
+                            <button id="rock2-tool-scale" class="rock2-gizmo-tool-btn" type="button" title="Scale Selected Layer X / Y / Z or Uniformly in 3D (R)">
+                                <span>Scale</span><kbd>R</kbd>
+                            </button>
+                            <span class="rock2-gizmo-rail-sep"></span>
+                            <button id="rock2-tool-reset" class="rock2-gizmo-tool-btn subtle" type="button" title="Reset Selected Layer Move / Rotate / Scale to (0,0,0) &amp; (1,1,1)">
+                                <span>Reset</span>
+                            </button>
+                        </div>
+
                         <div class="fracture-floating-bar" role="toolbar" aria-label="RockFormation 2.0 Render &amp; Form Lenses">
                             <button id="rock2-mode-ray-btn" class="fracture-pill-btn active" type="button" title="Real-time 60 FPS GPU Pure-SDF Layer Stack Raymarcher">60 FPS GPU SDF</button>
                             <button id="rock2-mode-qef-btn" class="fracture-pill-btn" type="button" title="4^3 Sparse-Brick QEF Dual-Contoured Manifold Mesh">QEF Dual-Contour Mesh</button>
-                            <button id="rock2-gizmo-btn" class="fracture-pill-btn active" type="button" title="Show/hide interactive 3D Spline, Array &amp; Scatter viewport handles">3D Gizmos</button>
+                            <button id="rock2-gizmo-btn" class="fracture-pill-btn active" type="button" title="Show/hide interactive 3D Layer Transform &amp; Generator Gizmos">3D Gizmos</button>
                             <button id="rock2-wire-btn" class="fracture-pill-btn" type="button" title="Overlay QEF sharp-crease wireframe" style="display:none">Wireframe</button>
                             <select id="rock2-lens-select" class="fracture-lens-select" aria-label="RockFormation 2.0 form lens">
                                 <option value="0" selected>Lens · Plain Stone Studio</option>
@@ -278,7 +297,7 @@
                         </div>
 
                         <div class="viewport-help">
-                            <span>Drag Handle: XZ move</span><i>·</i><span>Drag ↑: elevation Y</span><i>·</i><span>Dbl-Click Spline: +Knot</span><i>·</i><span>Drag Space: orbit 360°</span>
+                            <span>Click Rock: select layer</span><i>·</i><span>Q/W/E/R: Path · Move · Rotate · Scale</span><i>·</i><span>Dbl-Click Spline: +Knot</span><i>·</i><span>Drag Space: orbit</span>
                         </div>
                     </div>
                 </div>

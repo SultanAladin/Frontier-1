@@ -11,6 +11,7 @@
 import { clamp, DEG2RAD } from './Core/SpatialNoise3D.js';
 import {
     evalRock2StackSdf,
+    pickRock2LayerAtRay,
     packRock2StackGpuBuffers,
     buildRock2EulerMatrix3,
     forwardRock2Point,
@@ -561,9 +562,11 @@ export class RockFormation2Viewport
         this.compiledStack = null;
         this.activeLayer = null;
         this.showGizmos = true;
+        this.gizmoToolMode = 'path'; // 'path' | 'translate' | 'rotate' | 'scale'
         this.selectedKnotIndex = 0;
         this._screenHandles = [];
         this._screenSplineSegs = [];
+        this._screenRotateSegs = [];
         this._hoveredHandle = null;
         this._hoveredCurveInsert = null;
         this._gizmoDrag = null;
@@ -980,9 +983,29 @@ export class RockFormation2Viewport
         return hx * upW[0] + hy * upW[1] + hz * upW[2];
     }
 
+    setGizmoToolMode(mode = 'path')
+    {
+        const valid = (mode === 'translate' || mode === 'rotate' || mode === 'scale') ? mode : 'path';
+        this.gizmoToolMode = valid;
+    }
+
+    _projectRayOntoWorldAxis(clientX, clientY, originW, axisW)
+    {
+        const { ro, rd } = this._screenRay(clientX, clientY);
+        const w0x = ro[0] - originW[0];
+        const w0y = ro[1] - originW[1];
+        const w0z = ro[2] - originW[2];
+        const b = axisW[0] * rd[0] + axisW[1] * rd[1] + axisW[2] * rd[2];
+        const d = axisW[0] * w0x + axisW[1] * w0y + axisW[2] * w0z;
+        const e = rd[0] * w0x + rd[1] * w0y + rd[2] * w0z;
+        const denom = 1.0 - b * b;
+        if (denom < 1e-4) return 0.0;
+        return clamp((d - b * e) / denom, -80.0, 80.0);
+    }
+
     _pickHandleAt(sx, sy)
     {
-        if (!this.showGizmos || !this._screenHandles.length) return null;
+        if (!this.showGizmos) return null;
         let best = null;
         let bestDist = 1e9;
         for (let i = 0; i < this._screenHandles.length; i++)
@@ -993,6 +1016,37 @@ export class RockFormation2Viewport
             {
                 bestDist = d;
                 best = h;
+            }
+        }
+        if (best) return best;
+
+        // Also allow clicking anywhere along a 3D rotation gimbal ring
+        for (let i = 0; i < this._screenRotateSegs.length; i++)
+        {
+            const seg = this._screenRotateSegs[i];
+            const abx = seg.x1 - seg.x0, aby = seg.y1 - seg.y0;
+            const len2 = abx * abx + aby * aby;
+            const f = len2 > 1e-4 ? clamp(((sx - seg.x0) * abx + (sy - seg.y0) * aby) / len2, 0.0, 1.0) : 0.0;
+            const px = seg.x0 + abx * f;
+            const py = seg.y0 + aby * f;
+            const d = Math.hypot(sx - px, sy - py);
+            if (d <= 9.5 && d < bestDist)
+            {
+                bestDist = d;
+                best = {
+                    id: `rot_seg_${seg.rotKey}`,
+                    kind: 'trs_rotate',
+                    rotKey: seg.rotKey,
+                    centerWorld: seg.centerWorld,
+                    sx: px,
+                    sy: py,
+                    hitRadius: 10,
+                    anchorWorld: [
+                        seg.w0[0] + (seg.w1[0] - seg.w0[0]) * f,
+                        seg.w0[1] + (seg.w1[1] - seg.w0[1]) * f,
+                        seg.w0[2] + (seg.w1[2] - seg.w0[2]) * f
+                    ]
+                };
             }
         }
         return best;
@@ -1035,12 +1089,15 @@ export class RockFormation2Viewport
         let camDragging = false;
         let panMode = false;
         let lastX = 0, lastY = 0;
+        let downClientX = 0, downClientY = 0;
+        let clickCandidate = false;
 
         this.canvas.addEventListener('contextmenu', e => e.preventDefault());
 
         this.canvas.addEventListener('dblclick', e =>
         {
-            if (!this.showGizmos || !this.activeLayer || this.activeLayer.generator?.type !== 'spline') return;
+            const effMode = (this.gizmoToolMode === 'path' && this.activeLayer?.generator?.type !== 'none') ? 'path' : this.gizmoToolMode;
+            if (!this.showGizmos || effMode !== 'path' || !this.activeLayer || this.activeLayer.generator?.type !== 'spline') return;
             const rect = this.canvas.getBoundingClientRect();
             const sx = e.clientX - rect.left;
             const sy = e.clientY - rect.top;
@@ -1071,24 +1128,77 @@ export class RockFormation2Viewport
             const rect = this.canvas.getBoundingClientRect();
             const sx = e.clientX - rect.left;
             const sy = e.clientY - rect.top;
+            downClientX = e.clientX;
+            downClientY = e.clientY;
+            clickCandidate = (e.button === 0 && !e.altKey && !e.shiftKey);
 
             if (e.button === 0 && !e.altKey && this.showGizmos && this.activeLayer && this.activeLayer.enabled)
             {
                 const hit = this._pickHandleAt(sx, sy);
                 if (hit)
                 {
+                    clickCandidate = false;
                     if (hit.knotIndex !== undefined)
                     {
                         this.selectedKnotIndex = hit.knotIndex;
                     }
                     const { R, pivot, upW } = this._getLayerTransform(this.activeLayer);
                     const anchorW = hit.anchorWorld;
+                    const p = this.activeLayer.params || {};
+
+                    let startAxisS = 0.0;
+                    if (hit.axisVec)
+                    {
+                        startAxisS = this._projectRayOntoWorldAxis(e.clientX, e.clientY, hit.centerWorld || anchorW, hit.axisVec);
+                    }
+
                     const startHitW = hit.axis === 'y'
                         ? anchorW
-                        : this._intersectHorizontalPlane(e.clientX, e.clientY, anchorW, upW);
+                        : this._intersectHorizontalPlane(e.clientX, e.clientY, anchorW, hit.planeUpW || upW);
                     const startAxisH = hit.axis === 'y'
                         ? this._intersectVerticalAxis(e.clientX, e.clientY, anchorW, upW)
                         : 0.0;
+
+                    let rotMeta = null;
+                    if (hit.kind === 'trs_rotate')
+                    {
+                        const cam = this._computeCameraBasis();
+                        const cssW = Math.max(1, rect.width);
+                        const cssH = Math.max(1, rect.height);
+                        const cW = hit.centerWorld || pivot;
+                        const cScr = this._projectWorldPoint(cW[0], cW[1], cW[2], cam, cssW, cssH) || { sx, sy };
+                        const localCenter = inverseRock2Vector(R, cW[0] - pivot[0], cW[1] - pivot[1], cW[2] - pivot[2]);
+                        const localGrab = inverseRock2Vector(R, anchorW[0] - cW[0], anchorW[1] - cW[1], anchorW[2] - cW[2]);
+
+                        const testParams = {
+                            yawDeg: p.yawDeg ?? 0,
+                            pitchDeg: p.pitchDeg ?? 0,
+                            rollDeg: p.rollDeg ?? 0
+                        };
+                        testParams[hit.rotKey] += 1.0;
+                        const R1 = buildRock2EulerMatrix3(testParams.yawDeg, testParams.pitchDeg, testParams.rollDeg);
+                        const p1W = forwardRock2Point(R1, cW, localGrab[0], localGrab[1], localGrab[2]);
+                        const s0 = this._projectWorldPoint(anchorW[0], anchorW[1], anchorW[2], cam, cssW, cssH) || { sx, sy };
+                        const s1 = this._projectWorldPoint(p1W[0], p1W[1], p1W[2], cam, cssW, cssH) || { sx: sx + 1, sy };
+
+                        const vx = s1.sx - s0.sx, vy = s1.sy - s0.sy;
+                        const vl = Math.hypot(vx, vy) || 1;
+                        const crossVal = (s0.sx - cScr.sx) * vy - (s0.sy - cScr.sy) * vx;
+                        const startAng = Math.atan2(sy - cScr.sy, sx - cScr.sx);
+
+                        rotMeta = {
+                            centerW: cW,
+                            centerScr: cScr,
+                            localCenter,
+                            startSx: sx,
+                            startSy: sy,
+                            prevAng: startAng,
+                            accumRad: 0.0,
+                            crossVal,
+                            crossSign: crossVal >= 0 ? 1.0 : -1.0,
+                            tangentPx: [vx / vl, vy / vl]
+                        };
+                    }
 
                     this._gizmoDrag = {
                         handle: hit,
@@ -1097,9 +1207,14 @@ export class RockFormation2Viewport
                         anchorW,
                         startHitW,
                         startAxisH,
+                        startAxisS,
+                        startSx: sx,
+                        startSy: sy,
+                        rotMeta,
                         startSnapshotTaken: false,
                         moved: false,
-                        startValues: JSON.parse(JSON.stringify(this.activeLayer.generator || {}))
+                        startValues: JSON.parse(JSON.stringify(this.activeLayer.generator || {})),
+                        startParams: JSON.parse(JSON.stringify(this.activeLayer.params || {}))
                     };
                     this.canvas.style.cursor = 'grabbing';
                     this.canvas.setPointerCapture(e.pointerId);
@@ -1121,7 +1236,8 @@ export class RockFormation2Viewport
             {
                 const dg = this._gizmoDrag;
                 const g = dg.layer.generator;
-                if (!g) return;
+                const p = dg.layer.params;
+                if (!p) return;
 
                 if (!dg.startSnapshotTaken)
                 {
@@ -1132,6 +1248,95 @@ export class RockFormation2Viewport
 
                 const h = dg.handle;
                 const sv = dg.startValues;
+                const sp = dg.startParams;
+                const rect = this.canvas.getBoundingClientRect();
+                const sx = e.clientX - rect.left;
+                const sy = e.clientY - rect.top;
+
+                // --- WHOLE-LAYER TRS TRANSFORM GIZMO HANDLERS ---
+                if (h.kind === 'trs_move_axis')
+                {
+                    const curS = this._projectRayOntoWorldAxis(e.clientX, e.clientY, h.centerWorld || dg.anchorW, h.axisVec);
+                    const ds = curS - dg.startAxisS;
+                    p.posX = Number(clamp((sp.posX ?? 0) + h.axisVec[0] * ds, -24.0, 24.0).toFixed(3));
+                    p.posY = Number(clamp((sp.posY ?? 0) + h.axisVec[1] * ds, -12.0, 24.0).toFixed(3));
+                    p.posZ = Number(clamp((sp.posZ ?? 0) + h.axisVec[2] * ds, -24.0, 24.0).toFixed(3));
+                    this.callbacks.onLiveGizmoEdit?.();
+                    return;
+                }
+                if (h.kind === 'trs_move_xz')
+                {
+                    const hitW = this._intersectHorizontalPlane(e.clientX, e.clientY, dg.anchorW, [0, 1, 0]);
+                    const dx = hitW[0] - dg.startHitW[0];
+                    const dz = hitW[2] - dg.startHitW[2];
+                    p.posX = Number(clamp((sp.posX ?? 0) + dx, -24.0, 24.0).toFixed(3));
+                    p.posZ = Number(clamp((sp.posZ ?? 0) + dz, -24.0, 24.0).toFixed(3));
+                    this.callbacks.onLiveGizmoEdit?.();
+                    return;
+                }
+                if (h.kind === 'trs_rotate' && dg.rotMeta)
+                {
+                    const rm = dg.rotMeta;
+                    let deltaDeg = 0.0;
+                    if (Math.abs(rm.crossVal) >= 1.5)
+                    {
+                        const curAng = Math.atan2(sy - rm.centerScr.sy, sx - rm.centerScr.sx);
+                        const stepRad = Math.atan2(Math.sin(curAng - rm.prevAng), Math.cos(curAng - rm.prevAng));
+                        rm.prevAng = curAng;
+                        rm.accumRad += stepRad;
+                        deltaDeg = (rm.accumRad / DEG2RAD) * rm.crossSign;
+                    }
+                    else
+                    {
+                        const dpx = (sx - rm.startSx) * rm.tangentPx[0] + (sy - rm.startSy) * rm.tangentPx[1];
+                        deltaDeg = dpx * 0.75;
+                    }
+
+                    let nextVal = (sp[h.rotKey] ?? 0) + deltaDeg;
+                    if (h.rotKey === 'yawDeg')
+                    {
+                        while (nextVal > 180) nextVal -= 360;
+                        while (nextVal < -180) nextVal += 360;
+                    }
+                    else
+                    {
+                        nextVal = clamp(nextVal, -89.0, 89.0);
+                    }
+                    p[h.rotKey] = Number(nextVal.toFixed(1));
+
+                    // Keep rotation anchored cleanly around the 3D gizmo center
+                    const newR = buildRock2EulerMatrix3(p.yawDeg ?? 0, p.pitchDeg ?? 0, p.rollDeg ?? 0);
+                    const rotOff = forwardRock2Point(newR, [0, 0, 0], rm.localCenter[0], rm.localCenter[1], rm.localCenter[2]);
+                    p.posX = Number(clamp(rm.centerW[0] - rotOff[0], -24.0, 24.0).toFixed(3));
+                    p.posY = Number(clamp(rm.centerW[1] - rotOff[1], -12.0, 24.0).toFixed(3));
+                    p.posZ = Number(clamp(rm.centerW[2] - rotOff[2], -24.0, 24.0).toFixed(3));
+                    this.callbacks.onLiveGizmoEdit?.();
+                    return;
+                }
+                if (h.kind === 'trs_scale_axis')
+                {
+                    const curS = this._projectRayOntoWorldAxis(e.clientX, e.clientY, h.centerWorld || dg.anchorW, h.axisVec);
+                    const ds = curS - dg.startAxisS;
+                    const refLen = Math.max(0.5, h.gizmoLen ?? 1.5);
+                    const factor = Math.max(0.12, 1.0 + ds / refLen);
+                    const baseS = sp[h.scaleKey] ?? 1.0;
+                    p[h.scaleKey] = Number(clamp(baseS * factor, 0.15, 6.0).toFixed(3));
+                    this.callbacks.onLiveGizmoEdit?.();
+                    return;
+                }
+                if (h.kind === 'trs_scale_uniform')
+                {
+                    const deltaPx = (sx - dg.startSx) - (sy - dg.startSy);
+                    const factor = Math.exp(deltaPx * 0.0075);
+                    p.scaleX = Number(clamp((sp.scaleX ?? 1.0) * factor, 0.15, 6.0).toFixed(3));
+                    p.scaleY = Number(clamp((sp.scaleY ?? 1.0) * factor, 0.15, 6.0).toFixed(3));
+                    p.scaleZ = Number(clamp((sp.scaleZ ?? 1.0) * factor, 0.15, 6.0).toFixed(3));
+                    this.callbacks.onLiveGizmoEdit?.();
+                    return;
+                }
+
+                // --- GENERATOR PATH / CLOUD / ARRAY / SPLATTER / SCATTER HANDLERS ---
+                if (!g) return;
 
                 if (h.axis === 'y')
                 {
@@ -1140,15 +1345,23 @@ export class RockFormation2Viewport
 
                     if (h.kind === 'spline_knot_y' && Array.isArray(g.knots) && g.knots[h.knotIndex])
                     {
-                        g.knots[h.knotIndex].y = clamp((sv.knots[h.knotIndex]?.y ?? 0) + dy, -6.0, 10.0);
+                        g.knots[h.knotIndex].y = clamp((sv.knots[h.knotIndex]?.y ?? 0) + dy, -6.0, 14.0);
                     }
                     else if (h.kind === 'array_start_y')
                     {
-                        g.startY = clamp((sv.startY ?? 0) + dy, -6.0, 10.0);
+                        g.startY = clamp((sv.startY ?? 0) + dy, -6.0, 12.0);
                     }
                     else if (h.kind === 'array_end_y')
                     {
-                        g.endY = clamp((sv.endY ?? 0) + dy, -6.0, 10.0);
+                        g.endY = clamp((sv.endY ?? 0) + dy, -6.0, 12.0);
+                    }
+                    else if (h.kind === 'cloud_center_y')
+                    {
+                        g.centerY = clamp((sv.centerY ?? 3.8) + dy, -2.0, 16.0);
+                    }
+                    else if (h.kind === 'cloud_spread_y')
+                    {
+                        g.spreadY = clamp((sv.spreadY ?? 2.1) + dy, 0.15, 10.0);
                     }
                 }
                 else
@@ -1223,6 +1436,17 @@ export class RockFormation2Viewport
                         const curLocal = inverseRock2Vector(dg.R, hitW[0] - dg.pivot[0], hitW[1] - dg.pivot[1], hitW[2] - dg.pivot[2]);
                         g.scatterLength = clamp(Math.abs(curLocal[2]) * 2.0, 1.0, 22.0);
                     }
+                    else if (h.kind === 'cloud_center_xz')
+                    {
+                        g.centerX = clamp((sv.centerX ?? 0.0) + dlx, -16.0, 16.0);
+                        g.centerZ = clamp((sv.centerZ ?? 0.0) + dlz, -16.0, 16.0);
+                    }
+                    else if (h.kind === 'cloud_radius_xz')
+                    {
+                        const curLocal = inverseRock2Vector(dg.R, hitW[0] - dg.pivot[0], hitW[1] - dg.pivot[1], hitW[2] - dg.pivot[2]);
+                        const cx = sv.centerX ?? 0.0, cz = sv.centerZ ?? 0.0;
+                        g.radiusXZ = clamp(Math.hypot(curLocal[0] - cx, curLocal[2] - cz), 0.4, 16.0);
+                    }
                 }
 
                 this.callbacks.onLiveGizmoEdit?.();
@@ -1231,12 +1455,12 @@ export class RockFormation2Viewport
 
             if (!camDragging)
             {
-                // Update hover state & cursor for 3D handles + spline curve insert preview
                 const rect = this.canvas.getBoundingClientRect();
                 const sx = e.clientX - rect.left;
                 const sy = e.clientY - rect.top;
                 this._hoveredHandle = this._pickHandleAt(sx, sy);
-                this._hoveredCurveInsert = (!this._hoveredHandle && this.activeLayer?.generator?.type === 'spline')
+                const effMode = (this.gizmoToolMode === 'path' && this.activeLayer?.generator?.type !== 'none') ? 'path' : this.gizmoToolMode;
+                this._hoveredCurveInsert = (!this._hoveredHandle && effMode === 'path' && this.activeLayer?.generator?.type === 'spline')
                     ? this._pickSplineCurveSegmentAt(sx, sy, 13)
                     : null;
 
@@ -1253,6 +1477,11 @@ export class RockFormation2Viewport
                     this.canvas.style.cursor = '';
                 }
                 return;
+            }
+
+            if (clickCandidate && Math.hypot(e.clientX - downClientX, e.clientY - downClientY) > 4.5)
+            {
+                clickCandidate = false;
             }
 
             const dx = e.clientX - lastX;
@@ -1275,7 +1504,7 @@ export class RockFormation2Viewport
             }
         });
 
-        const endDrag = () =>
+        const endDrag = e =>
         {
             if (this._gizmoDrag)
             {
@@ -1284,6 +1513,17 @@ export class RockFormation2Viewport
                 this.canvas.style.cursor = this._hoveredHandle ? 'grab' : '';
                 if (wasMoved) this.callbacks.onCommitGizmoEdit?.();
             }
+            else if (clickCandidate && e && e.type === 'pointerup' && Math.hypot(e.clientX - downClientX, e.clientY - downClientY) <= 4.5)
+            {
+                // Click-on-rock in 3D Viewport -> Sphere-trace Pure-SDF stack & select hit layer!
+                const { ro, rd } = this._screenRay(e.clientX, e.clientY);
+                const picked = pickRock2LayerAtRay(this.compiledStack, ro, rd);
+                if (picked && picked.layerId)
+                {
+                    this.callbacks.onSelectLayer?.(picked.layerId, picked.hitPoint);
+                }
+            }
+            clickCandidate = false;
             camDragging = false;
         };
         this.canvas.addEventListener('pointerup', endDrag);
@@ -1484,6 +1724,452 @@ export class RockFormation2Viewport
         });
     }
 
+    _drawSelectionBounds(ctx, cam, cssW, cssH, bounds, labelText)
+    {
+        if (!bounds) return;
+        const { minX, minY, minZ, maxX, maxY, maxZ } = bounds;
+        const corners = [
+            [minX, minY, minZ], [maxX, minY, minZ], [maxX, minY, maxZ], [minX, minY, maxZ],
+            [minX, maxY, minZ], [maxX, maxY, minZ], [maxX, maxY, maxZ], [minX, maxY, maxZ]
+        ];
+        const edges = [
+            [0, 1], [1, 2], [2, 3], [3, 0],
+            [4, 5], [5, 6], [6, 7], [7, 4],
+            [0, 4], [1, 5], [2, 6], [3, 7]
+        ];
+
+        ctx.save();
+        ctx.strokeStyle = 'rgba(239, 244, 207, 0.44)';
+        ctx.lineWidth = 1.35;
+        for (let i = 0; i < edges.length; i++)
+        {
+            const [ia, ib] = edges[i];
+            const a = corners[ia], b = corners[ib];
+            // Draw crisp 22% corner ticks at both ends of each AABB edge
+            for (const [p0, p1] of [[a, b], [b, a]])
+            {
+                const q = [
+                    p0[0] + (p1[0] - p0[0]) * 0.20,
+                    p0[1] + (p1[1] - p0[1]) * 0.20,
+                    p0[2] + (p1[2] - p0[2]) * 0.20
+                ];
+                const s0 = this._projectWorldPoint(p0[0], p0[1], p0[2], cam, cssW, cssH);
+                const s1 = this._projectWorldPoint(q[0], q[1], q[2], cam, cssW, cssH);
+                if (s0 && s1)
+                {
+                    ctx.beginPath();
+                    ctx.moveTo(s0.sx, s0.sy);
+                    ctx.lineTo(s1.sx, s1.sy);
+                    ctx.stroke();
+                }
+            }
+        }
+
+        if (labelText)
+        {
+            const topP = this._projectWorldPoint(bounds.cx, maxY + 0.35, bounds.cz, cam, cssW, cssH);
+            if (topP)
+            {
+                ctx.font = '600 10px ui-sans-serif, system-ui, sans-serif';
+                const tw = ctx.measureText(labelText).width + 14;
+                ctx.fillStyle = 'rgba(13, 16, 21, 0.84)';
+                ctx.strokeStyle = 'rgba(239, 244, 207, 0.36)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.roundRect(topP.sx - tw * 0.5, topP.sy - 20, tw, 18, 9);
+                ctx.fill();
+                ctx.stroke();
+                ctx.fillStyle = '#eff4cf';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(labelText, topP.sx, topP.sy - 11);
+            }
+        }
+        ctx.restore();
+    }
+
+    _renderTrsGizmo(ctx, cam, cssW, cssH, layer, mode, centerW, R)
+    {
+        const pCenter = this._projectWorldPoint(centerW[0], centerW[1], centerW[2], cam, cssW, cssH);
+        if (!pCenter) return;
+
+        const camDist = Math.hypot(
+            centerW[0] - cam.camPos[0],
+            centerW[1] - cam.camPos[1],
+            centerW[2] - cam.camPos[2]
+        );
+        const gizmoLen = clamp(camDist * 0.155, 0.85, 4.4);
+        const p = layer.params || {};
+
+        if (mode === 'translate')
+        {
+            // XZ ground-plane free-move quad
+            const qLen = gizmoLen * 0.34;
+            const qPts = [
+                this._projectWorldPoint(centerW[0], centerW[1], centerW[2], cam, cssW, cssH),
+                this._projectWorldPoint(centerW[0] + qLen, centerW[1], centerW[2], cam, cssW, cssH),
+                this._projectWorldPoint(centerW[0] + qLen, centerW[1], centerW[2] + qLen, cam, cssW, cssH),
+                this._projectWorldPoint(centerW[0], centerW[1], centerW[2] + qLen, cam, cssW, cssH)
+            ];
+            const isHovXZ = (this._hoveredHandle?.id === 'trs_mv_xz') || (this._gizmoDrag?.handle?.id === 'trs_mv_xz');
+            if (qPts.every(Boolean))
+            {
+                ctx.save();
+                ctx.fillStyle = isHovXZ ? 'rgba(239, 244, 207, 0.42)' : 'rgba(239, 244, 207, 0.20)';
+                ctx.strokeStyle = isHovXZ ? '#ffffff' : '#eff4cf';
+                ctx.lineWidth = 1.6;
+                ctx.beginPath();
+                ctx.moveTo(qPts[0].sx, qPts[0].sy);
+                ctx.lineTo(qPts[1].sx, qPts[1].sy);
+                ctx.lineTo(qPts[2].sx, qPts[2].sy);
+                ctx.lineTo(qPts[3].sx, qPts[3].sy);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+                ctx.restore();
+
+                const qMid = this._projectWorldPoint(centerW[0] + qLen * 0.55, centerW[1], centerW[2] + qLen * 0.55, cam, cssW, cssH);
+                if (qMid)
+                {
+                    this._screenHandles.push({
+                        id: 'trs_mv_xz',
+                        kind: 'trs_move_xz',
+                        axis: 'xz',
+                        sx: qMid.sx,
+                        sy: qMid.sy,
+                        hitRadius: 15,
+                        centerWorld: centerW,
+                        anchorWorld: [centerW[0] + qLen * 0.55, centerW[1], centerW[2] + qLen * 0.55]
+                    });
+                }
+            }
+
+            const axes = [
+                { id: 'trs_mv_x', label: 'X', vec: [1, 0, 0], col: '#ff6b6b', hov: '#ffa8a8' },
+                { id: 'trs_mv_y', label: 'Y', vec: [0, 1, 0], col: '#7ee787', hov: '#b2f2bb' },
+                { id: 'trs_mv_z', label: 'Z', vec: [0, 0, 1], col: '#6cb6ff', hov: '#a5d8ff' }
+            ];
+
+            for (let i = 0; i < axes.length; i++)
+            {
+                const ax = axes[i];
+                const tipW = [
+                    centerW[0] + ax.vec[0] * gizmoLen,
+                    centerW[1] + ax.vec[1] * gizmoLen,
+                    centerW[2] + ax.vec[2] * gizmoLen
+                ];
+                const pTip = this._projectWorldPoint(tipW[0], tipW[1], tipW[2], cam, cssW, cssH);
+                if (!pTip) continue;
+
+                const isHov = (this._hoveredHandle?.id === ax.id) || (this._gizmoDrag?.handle?.id === ax.id);
+                const strokeCol = isHov ? ax.hov : ax.col;
+
+                ctx.save();
+                ctx.strokeStyle = 'rgba(10, 12, 16, 0.84)';
+                ctx.lineWidth = 5.0;
+                ctx.beginPath();
+                ctx.moveTo(pCenter.sx, pCenter.sy);
+                ctx.lineTo(pTip.sx, pTip.sy);
+                ctx.stroke();
+
+                ctx.strokeStyle = strokeCol;
+                ctx.lineWidth = isHov ? 3.2 : 2.5;
+                ctx.beginPath();
+                ctx.moveTo(pCenter.sx, pCenter.sy);
+                ctx.lineTo(pTip.sx, pTip.sy);
+                ctx.stroke();
+
+                const ang = Math.atan2(pTip.sy - pCenter.sy, pTip.sx - pCenter.sx);
+                const head = isHov ? 12.0 : 10.2;
+                ctx.fillStyle = strokeCol;
+                ctx.beginPath();
+                ctx.moveTo(pTip.sx, pTip.sy);
+                ctx.lineTo(pTip.sx - head * Math.cos(ang - 0.44), pTip.sy - head * Math.sin(ang - 0.44));
+                ctx.lineTo(pTip.sx - head * Math.cos(ang + 0.44), pTip.sy - head * Math.sin(ang + 0.44));
+                ctx.closePath();
+                ctx.fill();
+
+                // Axis badge near tip
+                const bx = pTip.sx + Math.cos(ang) * 11;
+                const by = pTip.sy + Math.sin(ang) * 11;
+                ctx.fillStyle = 'rgba(14, 17, 22, 0.90)';
+                ctx.strokeStyle = strokeCol;
+                ctx.lineWidth = 1.6;
+                ctx.beginPath();
+                ctx.arc(bx, by, 8.0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+                ctx.fillStyle = strokeCol;
+                ctx.font = '700 9.5px ui-sans-serif, system-ui, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(ax.label, bx, by + 0.5);
+                ctx.restore();
+
+                this._screenHandles.push({
+                    id: ax.id,
+                    kind: 'trs_move_axis',
+                    axis: ax.label === 'Y' ? 'y' : 'xz',
+                    axisVec: ax.vec,
+                    centerWorld: centerW,
+                    anchorWorld: tipW,
+                    sx: pTip.sx,
+                    sy: pTip.sy,
+                    hitRadius: 16
+                });
+            }
+
+            if (this._gizmoDrag && (this._gizmoDrag.handle.kind === 'trs_move_axis' || this._gizmoDrag.handle.kind === 'trs_move_xz'))
+            {
+                const txt = `Move  X ${(p.posX ?? 0).toFixed(2)}m · Y ${(p.posY ?? 0).toFixed(2)}m · Z ${(p.posZ ?? 0).toFixed(2)}m`;
+                this._drawGizmoReadoutPill(ctx, pCenter.sx, pCenter.sy + 26, txt, '#eff4cf');
+            }
+            return;
+        }
+
+        if (mode === 'rotate')
+        {
+            const rings = [
+                { id: 'trs_rot_pitch', rotKey: 'pitchDeg', label: 'P', col: '#ff6b6b', hov: '#ffa8a8', u: [0, 1, 0], v: [0, 0, 1] },
+                { id: 'trs_rot_yaw',   rotKey: 'yawDeg',   label: 'Y', col: '#7ee787', hov: '#b2f2bb', u: [1, 0, 0], v: [0, 0, 1] },
+                { id: 'trs_rot_roll',  rotKey: 'rollDeg',  label: 'R', col: '#6cb6ff', hov: '#a5d8ff', u: [1, 0, 0], v: [0, 1, 0] }
+            ];
+
+            const viewDir = [
+                cam.camPos[0] - centerW[0],
+                cam.camPos[1] - centerW[1],
+                cam.camPos[2] - centerW[2]
+            ];
+            const vdLen = Math.hypot(viewDir[0], viewDir[1], viewDir[2]) || 1;
+            viewDir[0] /= vdLen; viewDir[1] /= vdLen; viewDir[2] /= vdLen;
+
+            const segs = 48;
+            for (let ri = 0; ri < rings.length; ri++)
+            {
+                const rg = rings[ri];
+                const isHov = (this._hoveredHandle?.rotKey === rg.rotKey) || (this._gizmoDrag?.handle?.rotKey === rg.rotKey);
+                const strokeCol = isHov ? rg.hov : rg.col;
+
+                // Use world-oriented basis for Yaw, layer-oriented basis for Pitch & Roll
+                const uVec = rg.rotKey === 'yawDeg' ? rg.u : forwardRock2Point(R, [0, 0, 0], rg.u[0], rg.u[1], rg.u[2]);
+                const vVec = rg.rotKey === 'yawDeg' ? rg.v : forwardRock2Point(R, [0, 0, 0], rg.v[0], rg.v[1], rg.v[2]);
+
+                let bestFrontDot = -1e9;
+                let badgePt = null;
+                let badgeW = null;
+
+                let prevP = null, prevW = null;
+                for (let s = 0; s <= segs; s++)
+                {
+                    const a = (s / segs) * Math.PI * 2.0;
+                    const ca = Math.cos(a), sa = Math.sin(a);
+                    const rx = uVec[0] * ca + vVec[0] * sa;
+                    const ry = uVec[1] * ca + vVec[1] * sa;
+                    const rz = uVec[2] * ca + vVec[2] * sa;
+                    const wPt = [
+                        centerW[0] + rx * gizmoLen,
+                        centerW[1] + ry * gizmoLen,
+                        centerW[2] + rz * gizmoLen
+                    ];
+                    const p2 = this._projectWorldPoint(wPt[0], wPt[1], wPt[2], cam, cssW, cssH);
+                    const fDot = rx * viewDir[0] + ry * viewDir[1] + rz * viewDir[2];
+
+                    if (p2 && fDot > bestFrontDot)
+                    {
+                        bestFrontDot = fDot;
+                        badgePt = p2;
+                        badgeW = wPt;
+                    }
+
+                    if (prevP && p2)
+                    {
+                        const front = fDot >= -0.08;
+                        ctx.save();
+                        ctx.globalAlpha = front ? 0.96 : 0.26;
+                        ctx.strokeStyle = strokeCol;
+                        ctx.lineWidth = isHov ? (front ? 3.4 : 1.8) : (front ? 2.4 : 1.3);
+                        ctx.beginPath();
+                        ctx.moveTo(prevP.sx, prevP.sy);
+                        ctx.lineTo(p2.sx, p2.sy);
+                        ctx.stroke();
+                        ctx.restore();
+
+                        if (front)
+                        {
+                            this._screenRotateSegs.push({
+                                rotKey: rg.rotKey,
+                                centerWorld: centerW,
+                                x0: prevP.sx, y0: prevP.sy,
+                                x1: p2.sx,    y1: p2.sy,
+                                w0: prevW,    w1: wPt
+                            });
+                        }
+                    }
+                    prevP = p2;
+                    prevW = wPt;
+                }
+
+                if (badgePt && badgeW)
+                {
+                    ctx.save();
+                    ctx.fillStyle = isHov ? strokeCol : 'rgba(14, 17, 22, 0.92)';
+                    ctx.strokeStyle = strokeCol;
+                    ctx.lineWidth = 2.0;
+                    ctx.beginPath();
+                    ctx.arc(badgePt.sx, badgePt.sy, 9.5, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
+                    ctx.fillStyle = isHov ? '#101412' : strokeCol;
+                    ctx.font = '700 9.5px ui-sans-serif, system-ui, sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(rg.label, badgePt.sx, badgePt.sy + 0.5);
+                    ctx.restore();
+
+                    this._screenHandles.push({
+                        id: rg.id,
+                        kind: 'trs_rotate',
+                        rotKey: rg.rotKey,
+                        centerWorld: centerW,
+                        anchorWorld: badgeW,
+                        sx: badgePt.sx,
+                        sy: badgePt.sy,
+                        hitRadius: 14
+                    });
+                }
+            }
+
+            if (this._gizmoDrag && this._gizmoDrag.handle.kind === 'trs_rotate')
+            {
+                const txt = `Yaw ${(p.yawDeg ?? 0).toFixed(0)}° · Pitch ${(p.pitchDeg ?? 0).toFixed(0)}° · Roll ${(p.rollDeg ?? 0).toFixed(0)}°`;
+                this._drawGizmoReadoutPill(ctx, pCenter.sx, pCenter.sy + 28, txt, '#eff4cf');
+            }
+            return;
+        }
+
+        if (mode === 'scale')
+        {
+            const axes = [
+                { id: 'trs_sc_x', scaleKey: 'scaleX', label: 'X', vec: [R[0], R[3], R[6]], col: '#ff6b6b', hov: '#ffa8a8' },
+                { id: 'trs_sc_y', scaleKey: 'scaleY', label: 'Y', vec: [R[1], R[4], R[7]], col: '#7ee787', hov: '#b2f2bb' },
+                { id: 'trs_sc_z', scaleKey: 'scaleZ', label: 'Z', vec: [R[2], R[5], R[8]], col: '#6cb6ff', hov: '#a5d8ff' }
+            ];
+
+            for (let i = 0; i < axes.length; i++)
+            {
+                const ax = axes[i];
+                const tipW = [
+                    centerW[0] + ax.vec[0] * gizmoLen,
+                    centerW[1] + ax.vec[1] * gizmoLen,
+                    centerW[2] + ax.vec[2] * gizmoLen
+                ];
+                const pTip = this._projectWorldPoint(tipW[0], tipW[1], tipW[2], cam, cssW, cssH);
+                if (!pTip) continue;
+
+                const isHov = (this._hoveredHandle?.id === ax.id) || (this._gizmoDrag?.handle?.id === ax.id);
+                const strokeCol = isHov ? ax.hov : ax.col;
+
+                ctx.save();
+                ctx.strokeStyle = 'rgba(10, 12, 16, 0.84)';
+                ctx.lineWidth = 4.8;
+                ctx.beginPath();
+                ctx.moveTo(pCenter.sx, pCenter.sy);
+                ctx.lineTo(pTip.sx, pTip.sy);
+                ctx.stroke();
+
+                ctx.strokeStyle = strokeCol;
+                ctx.lineWidth = isHov ? 3.0 : 2.3;
+                ctx.beginPath();
+                ctx.moveTo(pCenter.sx, pCenter.sy);
+                ctx.lineTo(pTip.sx, pTip.sy);
+                ctx.stroke();
+
+                // Box-tip scale handle
+                const hs = isHov ? 7.5 : 6.5;
+                ctx.fillStyle = isHov ? strokeCol : 'rgba(16, 19, 24, 0.94)';
+                ctx.strokeStyle = strokeCol;
+                ctx.lineWidth = 2.0;
+                ctx.beginPath();
+                ctx.rect(pTip.sx - hs, pTip.sy - hs, hs * 2, hs * 2);
+                ctx.fill();
+                ctx.stroke();
+
+                ctx.fillStyle = isHov ? '#101412' : strokeCol;
+                ctx.font = '700 9px ui-sans-serif, system-ui, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(ax.label, pTip.sx, pTip.sy + 0.5);
+                ctx.restore();
+
+                this._screenHandles.push({
+                    id: ax.id,
+                    kind: 'trs_scale_axis',
+                    scaleKey: ax.scaleKey,
+                    axisVec: ax.vec,
+                    gizmoLen,
+                    centerWorld: centerW,
+                    anchorWorld: tipW,
+                    sx: pTip.sx,
+                    sy: pTip.sy,
+                    hitRadius: 15
+                });
+            }
+
+            // Center Uniform Scale Cube
+            const isHovUni = (this._hoveredHandle?.id === 'trs_sc_uni') || (this._gizmoDrag?.handle?.id === 'trs_sc_uni');
+            const us = isHovUni ? 9.0 : 7.8;
+            ctx.save();
+            ctx.fillStyle = isHovUni ? '#ffffff' : '#eff4cf';
+            ctx.strokeStyle = '#12151a';
+            ctx.lineWidth = 2.0;
+            ctx.beginPath();
+            ctx.rect(pCenter.sx - us, pCenter.sy - us, us * 2, us * 2);
+            ctx.fill();
+            ctx.stroke();
+            ctx.fillStyle = '#12151a';
+            ctx.font = '700 9.5px ui-sans-serif, system-ui, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('S', pCenter.sx, pCenter.sy + 0.5);
+            ctx.restore();
+
+            this._screenHandles.push({
+                id: 'trs_sc_uni',
+                kind: 'trs_scale_uniform',
+                centerWorld: centerW,
+                anchorWorld: centerW,
+                sx: pCenter.sx,
+                sy: pCenter.sy,
+                hitRadius: 14
+            });
+
+            if (this._gizmoDrag && (this._gizmoDrag.handle.kind === 'trs_scale_axis' || this._gizmoDrag.handle.kind === 'trs_scale_uniform'))
+            {
+                const txt = `Scale  X ${(p.scaleX ?? 1).toFixed(2)}× · Y ${(p.scaleY ?? 1).toFixed(2)}× · Z ${(p.scaleZ ?? 1).toFixed(2)}×`;
+                this._drawGizmoReadoutPill(ctx, pCenter.sx, pCenter.sy + 26, txt, '#eff4cf');
+            }
+        }
+    }
+
+    _drawGizmoReadoutPill(ctx, sx, sy, text, accent = '#eff4cf')
+    {
+        ctx.save();
+        ctx.font = '600 10.5px ui-sans-serif, system-ui, sans-serif';
+        const tw = ctx.measureText(text).width + 16;
+        ctx.fillStyle = 'rgba(13, 16, 22, 0.90)';
+        ctx.strokeStyle = accent;
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.roundRect(sx - tw * 0.5, sy - 10, tw, 20, 10);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = accent;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, sx, sy);
+        ctx.restore();
+    }
+
     _renderGizmoOverlay(cam)
     {
         const ov = this.overlayCanvas;
@@ -1506,17 +2192,37 @@ export class RockFormation2Viewport
 
         this._screenHandles = [];
         this._screenSplineSegs = [];
+        this._screenRotateSegs = [];
 
         const layer = this.activeLayer;
         if (!this.showGizmos || !layer || !layer.enabled) return;
 
-        const g = layer.generator;
-        if (!g || g.type === 'none') return;
-
         const { R, pivot } = this._getLayerTransform(layer);
+        const lSx = clamp(layer.params?.scaleX ?? 1.0, 0.12, 8.0);
+        const lSy = clamp(layer.params?.scaleY ?? 1.0, 0.12, 8.0);
+        const lSz = clamp(layer.params?.scaleZ ?? 1.0, 0.12, 8.0);
+
+        const compLayer = this.compiledStack?.compiledLayers?.find(c => c.id === layer.id);
+        const lBounds = compLayer?.bounds || null;
+        this._drawSelectionBounds(ctx, cam, cssW, cssH, lBounds, layer.name);
+
+        const g = layer.generator || { type: 'none' };
+        const effectiveTool = (this.gizmoToolMode === 'path' && g.type === 'none')
+            ? 'translate'
+            : this.gizmoToolMode;
+
+        if (effectiveTool !== 'path')
+        {
+            const centerW = lBounds
+                ? [lBounds.cx, lBounds.cy, lBounds.cz]
+                : [pivot[0], pivot[1] + Math.max(0.8, (layer.params?.height ?? 3.0) * 0.5), pivot[2]];
+            this._renderTrsGizmo(ctx, cam, cssW, cssH, layer, effectiveTool, centerW, R);
+            return;
+        }
+
         const projLocal = (lx, ly, lz) =>
         {
-            const w = forwardRock2Point(R, pivot, lx, ly, lz);
+            const w = forwardRock2Point(R, pivot, lx * lSx, ly * lSy, lz * lSz);
             return this._projectWorldPoint(w[0], w[1], w[2], cam, cssW, cssH);
         };
 
@@ -1569,16 +2275,17 @@ export class RockFormation2Viewport
         }
         ctx.restore();
 
-        // 1. INTERACTIVE 3D SPLINE OVERLAY & KNOT GIZMOS
+        // 1. INTERACTIVE 3D SPLINE OVERLAY & KNOT GIZMOS (WALL & 3D ARCH SPAN)
         if (g.type === 'spline')
         {
-            const arcTable = buildRock2SplineArcTable(g, 18);
+            const isArch = g.splineMode === 'arch_span';
+            const arcTable = buildRock2SplineArcTable(isArch ? { ...g, closedLoop: 0 } : g, isArch ? 24 : 18);
             const samples = arcTable.samples;
 
-            // Ground shadow projection at y = 0 + Upper Cliff-Crest Rim Guide
+            // Ground shadow projection at y = 0 + Upper Crest / Intrados Portal Guide
             ctx.save();
             ctx.setLineDash([4, 4]);
-            ctx.strokeStyle = 'rgba(239, 244, 207, 0.24)';
+            ctx.strokeStyle = isArch ? 'rgba(125, 211, 252, 0.34)' : 'rgba(239, 244, 207, 0.24)';
             ctx.lineWidth = 1.3;
             ctx.beginPath();
             let startedFloor = false;
@@ -1591,21 +2298,42 @@ export class RockFormation2Viewport
             }
             ctx.stroke();
 
-            const cliffH = Math.max(0.8, layer.params?.height ?? 3.5);
+            const cliffH = Math.max(0.5, layer.params?.height ?? 3.5);
             ctx.setLineDash([6, 5]);
-            ctx.strokeStyle = 'rgba(240, 182, 127, 0.36)';
-            ctx.lineWidth = 1.25;
+            ctx.strokeStyle = isArch ? 'rgba(125, 211, 252, 0.52)' : 'rgba(240, 182, 127, 0.36)';
+            ctx.lineWidth = 1.35;
             ctx.beginPath();
             let startedCrest = false;
             for (let i = 0; i < samples.length; i++)
             {
                 const s = samples[i];
-                const pC = projLocal(s.x, s.y + cliffH * (s.scale ?? 1.0), s.z);
+                const yGuide = isArch
+                    ? Math.max(0.0, s.y - cliffH * 0.44 * (s.scale ?? 1.0) * (1.0 - (g.archCrownThin ?? 0.22) * Math.sin((i / Math.max(1, samples.length - 1)) * Math.PI)))
+                    : (s.y + cliffH * (s.scale ?? 1.0));
+                const pC = projLocal(s.x, yGuide, s.z);
                 if (!pC) { startedCrest = false; continue; }
                 if (!startedCrest) { ctx.moveTo(pC.sx, pC.sy); startedCrest = true; }
                 else ctx.lineTo(pC.sx, pC.sy);
             }
             ctx.stroke();
+
+            if (isArch && samples.length >= 3)
+            {
+                const sStart = samples[0];
+                const sEnd = samples[samples.length - 1];
+                let apexSample = samples[Math.floor(samples.length * 0.5)];
+                for (let i = 0; i < samples.length; i++)
+                {
+                    if (samples[i].y > apexSample.y) apexSample = samples[i];
+                }
+                const spanM = (Math.hypot(sEnd.x - sStart.x, sEnd.z - sStart.z) * lSx).toFixed(1);
+                const apexM = (apexSample.y * lSy).toFixed(1);
+                const pApex = projLocal(apexSample.x, apexSample.y + cliffH * 0.65, apexSample.z);
+                if (pApex)
+                {
+                    this._drawGizmoReadoutPill(ctx, pApex.sx, pApex.sy - 14, `Arch Span ${spanM}m · Apex ${apexM}m`, '#f0b67f');
+                }
+            }
             ctx.restore();
 
             // Outward cliff-face normal ticks along the spline
@@ -1933,11 +2661,92 @@ export class RockFormation2Viewport
                 ctx.stroke();
                 ctx.restore();
             }
-            this._drawHandleWithElevationArrow(ctx, cam, cssW, cssH, R, pivot, hw, 0, 0, {
+            this._drawHandleWithElevationArrow(ctx, cam, cssW, cssH, R, pivot, hw * lSx, 0, 0, {
                 idXZ: 'scat_w', kindXZ: 'scatter_width', selected: true, label: 'W', accent: '#c8d99b'
             });
-            this._drawHandleWithElevationArrow(ctx, cam, cssW, cssH, R, pivot, 0, 0, hl, {
+            this._drawHandleWithElevationArrow(ctx, cam, cssW, cssH, R, pivot, 0, 0, hl * lSz, {
                 idXZ: 'scat_l', kindXZ: 'scatter_length', selected: true, label: 'L', accent: '#c8d99b'
+            });
+            return;
+        }
+
+        // 4. INTERACTIVE 3D CLOUD / FLOATING SATELLITES VOLUMETRIC GIZMO
+        if (g.type === 'cloud')
+        {
+            const cx = g.centerX ?? 0.0;
+            const cy = g.centerY ?? 3.8;
+            const cz = g.centerZ ?? 0.0;
+            const rad = Math.max(0.4, g.radiusXZ ?? 4.8);
+            const sprY = Math.max(0.15, g.spreadY ?? 2.1);
+            const innerClear = clamp(g.innerClearance ?? 0.42, 0.0, 0.92);
+            const tiltRad = (g.orbitTiltDeg ?? 14) * DEG2RAD;
+            const cosT = Math.cos(tiltRad), sinT = Math.sin(tiltRad);
+
+            const drawTiltedRing = (ringR, strokeCol, dash) =>
+            {
+                ctx.save();
+                ctx.setLineDash(dash);
+                ctx.strokeStyle = strokeCol;
+                ctx.lineWidth = 1.75;
+                ctx.beginPath();
+                let started = false;
+                for (let s = 0; s <= 48; s++)
+                {
+                    const a = (s / 48) * Math.PI * 2.0;
+                    const xOrb = Math.cos(a) * ringR;
+                    const zOrb = Math.sin(a) * ringR;
+                    const ox = xOrb * cosT;
+                    const oy = xOrb * sinT;
+                    const p = projLocal(cx + ox, cy + oy, cz + zOrb);
+                    if (!p) { started = false; continue; }
+                    if (!started) { ctx.moveTo(p.sx, p.sy); started = true; }
+                    else ctx.lineTo(p.sx, p.sy);
+                }
+                ctx.stroke();
+                ctx.restore();
+            };
+
+            drawTiltedRing(rad, '#7dd3fc', [6, 4]);
+            if (innerClear > 0.08)
+            {
+                drawTiltedRing(rad * innerClear, 'rgba(125, 211, 252, 0.34)', [3, 4]);
+            }
+
+            // Vertical spread envelope line (cy - sprY -> cy + sprY)
+            const pBot = projLocal(cx, cy - sprY, cz);
+            const pTop = projLocal(cx, cy + sprY, cz);
+            if (pBot && pTop)
+            {
+                ctx.save();
+                ctx.setLineDash([4, 4]);
+                ctx.strokeStyle = 'rgba(139, 233, 253, 0.45)';
+                ctx.lineWidth = 1.4;
+                ctx.beginPath();
+                ctx.moveTo(pBot.sx, pBot.sy);
+                ctx.lineTo(pTop.sx, pTop.sy);
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            // Center XZ + Y altitude handle ('C')
+            this._drawHandleWithElevationArrow(ctx, cam, cssW, cssH, R, pivot, cx * lSx, cy * lSy, cz * lSz, {
+                idXZ: 'cld_c_xz', idY: 'cld_c_y',
+                kindXZ: 'cloud_center_xz', kindY: 'cloud_center_y',
+                selected: true, label: 'C', accent: '#7dd3fc'
+            });
+
+            // Outer Orbital Radius handle ('R')
+            this._drawHandleWithElevationArrow(ctx, cam, cssW, cssH, R, pivot, (cx + rad * cosT) * lSx, (cy + rad * sinT) * lSy, cz * lSz, {
+                idXZ: 'cld_r_xz',
+                kindXZ: 'cloud_radius_xz',
+                selected: true, label: 'R', accent: '#38bdf8'
+            });
+
+            // Upper Spread Y handle ('H')
+            this._drawHandleWithElevationArrow(ctx, cam, cssW, cssH, R, pivot, cx * lSx, (cy + sprY) * lSy, cz * lSz, {
+                idXZ: 'cld_h_base', idY: 'cld_h_y',
+                kindXZ: 'cloud_center_xz', kindY: 'cloud_spread_y',
+                selected: false, label: 'H', accent: '#a5f3fc'
             });
         }
     }

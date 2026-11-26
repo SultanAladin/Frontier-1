@@ -66,6 +66,7 @@ import {
     ROCK2_NODE_CATALOG,
     ROCK2_STARTER_STACKS,
     ROCK2_ROCK_POOL_OPTIONS,
+    ROCK2_ARCH_SPLINE_PRESETS,
     getRock2NodeSpec,
     buildRock2SplinePresetKnots,
     normalizeSplineKnots,
@@ -351,6 +352,18 @@ class TerrainWorldStudioApp
                     onLiveGizmoEdit: () => this._rebuildRock2StackNow(false),
                     onCommitGizmoEdit: () =>
                     {
+                        this.refreshChrome();
+                        this.rebuildInspector();
+                    },
+                    onSelectLayer: LayerId =>
+                    {
+                        if (!LayerId || !this.rock2?.stack?.layers?.some(L => L.id === LayerId)) return;
+                        this.rock2.selectedLayerId = LayerId;
+                        if (this.rock2View)
+                        {
+                            this.rock2View.activeLayer = this._getSelectedRock2Layer();
+                            this.rock2View.selectedKnotIndex = 0;
+                        }
                         this.refreshChrome();
                         this.rebuildInspector();
                     }
@@ -1472,6 +1485,24 @@ class TerrainWorldStudioApp
             {
                 E.preventDefault();
                 document.getElementById('maximize-btn')?.click();
+            }
+            else if (this.workspaceMode === 'rock2' && !E.ctrlKey && !E.metaKey && !E.altKey && (K === 'q' || K === 'w' || K === 'e' || K === 'r' || K === 'g'))
+            {
+                if (K === 'g')
+                {
+                    if (this.rock2View) this.rock2View.showGizmos = !this.rock2View.showGizmos;
+                }
+                else
+                {
+                    const Map = { q: 'path', w: 'translate', e: 'rotate', r: 'scale' };
+                    if (this.rock2View)
+                    {
+                        this.rock2View.showGizmos = true;
+                        this.rock2View.setGizmoToolMode(Map[K]);
+                    }
+                }
+                this._syncRock2ToolbarButtons();
+                return;
             }
             else if (K === 'g' && this.workspaceMode !== 'rock2') this.select3DTool('spline');
             else if (K === 'k' && this.workspaceMode !== 'rock2') this.select3DTool('spline-add');
@@ -3725,6 +3756,35 @@ class TerrainWorldStudioApp
             if (this.rock2View) this.rock2View.lens = Number(E.target.value) | 0;
         });
 
+        for (const [BtnId, Mode] of [
+            ['rock2-tool-path', 'path'],
+            ['rock2-tool-move', 'translate'],
+            ['rock2-tool-rotate', 'rotate'],
+            ['rock2-tool-scale', 'scale']
+        ])
+        {
+            document.getElementById(BtnId)?.addEventListener('click', () =>
+            {
+                if (!this.rock2View) return;
+                this.rock2View.showGizmos = true;
+                this.rock2View.setGizmoToolMode(Mode);
+                this._syncRock2ToolbarButtons();
+            });
+        }
+
+        document.getElementById('rock2-tool-reset')?.addEventListener('click', () =>
+        {
+            const Lyr = this._getSelectedRock2Layer();
+            if (!Lyr || !Lyr.params) return;
+            this._pushRock2UndoSnapshot();
+            Lyr.params.posX = 0; Lyr.params.posY = 0; Lyr.params.posZ = 0;
+            Lyr.params.yawDeg = 0; Lyr.params.pitchDeg = 0; Lyr.params.rollDeg = 0;
+            Lyr.params.scaleX = 1.0; Lyr.params.scaleY = 1.0; Lyr.params.scaleZ = 1.0;
+            this._rebuildRock2StackNow(false);
+            this.refreshChrome();
+            this.rebuildInspector();
+        });
+
         this._syncRock2ToolbarButtons();
     }
 
@@ -3733,13 +3793,20 @@ class TerrainWorldStudioApp
         const IsQef = this.rock2View?.renderMode === 'qef-mesh';
         document.getElementById('rock2-mode-ray-btn')?.classList.toggle('active', !IsQef);
         document.getElementById('rock2-mode-qef-btn')?.classList.toggle('active', !!IsQef);
-        document.getElementById('rock2-gizmo-btn')?.classList.toggle('active', this.rock2View ? !!this.rock2View.showGizmos : true);
+        const ShowGiz = this.rock2View ? !!this.rock2View.showGizmos : true;
+        document.getElementById('rock2-gizmo-btn')?.classList.toggle('active', ShowGiz);
         const WireBtn = document.getElementById('rock2-wire-btn');
         if (WireBtn)
         {
             WireBtn.style.display = IsQef ? '' : 'none';
             WireBtn.classList.toggle('active', !!(IsQef && this.rock2View?.showWireframe));
         }
+
+        const CurTool = this.rock2View?.gizmoToolMode || 'path';
+        document.getElementById('rock2-tool-path')?.classList.toggle('active', ShowGiz && CurTool === 'path');
+        document.getElementById('rock2-tool-move')?.classList.toggle('active', ShowGiz && CurTool === 'translate');
+        document.getElementById('rock2-tool-rotate')?.classList.toggle('active', ShowGiz && CurTool === 'rotate');
+        document.getElementById('rock2-tool-scale')?.classList.toggle('active', ShowGiz && CurTool === 'scale');
     }
 
     _pushRock2UndoSnapshot()
@@ -4047,7 +4114,7 @@ class TerrainWorldStudioApp
                 const InstN = CompLyr ? CompLyr.instanceCount : evaluateRock2GeneratorInstances(Lyr.generator, Lyr.params).instances.length;
                 const GenShort = GenType === 'array' && Lyr.generator?.arrayMode === 'hex'
                     ? 'HEX'
-                    : GenType.toUpperCase();
+                    : (GenType === 'spline' && Lyr.generator?.splineMode === 'arch_span' ? 'ARCH' : GenType.toUpperCase());
                 MetaItems.push(MakeEl('span', 'rock2-gen-pill', `${GenShort} ×${InstN}`));
             }
             const Meta = MakeEl('div', 'rock2-layer-meta', MetaItems);
@@ -4304,7 +4371,7 @@ class TerrainWorldStudioApp
 
         const GenBadge = GenType === 'none'
             ? 'SINGLE ×1'
-            : `${(GenType === 'array' && G.arrayMode === 'hex' ? 'HEX' : GenType).toUpperCase()} ×${GenCount}`;
+            : `${(GenType === 'array' && G.arrayMode === 'hex' ? 'HEX' : (GenType === 'spline' && G.splineMode === 'arch_span' ? 'ARCH' : GenType)).toUpperCase()} ×${GenCount}`;
         const GenTitle = 'Placement Generator';
         const GenGroup = MakePropertyGroup(
             GenTitle,
@@ -4312,15 +4379,16 @@ class TerrainWorldStudioApp
             GenBadge,
             SavedOpen(GenTitle, true),
             GenType === 'none'
-                ? 'Single plain rock. Attach Spline, Array, Splatter, or Scatter to distribute this layer\'s Base Rock without hardcoding.'
+                ? 'Single plain rock. Attach Spline (Wall or 3D Arch), Array, Cloud, Splatter, or Scatter to distribute this layer\'s Base Rock.'
                 : `Distributing ${GenCount} instances of ${Def.name} on this layer.`
         );
 
-        const GenTabs = MakeEl('div', 'rock2-gen-tabs');
+        const GenTabs = MakeEl('div', 'rock2-gen-tabs cols-3');
         for (const [TabLabel, TabId] of [
             ['Single', 'none'],
-            ['Spline', 'spline'],
+            ['Spline / Arch', 'spline'],
             ['Array', 'array'],
+            ['3D Cloud', 'cloud'],
             ['Splatter', 'splatter'],
             ['Scatter', 'scatter']
         ])
@@ -4342,20 +4410,71 @@ class TerrainWorldStudioApp
 
         if (GenType === 'spline')
         {
+            const IsArch = G.splineMode === 'arch_span';
             G.knots = normalizeSplineKnots(G.knots);
             const Knots = G.knots;
             const SelK = Math.max(0, Math.min(Knots.length - 1, this.rock2View?.selectedKnotIndex ?? 0));
             if (this.rock2View) this.rock2View.selectedKnotIndex = SelK;
 
-            // Quick Canyon & Cliff Curve Presets (re-seeds editable 3D viewport knots)
-            const PresetRow = MakeEl('div', 'rock2-gen-tabs');
-            for (const [PLabel, PId] of [
-                ['Cliff Arc', 'arc'],
-                ['S-Canyon', 'scurve'],
-                ['Box U', 'box_canyon'],
-                ['Line', 'line'],
-                ['Ring', 'ring']
+            // Spline Mode Toggle: Canyon / Cliff Wall vs 3D Rock Arch Span
+            const ModeRow = MakeEl('div', 'rock2-gen-tabs cols-2');
+            for (const [MLabel, MId] of [
+                ['Canyon / Cliff Wall', 'wall'],
+                ['3D Rock Arch Span', 'arch_span']
             ])
+            {
+                const MB = MakeEl('button', 'rock2-gen-tab' + ((G.splineMode || 'wall') === MId ? ' active' : ''), MLabel);
+                MB.type = 'button';
+                MB.addEventListener('click', () =>
+                {
+                    if ((G.splineMode || 'wall') === MId) return;
+                    this._pushRock2UndoSnapshot();
+                    G.splineMode = MId;
+                    if (MId === 'arch_span')
+                    {
+                        G.closedLoop = 0;
+                        if (!ROCK2_ARCH_SPLINE_PRESETS.has(G.splinePreset))
+                        {
+                            G.splinePreset = 'desert_arch';
+                            G.knots = buildRock2SplinePresetKnots('desert_arch', 9.6, 2.0);
+                        }
+                        if ((G.count ?? 7) < 8) G.count = 9;
+                    }
+                    else
+                    {
+                        if (ROCK2_ARCH_SPLINE_PRESETS.has(G.splinePreset))
+                        {
+                            G.splinePreset = 'arc';
+                            G.knots = buildRock2SplinePresetKnots('arc', 9.6, 2.1);
+                        }
+                    }
+                    if (this.rock2View) this.rock2View.selectedKnotIndex = 0;
+                    this._rebuildRock2StackNow(false);
+                    this.refreshChrome();
+                    this.rebuildInspector();
+                });
+                ModeRow.appendChild(MB);
+            }
+            GenGroup.Body.appendChild(ModeRow);
+
+            // Context-sensitive Curve Presets (Wall presets vs 3D Arch Span presets — zero dead presets!)
+            const PresetChoices = IsArch
+                ? [
+                    ['Desert Arch', 'desert_arch'],
+                    ['Sea Arch', 'sea_arch'],
+                    ['Cathedral', 'cathedral_arch'],
+                    ['Nat. Bridge', 'natural_bridge']
+                ]
+                : [
+                    ['Cliff Arc', 'arc'],
+                    ['S-Canyon', 'scurve'],
+                    ['Box U', 'box_canyon'],
+                    ['Line', 'line'],
+                    ['Ring', 'ring']
+                ];
+
+            const PresetRow = MakeEl('div', 'rock2-gen-tabs' + (IsArch ? ' cols-4' : ''));
+            for (const [PLabel, PId] of PresetChoices)
             {
                 const PB = MakeEl('button', 'rock2-gen-tab' + (G.splinePreset === PId ? ' active' : ''), PLabel);
                 PB.type = 'button';
@@ -4364,7 +4483,7 @@ class TerrainWorldStudioApp
                 {
                     this._pushRock2UndoSnapshot();
                     G.splinePreset = PId;
-                    G.closedLoop = PId === 'ring' ? 1 : 0;
+                    G.closedLoop = (!IsArch && PId === 'ring') ? 1 : 0;
                     G.knots = buildRock2SplinePresetKnots(PId, 9.6, 2.1);
                     if (this.rock2View) this.rock2View.selectedKnotIndex = 0;
                     this._rebuildRock2StackNow(false);
@@ -4443,16 +4562,28 @@ class TerrainWorldStudioApp
 
             const CurKnot = Knots[SelK];
             GenGroup.Body.appendChild(MakeSliderPillRow(`Knot #${SelK + 1} X`, -16.0, 16.0, 0.1, CurKnot.x ?? 0, 2, 'm', V => { CurKnot.x = V; OnLive(); }, OnCommit));
-            GenGroup.Body.appendChild(MakeSliderPillRow(`Knot #${SelK + 1} Y (Height)`, -6.0, 10.0, 0.1, CurKnot.y ?? 0, 2, 'm', V => { CurKnot.y = V; OnLive(); }, OnCommit));
+            GenGroup.Body.appendChild(MakeSliderPillRow(`Knot #${SelK + 1} Y (Height)`, -6.0, 14.0, 0.1, CurKnot.y ?? 0, 2, 'm', V => { CurKnot.y = V; OnLive(); }, OnCommit));
             GenGroup.Body.appendChild(MakeSliderPillRow(`Knot #${SelK + 1} Z`, -16.0, 16.0, 0.1, CurKnot.z ?? 0, 2, 'm', V => { CurKnot.z = V; OnLive(); }, OnCommit));
             GenGroup.Body.appendChild(MakeSliderPillRow(`Knot #${SelK + 1} Scale`, 0.25, 2.5, 0.05, CurKnot.scale ?? 1.0, 2, '×', V => { CurKnot.scale = V; OnLive(); }, OnCommit));
 
-            if (Knots.length >= 3)
+            if (!IsArch && Knots.length >= 3)
             {
                 GenGroup.Body.appendChild(MakeSliderPillRow('Closed Ring Loop', 0, 1, 1, G.closedLoop ?? 0, 0, '', V => { G.closedLoop = Math.round(V); OnLive(); }, OnCommit));
             }
 
-            GenGroup.Body.appendChild(MakeSliderPillRow('Rock / Buttress Count', 2, 48, 1, G.count ?? 7, 0, '#', V => { G.count = Math.round(V); OnLive(); }, OnCommit));
+            if (IsArch)
+            {
+                GenGroup.Body.appendChild(MakeSliderPillRow('Arch Voussoir Count', 4, 36, 1, G.count ?? 9, 0, '#', V => { G.count = Math.round(V); OnLive(); }, OnCommit));
+                GenGroup.Body.appendChild(MakeSliderPillRow('Pier Base Flare', 0.0, 1.25, 0.02, G.archPierFlare ?? 0.42, 2, 'w', V => { G.archPierFlare = V; OnLive(); }, OnCommit));
+                GenGroup.Body.appendChild(MakeSliderPillRow('Keystone Crown Thinness', 0.0, 0.65, 0.02, G.archCrownThin ?? 0.22, 2, 'w', V => { G.archCrownThin = V; OnLive(); }, OnCommit));
+                GenGroup.Body.appendChild(MakeSliderPillRow('Radial ↔ Strata Bedding', 0.0, 1.0, 0.02, G.archBeddingBlend ?? 0.45, 2, 'w', V => { G.archBeddingBlend = V; OnLive(); }, OnCommit));
+                GenGroup.Body.appendChild(MakeSliderPillRow('Pier Flanking Buttresses', 0.0, 1.0, 0.02, G.archButtress ?? 0.45, 2, 'w', V => { G.archButtress = V; OnLive(); }, OnCommit));
+                GenGroup.Body.appendChild(MakeSliderPillRow('Extrados Shoulder Caps', 0.0, 1.0, 0.02, G.archExtrados ?? 0.35, 2, 'w', V => { G.archExtrados = V; OnLive(); }, OnCommit));
+            }
+            else
+            {
+                GenGroup.Body.appendChild(MakeSliderPillRow('Rock / Buttress Count', 2, 48, 1, G.count ?? 7, 0, '#', V => { G.count = Math.round(V); OnLive(); }, OnCommit));
+            }
             GenGroup.Body.appendChild(MakeSelectRow('Rock Variety Pool', ROCK2_ROCK_POOL_OPTIONS, G.rockPoolMode || 'varied_base', Val =>
             {
                 this._pushRock2UndoSnapshot();
@@ -4662,29 +4793,83 @@ class TerrainWorldStudioApp
             GenGroup.Body.appendChild(MakeSliderPillRow('Intra-Layer Fuse', 0.0, 1.5, 0.02, G.intraBlend ?? 0.0, 2, 'm', V => { G.intraBlend = V; OnLive(); }, OnCommit));
             GenGroup.Body.appendChild(MakeSliderPillRow('Generator Seed', 1, 9999, 1, G.seed ?? 1031, 0, '#', V => { G.seed = Math.round(V); OnLive(); }, OnCommit));
         }
+        else if (GenType === 'cloud')
+        {
+            GenGroup.Body.appendChild(MakeSelectRow(
+                '3D Cloud Formation',
+                [
+                    ['Tilted Orbital Asteroid Halo', 'orbit_halo'],
+                    ['3D Spherical Debris Nebula', 'cluster_nebula'],
+                    ['Rising Levitation Helix Vortex', 'rising_vortex'],
+                    ['Directional Shatter / Comet Wake', 'shatter_wake']
+                ],
+                G.cloudMode || 'orbit_halo',
+                Val =>
+                {
+                    this._pushRock2UndoSnapshot();
+                    G.cloudMode = Val;
+                    this._rebuildRock2StackNow(false);
+                    this.refreshChrome();
+                    this.rebuildInspector();
+                }
+            ));
+
+            GenGroup.Body.appendChild(MakeSelectRow('Rock Variety Pool', ROCK2_ROCK_POOL_OPTIONS, G.rockPoolMode || 'varied_base', Val =>
+            {
+                this._pushRock2UndoSnapshot();
+                G.rockPoolMode = Val;
+                this._rebuildRock2StackNow(false);
+                this.rebuildInspector();
+            }));
+            if (G.rockPoolMode !== 'uniform_base')
+            {
+                GenGroup.Body.appendChild(MakeSliderPillRow('Per-Rock Shape Variety', 0.0, 1.0, 0.02, G.shapeVariety ?? 0.86, 2, 'w', V => { G.shapeVariety = V; OnLive(); }, OnCommit));
+                GenGroup.Body.appendChild(MakeSliderPillRow('Proportion Spread', 0.0, 0.70, 0.02, G.aspectVariation ?? 0.32, 2, 'w', V => { G.aspectVariation = V; OnLive(); }, OnCommit));
+            }
+
+            GenGroup.Body.appendChild(MakeSliderPillRow('Satellite Rock Count', 2, 48, 1, G.count ?? 10, 0, '#', V => { G.count = Math.round(V); OnLive(); }, OnCommit));
+            GenGroup.Body.appendChild(MakeSliderPillRow('Cloud Center X', -14.0, 14.0, 0.1, G.centerX ?? 0.0, 2, 'm', V => { G.centerX = V; OnLive(); }, OnCommit));
+            GenGroup.Body.appendChild(MakeSliderPillRow('Cloud Altitude Y', -2.0, 14.0, 0.1, G.centerY ?? 3.8, 2, 'm', V => { G.centerY = V; OnLive(); }, OnCommit));
+            GenGroup.Body.appendChild(MakeSliderPillRow('Cloud Center Z', -14.0, 14.0, 0.1, G.centerZ ?? 0.0, 2, 'm', V => { G.centerZ = V; OnLive(); }, OnCommit));
+            GenGroup.Body.appendChild(MakeSliderPillRow('Orbital Radius (XZ)', 0.5, 15.0, 0.1, G.radiusXZ ?? 4.8, 2, 'm', V => { G.radiusXZ = V; OnLive(); }, OnCommit));
+            GenGroup.Body.appendChild(MakeSliderPillRow('Vertical Spread (±Y)', 0.15, 9.0, 0.05, G.spreadY ?? 2.1, 2, 'm', V => { G.spreadY = V; OnLive(); }, OnCommit));
+            GenGroup.Body.appendChild(MakeSliderPillRow('Inner Clearance Void', 0.0, 0.90, 0.02, G.innerClearance ?? 0.42, 2, 'w', V => { G.innerClearance = V; OnLive(); }, OnCommit));
+            GenGroup.Body.appendChild(MakeSliderPillRow('Orbital Plane Tilt', -65, 65, 1, G.orbitTiltDeg ?? 14, 0, '°', V => { G.orbitTiltDeg = V; OnLive(); }, OnCommit));
+            GenGroup.Body.appendChild(MakeSliderPillRow('Min Rock Scale', 0.18, 2.0, 0.04, G.scaleMin ?? 0.36, 2, '×', V => { G.scaleMin = V; OnLive(); }, OnCommit));
+            GenGroup.Body.appendChild(MakeSliderPillRow('Max Rock Scale', 0.25, 2.6, 0.04, G.scaleMax ?? 1.08, 2, '×', V => { G.scaleMax = V; OnLive(); }, OnCommit));
+            GenGroup.Body.appendChild(MakeSliderPillRow('Radial Size Falloff', -1.0, 1.0, 0.04, G.radialSizeFalloff ?? 0.44, 2, 'w', V => { G.radialSizeFalloff = V; OnLive(); }, OnCommit));
+            GenGroup.Body.appendChild(MakeSliderPillRow('Random Angle (±Yaw)', 0, 180, 2, G.yawJitterDeg ?? 180, 0, '°', V => { G.yawJitterDeg = V; OnLive(); }, OnCommit));
+            GenGroup.Body.appendChild(MakeSliderPillRow('Random Tilt (±Pitch/Roll)', 0, 60, 1, G.tiltJitterDeg ?? 22, 0, '°', V => { G.tiltJitterDeg = V; OnLive(); }, OnCommit));
+            GenGroup.Body.appendChild(MakeSliderPillRow('Intra-Layer Fuse', 0.0, 1.5, 0.02, G.intraBlend ?? 0.0, 2, 'm', V => { G.intraBlend = V; OnLive(); }, OnCommit));
+            GenGroup.Body.appendChild(MakeSliderPillRow('Generator Seed', 1, 9999, 1, G.seed ?? 1187, 0, '#', V => { G.seed = Math.round(V); OnLive(); }, OnCommit));
+        }
 
         Content.appendChild(GenGroup.Group);
 
-        // 3. Base Rock Dimensions & Layer 3D Transform
+        // 3. Base Rock Dimensions & Layer 3D Transform (Move / Rotate / Scale)
         const XfTitle = 'Base Rock Size & Layer Transform';
         const XfGroup = MakePropertyGroup(
             XfTitle,
             'Move',
             `${(P.width ?? 4).toFixed(1)}×${(P.height ?? 3).toFixed(1)}×${(P.length ?? 4).toFixed(1)}m`,
             SavedOpen(XfTitle, true),
-            'Base rock metric dimensions (instanced by any attached generator) and whole-layer 3D pose.'
+            'Base rock dimensions and whole-layer 3D Move (W), Rotate (E) & Scale (R) pose.'
         );
         XfGroup.Body.appendChild(MakeSliderPillRow('Width (X)', 0.15, 14.0, 0.05, P.width ?? 4.0, 2, 'm', V => { P.width = V; OnLive(); }, OnCommit));
         XfGroup.Body.appendChild(MakeSliderPillRow('Height (Y)', 0.15, 14.0, 0.05, P.height ?? 3.5, 2, 'm', V => { P.height = V; OnLive(); }, OnCommit));
         XfGroup.Body.appendChild(MakeSliderPillRow('Length (Z)', 0.15, 14.0, 0.05, P.length ?? 4.0, 2, 'm', V => { P.length = V; OnLive(); }, OnCommit));
 
-        XfGroup.Body.appendChild(MakeSliderPillRow('Position X', -8.0, 8.0, 0.05, P.posX ?? 0, 2, 'm', V => { P.posX = V; OnLive(); }, OnCommit));
-        XfGroup.Body.appendChild(MakeSliderPillRow('Position Y', -3.0, 8.0, 0.05, P.posY ?? 0, 2, 'm', V => { P.posY = V; OnLive(); }, OnCommit));
-        XfGroup.Body.appendChild(MakeSliderPillRow('Position Z', -8.0, 8.0, 0.05, P.posZ ?? 0, 2, 'm', V => { P.posZ = V; OnLive(); }, OnCommit));
+        XfGroup.Body.appendChild(MakeSliderPillRow('Position X', -16.0, 16.0, 0.05, P.posX ?? 0, 2, 'm', V => { P.posX = V; OnLive(); }, OnCommit));
+        XfGroup.Body.appendChild(MakeSliderPillRow('Position Y', -6.0, 14.0, 0.05, P.posY ?? 0, 2, 'm', V => { P.posY = V; OnLive(); }, OnCommit));
+        XfGroup.Body.appendChild(MakeSliderPillRow('Position Z', -16.0, 16.0, 0.05, P.posZ ?? 0, 2, 'm', V => { P.posZ = V; OnLive(); }, OnCommit));
 
         XfGroup.Body.appendChild(MakeSliderPillRow('Yaw', -180, 180, 1, P.yawDeg ?? 0, 0, '°', V => { P.yawDeg = V; OnLive(); }, OnCommit));
-        XfGroup.Body.appendChild(MakeSliderPillRow('Pitch', -90, 90, 1, P.pitchDeg ?? 0, 0, '°', V => { P.pitchDeg = V; OnLive(); }, OnCommit));
-        XfGroup.Body.appendChild(MakeSliderPillRow('Roll', -90, 90, 1, P.rollDeg ?? 0, 0, '°', V => { P.rollDeg = V; OnLive(); }, OnCommit));
+        XfGroup.Body.appendChild(MakeSliderPillRow('Pitch', -89, 89, 1, P.pitchDeg ?? 0, 0, '°', V => { P.pitchDeg = V; OnLive(); }, OnCommit));
+        XfGroup.Body.appendChild(MakeSliderPillRow('Roll', -89, 89, 1, P.rollDeg ?? 0, 0, '°', V => { P.rollDeg = V; OnLive(); }, OnCommit));
+
+        XfGroup.Body.appendChild(MakeSliderPillRow('Layer Scale X', 0.15, 4.0, 0.02, P.scaleX ?? 1.0, 2, '×', V => { P.scaleX = V; OnLive(); }, OnCommit));
+        XfGroup.Body.appendChild(MakeSliderPillRow('Layer Scale Y', 0.15, 4.0, 0.02, P.scaleY ?? 1.0, 2, '×', V => { P.scaleY = V; OnLive(); }, OnCommit));
+        XfGroup.Body.appendChild(MakeSliderPillRow('Layer Scale Z', 0.15, 4.0, 0.02, P.scaleZ ?? 1.0, 2, '×', V => { P.scaleZ = V; OnLive(); }, OnCommit));
         XfGroup.Body.appendChild(MakeSliderPillRow('Shape Seed', 1, 9999, 1, P.seed ?? 101, 0, '#', V => { P.seed = Math.round(V); OnLive(); }, OnCommit));
 
         const XfBtns = MakeEl('div', 'studio-btn-row');
@@ -4697,13 +4882,14 @@ class TerrainWorldStudioApp
             this._rebuildRock2StackNow(false);
             this.rebuildInspector();
         });
-        const ZeroBtn = MakeEl('button', 'button', 'Reset Pose');
+        const ZeroBtn = MakeEl('button', 'button', 'Reset Pose & Scale');
         ZeroBtn.type = 'button';
         ZeroBtn.addEventListener('click', () =>
         {
             this._pushRock2UndoSnapshot();
             P.posX = 0; P.posY = 0; P.posZ = 0;
             P.yawDeg = 0; P.pitchDeg = 0; P.rollDeg = 0;
+            P.scaleX = 1.0; P.scaleY = 1.0; P.scaleZ = 1.0;
             this._rebuildRock2StackNow(false);
             this.rebuildInspector();
         });

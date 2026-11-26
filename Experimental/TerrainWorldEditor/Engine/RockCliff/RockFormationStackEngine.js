@@ -657,11 +657,63 @@ const ROCK_POOLS = {
 };
 
 /**
- * Builds editable 3D Catmull-Rom knots `[{ x, y, z, scale }]` for quick cliff & canyon spline presets.
+ * Builds editable 3D Catmull-Rom knots `[{ x, y, z, scale }]` for quick cliff, canyon & 3D rock arch spline presets.
  */
 export function buildRock2SplinePresetKnots(preset = 'arc', span = 9.2, depth = 2.0)
 {
     const half = span * 0.5;
+    if (preset === 'desert_arch')
+    {
+        const archSpan = Math.max(6.0, span * 1.16);
+        const h = archSpan * 0.5;
+        const apexY = archSpan * 0.56;
+        return [
+            { x: -h,        y: 0.0,          z:  depth * 0.16, scale: 1.24 },
+            { x: -h * 0.68, y: apexY * 0.68, z: -depth * 0.10, scale: 1.02 },
+            { x:  0.0,      y: apexY,        z: -depth * 0.20, scale: 0.82 },
+            { x:  h * 0.68, y: apexY * 0.66, z:  depth * 0.08, scale: 1.02 },
+            { x:  h,        y: 0.0,          z:  depth * 0.20, scale: 1.26 }
+        ];
+    }
+    if (preset === 'sea_arch')
+    {
+        const archSpan = Math.max(6.4, span * 1.20);
+        const h = archSpan * 0.5;
+        const apexY = archSpan * 0.52;
+        return [
+            { x: -h,        y: 0.0,          z: -depth * 0.25, scale: 1.42 },
+            { x: -h * 0.58, y: apexY * 0.86, z: -depth * 0.12, scale: 1.18 },
+            { x:  h * 0.06, y: apexY,        z:  depth * 0.06, scale: 0.88 },
+            { x:  h * 0.66, y: apexY * 0.64, z:  depth * 0.22, scale: 0.98 },
+            { x:  h * 0.96, y: 0.0,          z:  depth * 0.30, scale: 1.18 }
+        ];
+    }
+    if (preset === 'cathedral_arch')
+    {
+        const archSpan = Math.max(6.0, span * 1.14);
+        const h = archSpan * 0.5;
+        const apexY = archSpan * 0.72;
+        return [
+            { x: -h,        y: 0.0,          z:  depth * 0.14, scale: 1.30 },
+            { x: -h * 0.64, y: apexY * 0.64, z: -depth * 0.08, scale: 1.04 },
+            { x:  0.0,      y: apexY,        z: -depth * 0.16, scale: 0.78 },
+            { x:  h * 0.64, y: apexY * 0.64, z: -depth * 0.08, scale: 1.04 },
+            { x:  h,        y: 0.0,          z:  depth * 0.14, scale: 1.30 }
+        ];
+    }
+    if (preset === 'natural_bridge')
+    {
+        const archSpan = Math.max(6.8, span * 1.24);
+        const h = archSpan * 0.5;
+        const deckY = archSpan * 0.46;
+        return [
+            { x: -h,        y: 0.0,          z:  depth * 0.12, scale: 1.32 },
+            { x: -h * 0.56, y: deckY * 0.94, z: -depth * 0.08, scale: 0.96 },
+            { x:  0.0,      y: deckY,        z: -depth * 0.12, scale: 0.84 },
+            { x:  h * 0.56, y: deckY * 0.94, z: -depth * 0.08, scale: 0.96 },
+            { x:  h,        y: 0.0,          z:  depth * 0.12, scale: 1.32 }
+        ];
+    }
     if (preset === 'scurve')
     {
         return [
@@ -711,6 +763,8 @@ export function buildRock2SplinePresetKnots(preset = 'arc', span = 9.2, depth = 
     ];
 }
 
+export const ROCK2_ARCH_SPLINE_PRESETS = new Set(['desert_arch', 'sea_arch', 'cathedral_arch', 'natural_bridge']);
+
 export const ROCK2_GENERATOR_DEFAULTS = {
     none: {
         type: 'none'
@@ -718,6 +772,7 @@ export const ROCK2_GENERATOR_DEFAULTS = {
     spline: {
         type: 'spline',
         seed: 701,
+        splineMode: 'wall',     // 'wall' (Canyon / Cliff Wall) | 'arch_span' (3D Rock Arch Span)
         splinePreset: 'arc',
         closedLoop: 0,
         knots: buildRock2SplinePresetKnots('arc', 9.2, 2.0),
@@ -726,6 +781,12 @@ export const ROCK2_GENERATOR_DEFAULTS = {
         yawOffsetDeg: 0,
         spacingJitter: 0.14,
         lateralJitter: 0.08,
+        // 3D Arch Span geological controls (active when splineMode === 'arch_span')
+        archPierFlare: 0.42,
+        archCrownThin: 0.22,
+        archBeddingBlend: 0.45,
+        archButtress: 0.45,
+        archExtrados: 0.35,
         rockPoolMode: 'varied_base',
         shapeVariety: 0.68,
         aspectVariation: 0.22,
@@ -817,6 +878,29 @@ export const ROCK2_GENERATOR_DEFAULTS = {
         embedDepth: 0.14,
         intraBlend: 0.0,
         uniqueSeeds: 1
+    },
+    cloud: {
+        type: 'cloud',
+        seed: 1187,
+        cloudMode: 'orbit_halo', // 'orbit_halo' | 'cluster_nebula' | 'rising_vortex' | 'shatter_wake'
+        count: 10,
+        centerX: 0.0,
+        centerY: 3.8,
+        centerZ: 0.0,
+        radiusXZ: 4.8,
+        spreadY: 2.1,
+        innerClearance: 0.42,
+        orbitTiltDeg: 14,
+        rockPoolMode: 'varied_base',
+        shapeVariety: 0.86,
+        aspectVariation: 0.32,
+        scaleMin: 0.36,
+        scaleMax: 1.08,
+        radialSizeFalloff: 0.44,
+        yawJitterDeg: 180,
+        tiltJitterDeg: 22,
+        intraBlend: 0.0,
+        uniqueSeeds: 1
     }
 };
 
@@ -842,9 +926,23 @@ export function createRock2Generator(type = 'none', overrides = {})
 
     if (cleanType === 'spline')
     {
-        const preset = overrides.splinePreset || overrides.splineShape || merged.splinePreset || 'arc';
+        let preset = overrides.splinePreset || overrides.splineShape || merged.splinePreset || 'arc';
+        if (overrides.splineMode === 'arch_span' && !overrides.splinePreset && !Array.isArray(overrides.knots) && !ROCK2_ARCH_SPLINE_PRESETS.has(preset))
+        {
+            preset = 'desert_arch';
+        }
+        if (ROCK2_ARCH_SPLINE_PRESETS.has(preset) && overrides.splineMode === undefined)
+        {
+            merged.splineMode = 'arch_span';
+        }
         merged.splinePreset = preset;
-        if (preset === 'ring' && overrides.closedLoop === undefined && !Array.isArray(overrides.knots))
+        if (merged.splineMode === 'arch_span')
+        {
+            merged.closedLoop = 0;
+            if (overrides.count === undefined) merged.count = 9;
+            if (overrides.intraBlend === undefined) merged.intraBlend = 0.28;
+        }
+        else if (preset === 'ring' && overrides.closedLoop === undefined && !Array.isArray(overrides.knots))
         {
             merged.closedLoop = 1;
         }
@@ -852,7 +950,7 @@ export function createRock2Generator(type = 'none', overrides = {})
         {
             merged.knots = normalizeSplineKnots(overrides.knots);
         }
-        else if (overrides.splineShape || overrides.splinePreset || overrides.pathLength !== undefined || overrides.curveBend !== undefined || overrides.ringRadius !== undefined)
+        else if (overrides.splineMode === 'arch_span' || ROCK2_ARCH_SPLINE_PRESETS.has(preset) || overrides.splineShape || overrides.splinePreset || overrides.pathLength !== undefined || overrides.curveBend !== undefined || overrides.ringRadius !== undefined)
         {
             const span = overrides.ringRadius !== undefined ? overrides.ringRadius * 2.38 : (overrides.pathLength ?? 9.2);
             const bend = overrides.curveBend ?? 2.0;
@@ -912,8 +1010,8 @@ export function createRock2Layer(type = 'big_boulder', overrides = {})
 
     const spec = getRock2NodeSpec(cleanType);
     const seq = _nextRock2LayerSeq++;
-    const params = { ...spec.defaults, ...(overrides.params || {}) };
-    for (const k of Object.keys(spec.defaults))
+    const params = { scaleX: 1.0, scaleY: 1.0, scaleZ: 1.0, ...spec.defaults, ...(overrides.params || {}) };
+    for (const k of [...Object.keys(spec.defaults), 'scaleX', 'scaleY', 'scaleZ'])
     {
         if (overrides[k] !== undefined) params[k] = overrides[k];
     }
@@ -1270,6 +1368,96 @@ export const ROCK2_STARTER_STACKS = [
                 })
             })
         ]
+    },
+    {
+        id: 'stack-sandstone-arch',
+        name: '11 · Moab Sandstone Arch (3D Arch Spline)',
+        badge: '3D ARCH SPAN',
+        buildLayers: () => [
+            createRock2Layer('cliff_block', {
+                name: 'Entrada Sandstone Arch Span (3D Spline)',
+                combineMode: 'union',
+                stoneTone: 'sandstone',
+                seed: 9612,
+                width: 2.35, height: 1.88, length: 2.30,
+                cliffProfile: 'stepped', roundness: 0.18, ledgeStep: 0.34, batterTaper: 0.14,
+                generator: createRock2Generator('spline', {
+                    seed: 9620,
+                    splineMode: 'arch_span',
+                    splinePreset: 'desert_arch',
+                    count: 10,
+                    archPierFlare: 0.46,
+                    archCrownThin: 0.24,
+                    archBeddingBlend: 0.46,
+                    archButtress: 0.55,
+                    archExtrados: 0.40,
+                    shapeVariety: 0.72,
+                    intraBlend: 0.30,
+                    uniqueSeeds: 1
+                })
+            }),
+            createRock2Layer('big_boulder', {
+                name: 'Perimeter Pier Scree Ring',
+                combineMode: 'union',
+                stoneTone: 'redSlate',
+                seed: 9645,
+                width: 1.65, height: 1.15, length: 1.50,
+                roundness: 0.24, flatBottom: 0.78,
+                generator: createRock2Generator('array', {
+                    arrayMode: 'radial',
+                    radialCount: 6,
+                    ringRadius: 5.9,
+                    arcAngleDeg: 320,
+                    spacingJitter: 0.35,
+                    posJitter: 0.45,
+                    rockPoolMode: 'mixed_boulders',
+                    scaleVariation: 0.34,
+                    yawJitterDeg: 180,
+                    shapeVariety: 0.82
+                })
+            })
+        ]
+    },
+    {
+        id: 'stack-sky-orbit-cloud',
+        name: '12 · Sky Island + 3D Orbital Debris Cloud',
+        badge: '3D CLOUD ORBIT',
+        buildLayers: () => [
+            createRock2Layer('floating_rock', {
+                name: 'Central Levitating Citadel Island',
+                combineMode: 'union',
+                stoneTone: 'granite',
+                seed: 9810,
+                width: 4.8, height: 5.0, length: 4.4,
+                floatingStyle: 'sky_island',
+                hoverHeight: 2.8, keelRatio: 0.64, keelSharpness: 0.80, topFlatness: 0.88, rimOverhang: 0.38, keelSpurs: 3
+            }),
+            createRock2Layer('big_boulder', {
+                name: 'Orbital Asteroid & Shard Halo (3D Cloud)',
+                combineMode: 'union',
+                stoneTone: 'basalt',
+                seed: 9844,
+                width: 1.35, height: 1.10, length: 1.20,
+                facetCount: 11, roundness: 0.14, angularity: 0.34, flatBottom: 0.0,
+                generator: createRock2Generator('cloud', {
+                    seed: 9860,
+                    cloudMode: 'orbit_halo',
+                    count: 12,
+                    centerX: 0.0,
+                    centerY: 5.2,
+                    centerZ: 0.0,
+                    radiusXZ: 5.4,
+                    spreadY: 2.2,
+                    innerClearance: 0.56,
+                    orbitTiltDeg: 16,
+                    rockPoolMode: 'mixed_boulders',
+                    scaleMin: 0.42,
+                    scaleMax: 1.12,
+                    shapeVariety: 0.88,
+                    uniqueSeeds: 1
+                })
+            })
+        ]
     }
 ];
 
@@ -1505,18 +1693,36 @@ export function buildRock2SplineArcTable(gOrKnots, samplesPerSeg = 20)
         samples.push({ x, y, z, scale: sc, arc: totalLen, segIndex: seg, segT: t });
     }
 
-    // Compute smooth horizontal unit tangents (tx, tz) for cliff-face alignment
+    // Compute smooth horizontal unit tangents (tx, tz) AND full 3D unit tangents (t3x, t3y, t3z)
     for (let i = 0; i < samples.length; i++)
     {
         const a = samples[Math.max(0, i - 1)];
         const b = samples[Math.min(samples.length - 1, i + 1)];
-        let dx = b.x - a.x;
-        let dz = b.z - a.z;
+        const rawDx = b.x - a.x;
+        const rawDy = b.y - a.y;
+        const rawDz = b.z - a.z;
+
+        let dx = rawDx;
+        let dz = rawDz;
         const hl = Math.hypot(dx, dz);
         if (hl < 1e-5) { dx = 1.0; dz = 0.0; }
         else { dx /= hl; dz /= hl; }
         samples[i].tx = dx;
         samples[i].tz = dz;
+
+        const l3 = Math.hypot(rawDx, rawDy, rawDz);
+        if (l3 < 1e-5)
+        {
+            samples[i].t3x = 1.0;
+            samples[i].t3y = 0.0;
+            samples[i].t3z = 0.0;
+        }
+        else
+        {
+            samples[i].t3x = rawDx / l3;
+            samples[i].t3y = rawDy / l3;
+            samples[i].t3z = rawDz / l3;
+        }
     }
 
     return { knots, closed, totalLen: Math.max(1e-4, totalLen), samples };
@@ -1546,6 +1752,12 @@ export function sampleRock2SplineAtNormalizedArc(arcTable, uNorm)
     const tl = Math.hypot(tx, tz) || 1;
     tx /= tl; tz /= tl;
 
+    let t3x = lerp(s0.t3x ?? s0.tx, s1.t3x ?? s1.tx, f);
+    let t3y = lerp(s0.t3y ?? 0.0,   s1.t3y ?? 0.0,   f);
+    let t3z = lerp(s0.t3z ?? s0.tz, s1.t3z ?? s1.tz, f);
+    const t3l = Math.hypot(t3x, t3y, t3z) || 1;
+    t3x /= t3l; t3y /= t3l; t3z /= t3l;
+
     return {
         x: lerp(s0.x, s1.x, f),
         y: lerp(s0.y, s1.y, f),
@@ -1553,7 +1765,10 @@ export function sampleRock2SplineAtNormalizedArc(arcTable, uNorm)
         scale: lerp(s0.scale, s1.scale, f),
         tx,
         ty: 0.0,
-        tz
+        tz,
+        t3x,
+        t3y,
+        t3z
     };
 }
 
@@ -1604,6 +1819,173 @@ export function evaluateRock2GeneratorInstances(generator, baseRockParams, baseT
 
     if (type === 'spline')
     {
+        if (g.splineMode === 'arch_span')
+        {
+            const count = clamp(Math.round(g.count ?? 9), 4, 40);
+            const arcTable = buildRock2SplineArcTable({ ...g, closedLoop: 0 }, 28);
+            const spJitter = clamp(g.spacingJitter ?? 0.12, 0.0, 0.65);
+            const latJit = g.lateralJitter ?? 0.06;
+            const sVar = clamp(g.scaleVariation ?? 0.14, 0.0, 0.70);
+            const hVar = clamp(g.heightVariation ?? 0.16, 0.0, 0.70);
+            const yawVar = g.yawVariationDeg ?? 7;
+            const tiltVar = g.tiltVariationDeg ?? 3.5;
+            const align = (g.alignToTangent ?? 1) > 0.5;
+            const yawOff = g.yawOffsetDeg ?? 0;
+
+            const pierFlare = clamp(g.archPierFlare ?? 0.42, 0.0, 1.25);
+            const crownThin = clamp(g.archCrownThin ?? 0.22, 0.0, 0.65);
+            const bedBlend = clamp(g.archBeddingBlend ?? 0.45, 0.0, 1.0);
+            const buttressAmt = clamp(g.archButtress ?? 0.45, 0.0, 1.0);
+            const extradosAmt = clamp(g.archExtrados ?? 0.35, 0.0, 1.0);
+
+            const baseW = Math.max(0.25, baseRockParams?.width ?? 2.35);
+            const baseH = Math.max(0.25, baseRockParams?.height ?? 1.85);
+            const avgStepArc = arcTable.totalLen / Math.max(1, count - 1);
+            const bridgeScaleX = Math.max(0.95, (avgStepArc * 1.28) / baseW);
+            const stepU = 1.0 / (count - 1);
+
+            for (let i = 0; i < count; i++)
+            {
+                const baseU = i * stepU;
+                const endMask = (i === 0 || i === count - 1) ? 0.0 : 1.0;
+                const uJit = clamp(baseU + rng.signed() * stepU * 0.28 * spJitter * endMask, 0.0, 1.0);
+                const sp = sampleRock2SplineAtNormalizedArc(arcTable, uJit);
+
+                const sinU = Math.sin(Math.PI * uJit);
+                const pierEnv = Math.pow(Math.max(0.0, 1.0 - sinU), 1.35);
+                const envThick = Math.max(0.32, (1.0 + pierFlare * pierEnv) * (1.0 - crownThin * sinU));
+
+                const knotScale = sp.scale ?? 1.0;
+                const sBase = Math.max(0.22, knotScale * envThick * (1.0 + rng.signed() * sVar * 0.75));
+                const ax = 1.0 + rng.signed() * aspectVar * 0.45;
+                const az = 1.0 + rng.signed() * aspectVar * 0.55;
+
+                const minCourseScaleY = bedBlend > 0.25
+                    ? Math.max(1.0, (Math.abs(sp.t3y) * avgStepArc * 1.20) / baseH)
+                    : 1.0;
+                const sY = Math.max(0.24, Math.max(sBase, minCourseScaleY * 0.92) * (1.0 + rng.signed() * hVar * 0.65));
+                const sX = Math.max(0.24, Math.max(sBase * ax, bridgeScaleX * (0.94 + 0.14 * pierEnv)));
+                const sZ = Math.max(0.24, sBase * az * (1.0 + 0.18 * pierEnv));
+
+                const tangYawDeg = align ? (-Math.atan2(sp.tz, sp.tx) / DEG2RAD) : 0.0;
+                const horizMag = Math.max(1e-4, Math.hypot(sp.t3x, sp.t3z));
+                const climbDeg = align ? (Math.atan2(sp.t3y, horizMag) / DEG2RAD) : 0.0;
+
+                const blockH = baseH * sY;
+                const spanMask = clamp(sp.y / Math.max(0.32, blockH * 0.68), 0.0, 1.0);
+                const effRollDeg = climbDeg * (1.0 - 0.72 * bedBlend) * (0.28 + 0.72 * spanMask);
+                const effRollRad = effRollDeg * DEG2RAD;
+
+                // Extrados normal = Column 1 of buildRock2EulerMatrix3(tangYawDeg, 0, effRollDeg)
+                const upX = -sp.tx * Math.sin(effRollRad);
+                const upY =  Math.cos(effRollRad);
+                const upZ = -sp.tz * Math.sin(effRollRad);
+
+                // Center elevated arch voussoirs on the 3D spline curve while keeping y=0 piers grounded
+                const centerShift = -0.46 * blockH * spanMask;
+                const nx = -sp.tz, nz = sp.tx;
+                const lat = rng.signed() * latJit * (0.4 + 0.6 * pierEnv);
+                const rType = chooseInstanceRockType(baseType, poolMode, rng, i);
+
+                instances.push({
+                    pos: [
+                        sp.x + upX * centerShift + nx * lat,
+                        Math.max(0.0, sp.y + upY * centerShift),
+                        sp.z + upZ * centerShift + nz * lat
+                    ],
+                    yawDeg: tangYawDeg + yawOff + rng.signed() * yawVar * (0.45 + 0.55 * pierEnv),
+                    pitchDeg: rng.signed() * tiltVar,
+                    rollDeg: effRollDeg + rng.signed() * tiltVar * 0.65,
+                    scaleX: sX,
+                    scaleY: sY,
+                    scaleZ: sZ,
+                    seedOffset: unique ? (i + 1) * 7919 : 0,
+                    shapeVariety,
+                    rockType: rType
+                });
+            }
+
+            // Optional Pier Buttresses (flanking outer abutments — strictly outside the portal span!)
+            if (buttressAmt > 0.05)
+            {
+                const pierEnds = [
+                    { u: 0.0, outSign: -1.0, seedIdx: count + 1 },
+                    { u: 1.0, outSign:  1.0, seedIdx: count + 2 }
+                ];
+                for (let pi = 0; pi < pierEnds.length; pi++)
+                {
+                    const pe = pierEnds[pi];
+                    const sp = sampleRock2SplineAtNormalizedArc(arcTable, pe.u);
+                    const tangYawDeg = align ? (-Math.atan2(sp.tz, sp.tx) / DEG2RAD) : 0.0;
+                    const knotScale = sp.scale ?? 1.0;
+                    const bScale = Math.max(0.28, knotScale * (0.72 + 0.55 * buttressAmt));
+                    const outShift = pe.outSign * baseW * (0.48 + 0.34 * buttressAmt);
+                    const nx = -sp.tz, nz = sp.tx;
+                    const flankShift = rng.signed() * baseW * 0.22;
+
+                    instances.push({
+                        pos: [
+                            sp.x + sp.tx * outShift + nx * flankShift,
+                            Math.max(0.0, sp.y * 0.25),
+                            sp.z + sp.tz * outShift + nz * flankShift
+                        ],
+                        yawDeg: tangYawDeg + yawOff + rng.signed() * 18.0,
+                        pitchDeg: rng.signed() * 5.0,
+                        rollDeg: -pe.outSign * (6.0 + 8.0 * buttressAmt),
+                        scaleX: bScale * 1.12,
+                        scaleY: bScale * (0.88 + 0.42 * buttressAmt),
+                        scaleZ: bScale * 1.18,
+                        seedOffset: unique ? pe.seedIdx * 7919 : 0,
+                        shapeVariety,
+                        rockType: chooseInstanceRockType(baseType, poolMode, rng, pe.seedIdx)
+                    });
+                }
+            }
+
+            // Optional Extrados Shoulder / Cap Courses (strictly ABOVE the spline curve — never intrudes into portal!)
+            if (extradosAmt > 0.05)
+            {
+                const capUs = extradosAmt > 0.52 ? [0.24, 0.50, 0.76] : [0.28, 0.72];
+                for (let ci = 0; ci < capUs.length; ci++)
+                {
+                    const uCap = capUs[ci] + rng.signed() * 0.03;
+                    const sp = sampleRock2SplineAtNormalizedArc(arcTable, uCap);
+                    const tangYawDeg = align ? (-Math.atan2(sp.tz, sp.tx) / DEG2RAD) : 0.0;
+                    const horizMag = Math.max(1e-4, Math.hypot(sp.t3x, sp.t3z));
+                    const climbDeg = align ? (Math.atan2(sp.t3y, horizMag) / DEG2RAD) : 0.0;
+                    const effRollDeg = climbDeg * (1.0 - 0.80 * bedBlend) * 0.65;
+                    const effRollRad = effRollDeg * DEG2RAD;
+                    const upX = -sp.tx * Math.sin(effRollRad);
+                    const upY =  Math.cos(effRollRad);
+                    const upZ = -sp.tz * Math.sin(effRollRad);
+
+                    const sinU = Math.sin(Math.PI * uCap);
+                    const cScale = Math.max(0.24, (sp.scale ?? 1.0) * (0.58 + 0.42 * extradosAmt) * (1.0 - crownThin * 0.55 * sinU));
+                    const lift = baseH * (0.14 + 0.24 * extradosAmt);
+                    const seedIdx = count + 5 + ci;
+
+                    instances.push({
+                        pos: [
+                            sp.x + upX * lift,
+                            sp.y + upY * lift,
+                            sp.z + upZ * lift
+                        ],
+                        yawDeg: tangYawDeg + yawOff + rng.signed() * 9.0,
+                        pitchDeg: rng.signed() * 3.5,
+                        rollDeg: effRollDeg,
+                        scaleX: cScale * 1.26,
+                        scaleY: cScale * 0.56,
+                        scaleZ: cScale * 0.88,
+                        seedOffset: unique ? seedIdx * 7919 : 0,
+                        shapeVariety,
+                        rockType: chooseInstanceRockType(baseType, poolMode, rng, seedIdx)
+                    });
+                }
+            }
+
+            return { intraBlend: clamp(g.intraBlend ?? 0.28, 0.0, 2.5), instances };
+        }
+
         const count = clamp(Math.round(g.count ?? 7), 2, 56);
         const arcTable = buildRock2SplineArcTable(g, 20);
         const closed = arcTable.closed;
@@ -1994,6 +2376,112 @@ export function evaluateRock2GeneratorInstances(generator, baseRockParams, baseT
                 rollDeg: rng.signed() * tiltRand,
                 scaleX: Math.max(0.14, s * (1.0 + rng.signed() * aspectVar)),
                 scaleY: sY,
+                scaleZ: Math.max(0.14, s * (1.0 + rng.signed() * aspectVar)),
+                seedOffset: unique ? (i + 1) * 7919 : 0,
+                shapeVariety,
+                rockType: rType
+            });
+        }
+
+        return { intraBlend: clamp(g.intraBlend ?? 0.0, 0.0, 2.5), instances };
+    }
+
+    if (type === 'cloud')
+    {
+        const mode = g.cloudMode || 'orbit_halo';
+        const count = clamp(Math.round(g.count ?? 10), 2, 64);
+        const cx = g.centerX ?? 0.0;
+        const cy = g.centerY ?? 3.8;
+        const cz = g.centerZ ?? 0.0;
+        const radXZ = Math.max(0.35, g.radiusXZ ?? 4.8);
+        const sprY = Math.max(0.10, g.spreadY ?? 2.1);
+        const innerClear = clamp(g.innerClearance ?? 0.42, 0.0, 0.92);
+        const tiltRad = (g.orbitTiltDeg ?? 14) * DEG2RAD;
+        const cosT = Math.cos(tiltRad), sinT = Math.sin(tiltRad);
+
+        const sMin = Math.min(g.scaleMin ?? 0.36, g.scaleMax ?? 1.08);
+        const sMax = Math.max(g.scaleMin ?? 0.36, g.scaleMax ?? 1.08);
+        const falloff = clamp(g.radialSizeFalloff ?? 0.44, -1.0, 1.0);
+        const yawJit = g.yawJitterDeg ?? 180;
+        const tiltJit = g.tiltJitterDeg ?? 22;
+        const goldenAngle = 2.399963229728653;
+
+        for (let i = 0; i < count; i++)
+        {
+            let ox = 0.0, oy = 0.0, oz = 0.0, distNorm = 0.5;
+
+            if (mode === 'cluster_nebula')
+            {
+                const u = (i + 0.5) / count;
+                const ySphere = 1.0 - 2.0 * u + rng.signed() * 0.22;
+                const rHoriz = Math.sqrt(Math.max(0.0, 1.0 - clamp(ySphere, -1.0, 1.0) ** 2));
+                const phi = i * goldenAngle + rng.signed() * 0.35;
+                const rShell = lerp(innerClear * 0.65, 1.0, Math.cbrt(rng.float()));
+                const xRaw = Math.cos(phi) * rHoriz * radXZ * rShell;
+                const yRaw = clamp(ySphere, -1.0, 1.0) * sprY * rShell;
+                const zRaw = Math.sin(phi) * rHoriz * radXZ * rShell;
+                ox = xRaw * cosT - yRaw * sinT;
+                oy = xRaw * sinT + yRaw * cosT;
+                oz = zRaw;
+                distNorm = clamp(rShell, 0.0, 1.0);
+            }
+            else if (mode === 'rising_vortex')
+            {
+                const hFrac = count > 1 ? (i / (count - 1)) : 0.5;
+                const hSigned = hFrac * 2.0 - 1.0 + rng.signed() * 0.12;
+                const funnel = lerp(Math.max(0.18, innerClear * 0.55), 1.0, 0.28 + 0.72 * hFrac);
+                const r = radXZ * funnel * (0.82 + 0.32 * rng.float());
+                const ang = hFrac * Math.PI * 3.6 + rng.signed() * 0.38;
+                const xRaw = Math.cos(ang) * r;
+                const yRaw = hSigned * sprY;
+                const zRaw = Math.sin(ang) * r;
+                ox = xRaw * cosT - yRaw * sinT;
+                oy = xRaw * sinT + yRaw * cosT;
+                oz = zRaw;
+                distNorm = clamp(hFrac, 0.0, 1.0);
+            }
+            else if (mode === 'shatter_wake')
+            {
+                const tWake = count > 1 ? (i / (count - 1)) : 0.0;
+                const tJit = clamp(tWake + rng.signed() * (0.45 / Math.max(2, count)), 0.0, 1.0);
+                const cone = 0.16 + 0.84 * Math.pow(tJit, 0.78);
+                const xStream = lerp(-radXZ * (1.0 - innerClear * 0.45), radXZ, tJit);
+                const yStream = rng.signed() * sprY * cone;
+                const zStream = rng.signed() * radXZ * 0.58 * cone;
+                ox = xStream * cosT - yStream * sinT;
+                oy = xStream * sinT + yStream * cosT;
+                oz = zStream;
+                distNorm = tJit;
+            }
+            else
+            {
+                // Default 'orbit_halo': 3D tilted orbital asteroid / shard ring with inner clearance void
+                const ang = (i / count) * Math.PI * 2.0 + rng.signed() * (Math.PI / count) * 0.86;
+                const rNorm = lerp(innerClear, 1.0, Math.sqrt(rng.float()));
+                const r = radXZ * rNorm;
+                const xOrb = Math.cos(ang) * r;
+                const yOrb = rng.signed() * sprY * 0.50 * (1.0 - 0.25 * (rNorm - innerClear));
+                const zOrb = Math.sin(ang) * r;
+                ox = xOrb * cosT - yOrb * sinT;
+                oy = xOrb * sinT + yOrb * cosT;
+                oz = zOrb;
+                distNorm = clamp((rNorm - innerClear) / Math.max(0.08, 1.0 - innerClear), 0.0, 1.0);
+            }
+
+            const radialBias = falloff >= 0.0
+                ? lerp(1.0, 1.0 - falloff * 0.72, distNorm)
+                : lerp(1.0 + falloff * 0.72, 1.0, distNorm);
+            const sRand = lerp(sMin, sMax, Math.pow(rng.float(), 1.25));
+            const s = Math.max(0.14, sRand * radialBias);
+            const rType = chooseInstanceRockType(baseType, poolMode, rng, i);
+
+            instances.push({
+                pos: [cx + ox, cy + oy, cz + oz],
+                yawDeg: rng.signed() * yawJit,
+                pitchDeg: rng.signed() * tiltJit,
+                rollDeg: rng.signed() * tiltJit,
+                scaleX: Math.max(0.14, s * (1.0 + rng.signed() * aspectVar)),
+                scaleY: Math.max(0.14, s * (1.0 + rng.signed() * aspectVar * 0.85)),
                 scaleZ: Math.max(0.14, s * (1.0 + rng.signed() * aspectVar)),
                 seedOffset: unique ? (i + 1) * 7919 : 0,
                 shapeVariety,
@@ -3564,6 +4052,19 @@ export function compileRock2Stack(doc)
         const room = Math.max(0, MAX_STACK_PRIMITIVES - allPrimitives.length);
         if (room <= 0) break;
 
+        const lSx = clamp(p.scaleX ?? 1.0, 0.12, 8.0);
+        const lSy = clamp(p.scaleY ?? 1.0, 0.12, 8.0);
+        const lSz = clamp(p.scaleZ ?? 1.0, 0.12, 8.0);
+        const pScaled = (lSx === 1.0 && lSy === 1.0 && lSz === 1.0)
+            ? p
+            : {
+                ...p,
+                width: (p.width ?? 4.0) * lSx,
+                height: (p.height ?? 3.5) * lSy,
+                length: (p.length ?? 4.0) * lSz,
+                hoverHeight: p.hoverHeight !== undefined ? p.hoverHeight * lSy : undefined
+            };
+
         const layerPrims = [];
         let builtInstances = 0;
         for (let k = 0; k < instances.length && layerPrims.length < room; k++)
@@ -3571,10 +4072,16 @@ export function compileRock2Stack(doc)
             const inst = instances[k];
             const localInstR = buildRock2EulerMatrix3(inst.yawDeg, inst.pitchDeg, inst.rollDeg);
             const worldR = mulMat3(layerR, localInstR);
-            const worldPivot = forwardRock2Point(layerR, layerPivot, inst.pos[0], inst.pos[1], inst.pos[2]);
+            const worldPivot = forwardRock2Point(
+                layerR,
+                layerPivot,
+                inst.pos[0] * lSx,
+                inst.pos[1] * lSy,
+                inst.pos[2] * lSz
+            );
 
             const instRockType = inst.rockType || spec.type;
-            const instParams = buildMutatedInstanceParams(instRockType, p, inst);
+            const instParams = buildMutatedInstanceParams(instRockType, pScaled, inst);
 
             const built = buildAtomicBaseRockPrimitive(instRockType, instParams, worldR, worldPivot);
             if (!built) continue;
@@ -3601,11 +4108,23 @@ export function compileRock2Stack(doc)
         if (layerPrims.length === 0) continue;
 
         const blockStart = allPrimitives.length;
+        let lMinX = Infinity, lMinY = Infinity, lMinZ = Infinity;
+        let lMaxX = -Infinity, lMaxY = -Infinity, lMaxZ = -Infinity;
         for (let k = 0; k < layerPrims.length; k++)
         {
             const pr = layerPrims[k];
             allPrimitives.push(pr);
             totalPlanes += pr.numPlanes;
+
+            if (pr.primOp > -1.5)
+            {
+                if (pr.minX < lMinX) lMinX = pr.minX;
+                if (pr.maxX > lMaxX) lMaxX = pr.maxX;
+                if (pr.minY < lMinY) lMinY = pr.minY;
+                if (pr.maxY > lMaxY) lMaxY = pr.maxY;
+                if (pr.minZ < lMinZ) lMinZ = pr.minZ;
+                if (pr.maxZ > lMaxZ) lMaxZ = pr.maxZ;
+            }
 
             if ((lyr.combineMode !== 'subtract' || compiledLayers.length === 0) && pr.primOp > -1.5)
             {
@@ -3618,6 +4137,20 @@ export function compileRock2Stack(doc)
             }
         }
 
+        const lBounds = Number.isFinite(lMinX)
+            ? {
+                minX: lMinX, minY: lMinY, minZ: lMinZ,
+                maxX: lMaxX, maxY: lMaxY, maxZ: lMaxZ,
+                cx: (lMinX + lMaxX) * 0.5,
+                cy: (lMinY + lMaxY) * 0.5,
+                cz: (lMinZ + lMaxZ) * 0.5
+            }
+            : {
+                minX: layerPivot[0] - 1, minY: layerPivot[1], minZ: layerPivot[2] - 1,
+                maxX: layerPivot[0] + 1, maxY: layerPivot[1] + 2, maxZ: layerPivot[2] + 1,
+                cx: layerPivot[0], cy: layerPivot[1] + 1, cz: layerPivot[2]
+            };
+
         const tone = ROCK2_STONE_TONES[p.stoneTone] || ROCK2_STONE_TONES.clay;
         compiledLayers.push({
             id: lyr.id,
@@ -3629,6 +4162,7 @@ export function compileRock2Stack(doc)
             blendRadius: clamp(lyr.blendRadius ?? 0.35, 0.0, 4.0),
             intraBlend: clamp(intraBlend ?? 0.0, 0.0, 3.0),
             color: tone.rgb,
+            bounds: lBounds,
             blockStart,
             blockCount: layerPrims.length
         });
@@ -3909,6 +4443,121 @@ export function evalRock2StackSdf(compiledStack, wx, wy, wz, outColor = null)
 
     if (outColor) { outColor.r = cr; outColor.g = cg; outColor.b = cb; }
     return dAcc;
+}
+
+/**
+ * Evaluates the exact Pure-SDF distance of a single compiled layer `layerIndex` at `(wx, wy, wz)`.
+ */
+export function evalRock2SingleLayerSdf(compiledStack, layerIndex, wx, wy, wz)
+{
+    const lyr = compiledStack?.compiledLayers?.[layerIndex];
+    if (!lyr) return 1e9;
+    const primitives = compiledStack.primitives;
+    const ib = lyr.intraBlend;
+    let dLyr = 1e9;
+    let dInst = 1e9;
+    let hasInst = false;
+
+    for (let k = 0; k < lyr.blockCount; k++)
+    {
+        const prim = primitives[lyr.blockStart + k];
+        const pOp = prim.primOp ?? -1.0;
+        if (pOp > -1.5 && pOp < -0.5)
+        {
+            if (hasInst)
+            {
+                dLyr = dLyr > 1e8 ? dInst : (ib > 1e-4 ? sminPoly(dLyr, dInst, ib) : Math.min(dLyr, dInst));
+            }
+            hasInst = true;
+            dInst = evalRock2PrimitiveSdf(prim, wx, wy, wz);
+        }
+        else if (pOp >= 0.0)
+        {
+            const subB = pOp;
+            const dP = evalRock2PrimitiveSdf(prim, wx, wy, wz);
+            dInst = dInst > 1e8 ? dP : (subB > 1e-4 ? sminPoly(dInst, dP, subB) : Math.min(dInst, dP));
+            hasInst = true;
+        }
+        else if (hasInst)
+        {
+            const cutB = Math.max(0.0, -pOp - 2.0);
+            const dP = evalRock2PrimitiveSdf(prim, wx, wy, wz);
+            dInst = smaxPoly(dInst, -dP, cutB);
+        }
+    }
+
+    if (hasInst)
+    {
+        dLyr = dLyr > 1e8 ? dInst : (ib > 1e-4 ? sminPoly(dLyr, dInst, ib) : Math.min(dLyr, dInst));
+    }
+    return dLyr;
+}
+
+/**
+ * Sphere-traces a 3D viewport camera ray `(ro, rd)` against the compiled Pure-SDF stack
+ * and returns the exact layer `{ layerId, layerIndex, hitPoint, distance }` whose surface was clicked!
+ */
+export function pickRock2LayerAtRay(compiledStack, ro, rd)
+{
+    if (!compiledStack || !compiledStack.compiledLayers || compiledStack.compiledLayers.length === 0)
+    {
+        return null;
+    }
+
+    const b = compiledStack.bounds;
+    const invDx = 1.0 / (Math.abs(rd[0]) > 1e-8 ? rd[0] : 1e-8);
+    const invDy = 1.0 / (Math.abs(rd[1]) > 1e-8 ? rd[1] : 1e-8);
+    const invDz = 1.0 / (Math.abs(rd[2]) > 1e-8 ? rd[2] : 1e-8);
+
+    const tx1 = (b.minX - ro[0]) * invDx, tx2 = (b.maxX - ro[0]) * invDx;
+    const ty1 = (b.minY - ro[1]) * invDy, ty2 = (b.maxY - ro[1]) * invDy;
+    const tz1 = (b.minZ - ro[2]) * invDz, tz2 = (b.maxZ - ro[2]) * invDz;
+
+    const tEnter = Math.max(0.05, Math.min(tx1, tx2), Math.min(ty1, ty2), Math.min(tz1, tz2));
+    const tExit  = Math.min(160.0, Math.max(tx1, tx2), Math.max(ty1, ty2), Math.max(tz1, tz2));
+    if (tExit < tEnter) return null;
+
+    let t = tEnter;
+    let hit = false;
+    for (let step = 0; step < 84 && t <= tExit; step++)
+    {
+        const wx = ro[0] + rd[0] * t;
+        const wy = ro[1] + rd[1] * t;
+        const wz = ro[2] + rd[2] * t;
+        const d = evalRock2StackSdf(compiledStack, wx, wy, wz);
+        if (d < 0.018)
+        {
+            hit = true;
+            break;
+        }
+        t += Math.max(0.016, d * 0.85);
+    }
+
+    if (!hit) return null;
+
+    const hx = ro[0] + rd[0] * t;
+    const hy = ro[1] + rd[1] * t;
+    const hz = ro[2] + rd[2] * t;
+
+    let bestIdx = 0;
+    let bestScore = 1e9;
+    for (let li = 0; li < compiledStack.compiledLayers.length; li++)
+    {
+        const dLyr = evalRock2SingleLayerSdf(compiledStack, li, hx, hy, hz);
+        const surfDist = Math.abs(dLyr);
+        if (surfDist < bestScore)
+        {
+            bestScore = surfDist;
+            bestIdx = li;
+        }
+    }
+
+    return {
+        layerId: compiledStack.compiledLayers[bestIdx].id,
+        layerIndex: bestIdx,
+        hitPoint: [hx, hy, hz],
+        distance: t
+    };
 }
 
 /*==========================================================================================================================================

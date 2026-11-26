@@ -53,6 +53,7 @@ import {
     evaluateRock2GeneratorInstances,
     compileRock2Stack,
     evalRock2StackSdf,
+    pickRock2LayerAtRay,
     packRock2StackGpuBuffers,
     bakeRock2StackQefMesh,
     serializeRock2Document,
@@ -1427,7 +1428,7 @@ Suite('28. RockFormation 2.0: 11 atomic single base rocks, per-layer Spline/Arra
     assert.ok(Number.isFinite(evalRock2StackSdf(StackAllOps, 0.2, 1.0, 0.1)), 'Chamfer & Intersect stack modes must evaluate finite SDF');
 
     // 4. Validate Starter Stacks, Pure-SDF QEF Dual-Contour Mesh Extraction (0 Mesh->SDF), GLB/OBJ/STL export & JSON round-trip
-    assert.equal(ROCK2_STARTER_STACKS.length, 10, 'Must provide 10 starter stacks (including Bryce Hoodoos, Balanced Pedestal & Floating Sky Islands)');
+    assert.equal(ROCK2_STARTER_STACKS.length, 12, 'Must provide 12 starter stacks (including Moab Sandstone Arch & Sky Island + 3D Orbital Cloud)');
     const OutcropDoc = createDefaultRock2Document('stack-cliff-outcrop');
     const OutcropCompiled = compileRock2Stack(OutcropDoc);
     assert.equal(OutcropCompiled.compiledLayers[0].generatorType, 'spline');
@@ -1743,4 +1744,206 @@ Suite('30. Step A Plain Pure-SDF Base Shapes: Hoodoos, Pedestals, Elevated Float
     }
 });
 
-console.log(`\nAll ${Passed}/30 Open-World SDF Terrain & Pure-SDF Rock Formation 1.0 + 2.0 Studio validation suites passed!`);
+// 31. Step B (3D Spline Arch Span + 3D Orbital Debris Cloud) & Direct 3D Layer Click-Select + Whole-Layer TRS Scale
+Suite('31. Step B 3D Spline Arch Span (open portal + grounded piers), 3D Orbital Cloud & 3D Ray-Pick Layer Selection + TRS Scale', () =>
+{
+    const sampleWideGridSig = doc =>
+    {
+        const comp = compileRock2Stack(doc);
+        const out = new Float64Array(11 * 9 * 9);
+        let p = 0;
+        for (let iz = 0; iz < 9; iz++)
+        {
+            const wz = -5.5 + (iz / 8) * 11.0;
+            for (let iy = 0; iy < 9; iy++)
+            {
+                const wy = (iy / 8) * 9.5;
+                for (let ix = 0; ix < 11; ix++)
+                {
+                    const wx = -6.5 + (ix / 10) * 13.0;
+                    out[p++] = evalRock2StackSdf(comp, wx, wy, wz);
+                }
+            }
+        }
+        return out;
+    };
+
+    const maxSigDelta = (a, b) =>
+    {
+        let m = 0.0;
+        for (let i = 0; i < a.length; i++)
+        {
+            const d = Math.abs(a[i] - b[i]);
+            if (d > m) m = d;
+        }
+        return m;
+    };
+
+    // A. 3D Spline Arch Span across all 4 geological presets: grounded piers + solid crown + unobstructed daylight portal!
+    for (const Preset of ['desert_arch', 'sea_arch', 'cathedral_arch', 'natural_bridge'])
+    {
+        const Knots = buildRock2SplinePresetKnots(Preset, 9.6, 1.6);
+        const ArchLayer = createRock2Layer('cliff_block', {
+            seed: 9101,
+            width: 2.35, height: 1.85, length: 2.25,
+            cliffProfile: 'stepped',
+            generator: createRock2Generator('spline', {
+                seed: 9105,
+                splineMode: 'arch_span',
+                splinePreset: Preset,
+                knots: Knots,
+                count: 10,
+                archPierFlare: 0.44,
+                archCrownThin: 0.24,
+                archBeddingBlend: 0.45,
+                archButtress: 0.45,
+                archExtrados: 0.35,
+                intraBlend: 0.30
+            })
+        });
+        const Comp = compileRock2Stack({ layers: [ArchLayer] });
+        const K0 = Knots[0];
+        const KMid = Knots[Math.floor(Knots.length * 0.5)];
+        const KEnd = Knots[Knots.length - 1];
+
+        // Grounded piers & continuous crown must be inside solid stone (d < 0.05)
+        const dLeftPier  = evalRock2StackSdf(Comp, K0.x, 0.75, K0.z);
+        const dRightPier = evalRock2StackSdf(Comp, KEnd.x, 0.75, KEnd.z);
+        const dCrown     = evalRock2StackSdf(Comp, KMid.x, KMid.y, KMid.z);
+        // Daylight portal directly underneath crown must be wide-open air (d > +1.4m)!
+        const portalX = (K0.x + KEnd.x) * 0.5;
+        const portalZ = (K0.z + KEnd.z) * 0.5;
+        const dPortal = evalRock2StackSdf(Comp, portalX, KMid.y * 0.38, portalZ);
+
+        assert.ok(dLeftPier < 0.05 && dRightPier < 0.05,
+            `Arch (${Preset}) left & right piers must sit grounded in stone (dL=${dLeftPier.toFixed(3)}, dR=${dRightPier.toFixed(3)})`);
+        assert.ok(dCrown < 0.05,
+            `Arch (${Preset}) keystone crown must form solid bridged stone (dCrown=${dCrown.toFixed(3)})`);
+        assert.ok(dPortal > 1.4,
+            `Arch (${Preset}) must leave a wide-open daylight portal underneath (dPortal=${dPortal.toFixed(2)}m)`);
+    }
+
+    // Zero-dead-controls check on all 5 Arch Span geological controls
+    const BaseArchGen = {
+        splineMode: 'arch_span', splinePreset: 'desert_arch', count: 9,
+        archPierFlare: 0.42, archCrownThin: 0.22, archBeddingBlend: 0.45, archButtress: 0.45, archExtrados: 0.35
+    };
+    const BaseArchSig = sampleWideGridSig({
+        layers: [createRock2Layer('cliff_block', { width: 2.3, height: 1.85, length: 2.2, generator: createRock2Generator('spline', BaseArchGen) })]
+    });
+    for (const [Key, AltVal] of [
+        ['archPierFlare', 0.95],
+        ['archCrownThin', 0.58],
+        ['archBeddingBlend', 0.0],
+        ['archButtress', 0.0],
+        ['archExtrados', 0.0]
+    ])
+    {
+        const ModSig = sampleWideGridSig({
+            layers: [createRock2Layer('cliff_block', {
+                width: 2.3, height: 1.85, length: 2.2,
+                generator: createRock2Generator('spline', { ...BaseArchGen, [Key]: AltVal })
+            })]
+        });
+        assert.ok(maxSigDelta(BaseArchSig, ModSig) > 0.02, `Arch control "${Key}" must actively reshape the 3D Arch SDF`);
+    }
+
+    // B. 3D Cloud / Floating Satellites across all 4 modes + inner clearance void + zero dead controls
+    for (const CMode of ['orbit_halo', 'cluster_nebula', 'rising_vortex', 'shatter_wake'])
+    {
+        const CloudLyr = createRock2Layer('big_boulder', {
+            width: 1.2, height: 1.0, length: 1.1, flatBottom: 0.0,
+            generator: createRock2Generator('cloud', {
+                cloudMode: CMode, count: 10, centerX: 0.0, centerY: 4.5, centerZ: 0.0,
+                radiusXZ: 4.8, spreadY: 2.2, innerClearance: 0.55, orbitTiltDeg: 18
+            })
+        });
+        const EvalC = evaluateRock2GeneratorInstances(CloudLyr.generator, CloudLyr.params, CloudLyr.type);
+        assert.equal(EvalC.instances.length, 10);
+        const Ys = EvalC.instances.map(it => it.pos[1]);
+        assert.ok(Math.max(...Ys) - Math.min(...Ys) > 0.85, `3D Cloud (${CMode}) must distribute satellites across 3D altitude`);
+        const CompC = compileRock2Stack({ layers: [CloudLyr] });
+        if (CMode === 'orbit_halo')
+        {
+            const dVoid = evalRock2StackSdf(CompC, 0.0, 4.5, 0.0);
+            assert.ok(dVoid > 1.2, `orbit_halo innerClearance must preserve open central sanctuary void (dVoid=${dVoid.toFixed(2)}m)`);
+        }
+    }
+
+    const BaseCloudGen = {
+        cloudMode: 'orbit_halo', count: 10, centerX: 0.0, centerY: 4.2, centerZ: 0.0,
+        radiusXZ: 4.6, spreadY: 2.0, innerClearance: 0.45, orbitTiltDeg: 14,
+        scaleMin: 0.40, scaleMax: 1.05, radialSizeFalloff: 0.40, yawJitterDeg: 180, tiltJitterDeg: 20, seed: 1187
+    };
+    const BaseCloudSig = sampleWideGridSig({
+        layers: [createRock2Layer('big_boulder', { width: 1.3, height: 1.1, length: 1.2, flatBottom: 0.0, generator: createRock2Generator('cloud', BaseCloudGen) })]
+    });
+    for (const [Key, AltVal] of [
+        ['cloudMode', 'rising_vortex'],
+        ['count', 16],
+        ['centerX', 2.2],
+        ['centerY', 6.4],
+        ['centerZ', -2.1],
+        ['radiusXZ', 2.4],
+        ['spreadY', 3.8],
+        ['innerClearance', 0.05],
+        ['orbitTiltDeg', -38],
+        ['scaleMin', 0.85],
+        ['scaleMax', 1.75],
+        ['radialSizeFalloff', -0.65],
+        ['yawJitterDeg', 0],
+        ['tiltJitterDeg', 0],
+        ['seed', 4409]
+    ])
+    {
+        const ModSig = sampleWideGridSig({
+            layers: [createRock2Layer('big_boulder', {
+                width: 1.3, height: 1.1, length: 1.2, flatBottom: 0.0,
+                generator: createRock2Generator('cloud', { ...BaseCloudGen, [Key]: AltVal })
+            })]
+        });
+        assert.ok(maxSigDelta(BaseCloudSig, ModSig) > 0.015, `Cloud control "${Key}" must actively reshape the 3D Cloud SDF`);
+    }
+
+    // C. Direct 3D Viewport Ray-Pick Layer Selection (`pickRock2LayerAtRay`) + Whole-Layer TRS (`scaleX/Y/Z`)
+    const L1 = createRock2Layer('big_boulder',    { id: 'lyr_left',   posX: -5.0, posY: 0.0, posZ: 0.0, width: 2.8, height: 2.6, length: 2.8 });
+    const L2 = createRock2Layer('spire_pinnacle', { id: 'lyr_center', posX:  0.0, posY: 0.0, posZ: 0.0, width: 2.2, height: 5.5, length: 2.2 });
+    const L3 = createRock2Layer('floating_rock',  { id: 'lyr_float',  posX:  5.0, posY: 0.0, posZ: 0.0, width: 2.8, height: 3.2, length: 2.6, hoverHeight: 2.6 });
+    const PickComp = compileRock2Stack({ layers: [L1, L2, L3] });
+
+    const HitLeft   = pickRock2LayerAtRay(PickComp, [-5.0, 1.2, 12.0], [0.0, 0.0, -1.0]);
+    const HitCenter = pickRock2LayerAtRay(PickComp, [ 0.0, 2.5, 12.0], [0.0, 0.0, -1.0]);
+    const HitFloat  = pickRock2LayerAtRay(PickComp, [ 5.0, 4.4, 12.0], [0.0, 0.0, -1.0]);
+    const MissSky   = pickRock2LayerAtRay(PickComp, [ 0.0, 9.5, 12.0], [0.0, 0.0, -1.0]);
+
+    assert.equal(HitLeft?.layerId, 'lyr_left', '3D ray-pick on left boulder must select lyr_left');
+    assert.equal(HitCenter?.layerId, 'lyr_center', '3D ray-pick on center spire must select lyr_center');
+    assert.equal(HitFloat?.layerId, 'lyr_float', '3D ray-pick on floating island must select lyr_float');
+    assert.equal(MissSky, null, '3D ray-pick on open sky must return null');
+
+    // Whole-layer TRS Scale (`scaleX`, `scaleY`, `scaleZ`) + JSON round-trip
+    L2.params.scaleX = 1.65;
+    L2.params.scaleY = 1.40;
+    L2.params.scaleZ = 0.75;
+    const ScaledComp = compileRock2Stack({ layers: [L2] });
+    const UnscaledComp = compileRock2Stack({ layers: [createRock2Layer('spire_pinnacle', { width: 2.2, height: 5.5, length: 2.2 })] });
+    const SpanXScaled   = ScaledComp.compiledLayers[0].bounds.maxX - ScaledComp.compiledLayers[0].bounds.minX;
+    const SpanXUnscaled = UnscaledComp.compiledLayers[0].bounds.maxX - UnscaledComp.compiledLayers[0].bounds.minX;
+    assert.ok(SpanXScaled > SpanXUnscaled * 1.45, `Whole-layer scaleX=1.65 must widen layer bounds (${SpanXUnscaled.toFixed(2)}m -> ${SpanXScaled.toFixed(2)}m)`);
+
+    const ScaleRT = deserializeRock2Document(JSON.parse(JSON.stringify(serializeRock2Document({ layers: [L2] }))));
+    assert.ok(Math.abs(ScaleRT.layers[0].params.scaleX - 1.65) < 1e-6 && Math.abs(ScaleRT.layers[0].params.scaleZ - 0.75) < 1e-6,
+        'Whole-layer scaleX/Y/Z must round-trip cleanly through RockFormation 2.0 JSON');
+
+    // Starter Stacks 11 & 12 QEF Dual-Contour Mesh Extraction (0 Mesh->SDF)
+    for (const StarterId of ['stack-sandstone-arch', 'stack-sky-orbit-cloud'])
+    {
+        const Doc = createDefaultRock2Document(StarterId);
+        const Comp = compileRock2Stack(Doc);
+        const Baked = bakeRock2StackQefMesh(Comp, { resolution: 52 });
+        assert.equal(Baked.sdfStats.meshToSdfCount, 0, `${StarterId} must use 0 Mesh->SDF`);
+        assert.ok(Baked.sdfStats.triangles > 1000, `${StarterId} must extract rich manifold QEF mesh (${Baked.sdfStats.triangles} tris)`);
+    }
+});
+
+console.log(`\nAll ${Passed}/31 Open-World SDF Terrain & Pure-SDF Rock Formation 1.0 + 2.0 Studio validation suites passed!`);
