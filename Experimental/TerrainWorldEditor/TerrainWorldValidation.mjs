@@ -41,7 +41,16 @@ import {
     ROCK2_NODE_CATALOG,
     ROCK2_MODIFIER_CATALOG,
     ROCK2_STARTER_STACKS,
+    ROCK2_BOOLEAN_MODES,
+    ROCK2_SCULPT_BRUSH_MODES,
     isRock2ModifierType,
+    isRock2BooleanLayer,
+    isRock2BooleanCombineMode,
+    setRock2LayerBooleanMode,
+    appendRock2SculptDab,
+    undoLastRock2SculptStroke,
+    clearRock2SculptLayer,
+    pickRock2SculptHitAtRay,
     computeRock2FaultBasis,
     rock2FaultNormalToStrikeDip,
     buildRock2SplinePresetKnots,
@@ -2256,4 +2265,152 @@ Suite('33. Phase D · Modifier D1: Kinematic Split & Fault Plane (T^-1(p) Slip, 
     assert.ok(Baked13.sdfStats.triangles > 1000, `Cleaved monolith must extract rich manifold QEF mesh (${Baked13.sdfStats.triangles} tris)`);
 });
 
-console.log(`\nAll ${Passed}/33 Open-World SDF Terrain & Pure-SDF Rock Formation 1.0 + 2.0 Studio validation suites passed!`);
+// 34. Interactive 3D Pure-SDF Brush Sculpting (`sculpt_layer`) + First-Class Boolean Objects (Semi-Transparent Red Ghosts)
+Suite('34. First-Class Boolean Objects (Subtract / Chamfer-Subtract / Intersect + Red Ghost Ray-Pick) & 6-Mode 3D Pure-SDF Brush Sculpting', () =>
+{
+    assert.ok(ROCK2_BOOLEAN_MODES.length >= 3, 'ROCK2_BOOLEAN_MODES must expose Subtract, Chamfer-Subtract & Intersect');
+    assert.equal(ROCK2_SCULPT_BRUSH_MODES.length, 6, 'ROCK2_SCULPT_BRUSH_MODES must expose all 6 Pure-SDF sculpt brushes');
+    assert.ok(ROCK2_MODIFIER_CATALOG.some(m => m.type === 'sculpt_layer'), 'sculpt_layer must be registered in ROCK2_MODIFIER_CATALOG');
+
+    // A. First-Class Boolean Toggle + Chamfer-Subtract (`op=5`) + Intersect (`op=4`) + Boolean Ghost 3D Ray-Picking
+    const BaseHost = createRock2Layer('smooth_rock', {
+        posX: 0.0, posY: 0.0, posZ: 0.0,
+        params: { width: 4.4, height: 3.8, length: 4.4, roundness: 0.55, flatBottom: 0.25 }
+    });
+    const Cutter = createRock2Layer('smooth_rock', {
+        combineMode: 'smooth_union',
+        posX: 1.35, posY: 0.85, posZ: 0.0,
+        params: { width: 2.6, height: 2.4, length: 2.6, roundness: 0.55, flatBottom: 0.0 }
+    });
+    assert.equal(isRock2BooleanLayer(Cutter), false, 'Smooth-union rock starts as non-boolean');
+
+    // Mark as Boolean Chamfer-Subtract (`chamfer_subtract`)
+    setRock2LayerBooleanMode(Cutter, true, 'chamfer_subtract');
+    assert.equal(isRock2BooleanLayer(Cutter), true, 'Cutter must be marked isBoolean = true');
+    assert.equal(Cutter.combineMode, 'chamfer_subtract', 'Cutter combineMode must switch to chamfer_subtract');
+    assert.equal(isRock2BooleanCombineMode(Cutter.combineMode), true);
+
+    const HostOnlyComp = compileRock2Stack({ layers: [BaseHost] });
+    const BoolCutComp = compileRock2Stack({ layers: [BaseHost, Cutter] });
+    const dBeforeCut = evalRock2StackSdf(HostOnlyComp, 1.25, 1.65, 0.0);
+    const dAfterCut  = evalRock2StackSdf(BoolCutComp, 1.25, 1.65, 0.0);
+    assert.ok(dBeforeCut < -0.25, `Host boulder must be solid before Boolean Chamfer-Subtract (got ${dBeforeCut.toFixed(3)})`);
+    assert.ok(dAfterCut > 0.25, `Boolean Chamfer-Subtract must carve hollow cavity into host boulder (got ${dAfterCut.toFixed(3)})`);
+
+    // Clicking the semi-transparent red Boolean ghost volume in carved empty space (`x = 2.15`) selects the Boolean Cutter!
+    const NoGhostPick = pickRock2LayerAtRay(BoolCutComp, [2.15, 4.8, 0.0], [0.0, -1.0, 0.0], { pickBooleanGhosts: false });
+    assert.equal(NoGhostPick, null, 'Carved empty space outside host boulder must not hit solid rock when pickBooleanGhosts=false');
+    const GhostPick = pickRock2LayerAtRay(BoolCutComp, [2.15, 4.8, 0.0], [0.0, -1.0, 0.0], { pickBooleanGhosts: true });
+    assert.ok(GhostPick && GhostPick.layerId === Cutter.id && GhostPick.isBooleanGhost === true, 'Clicking semi-transparent red Boolean ghost must select Cutter layer');
+
+    // GPU Buffer Packing for `boolVolTex` + `*TexWidth` parity
+    const BoolPacked = packRock2StackGpuBuffers(BoolCutComp, { selectedLayerId: Cutter.id });
+    assert.equal(BoolPacked.hasBooleanLayers, true, 'GPU packer must flag hasBooleanLayers=true');
+    assert.equal(BoolPacked.numBooleanLayers, 1, 'GPU packer must count 1 Boolean layer');
+    assert.equal(BoolPacked.boolLayerTexData[3], 1.0, 'Selected Boolean layer must pack selection highlight flag = 1.0 in boolLayerTexData');
+    assert.equal(BoolPacked.modMetaTexWidth, 5, 'GPU packer must expose modMetaTexWidth');
+    assert.equal(BoolPacked.sculptMetaTexWidth, 1, 'GPU packer must expose sculptMetaTexWidth');
+    assert.equal(BoolPacked.sculptDabTexWidth, 4, 'GPU packer must expose sculptDabTexWidth');
+
+    // Switch Boolean to Intersect (`A ∩ B`) -> outside Cutter becomes exterior (`d > 0`), overlap stays solid (`d < 0`)
+    setRock2LayerBooleanMode(Cutter, true, 'intersect');
+    const BoolIntersectComp = compileRock2Stack({ layers: [BaseHost, Cutter] });
+    assert.ok(evalRock2StackSdf(BoolIntersectComp, -1.2, 1.5, 0.0) > 0.30, 'Intersect must clip away host rock outside Boolean volume');
+    assert.ok(evalRock2StackSdf(BoolIntersectComp, 1.05, 1.65, 0.0) < -0.15, 'Intersect must preserve solid rock inside overlap A ∩ B');
+
+    // Unmarking Boolean restores previous non-boolean combineMode (`smooth_union`)
+    setRock2LayerBooleanMode(Cutter, false);
+    assert.equal(isRock2BooleanLayer(Cutter), false);
+    assert.equal(Cutter.combineMode, 'smooth_union', 'Turning off Boolean mode must restore nonBoolCombineMode');
+
+    // B. Interactive 3D Pure-SDF Brush Sculpting: All 6 Brushes + Symmetry + Stroke Undo + GPU Packing
+    const SculptRock = createRock2Layer('smooth_rock', {
+        posX: 0.0, posY: 0.0, posZ: 0.0,
+        params: { width: 4.0, height: 3.6, length: 4.0, roundness: 0.60, flatBottom: 0.25 }
+    });
+    const BaseSculptComp = compileRock2Stack({ layers: [SculptRock] });
+
+    // Surface ray-pick for 3D Sculpt Brush cursor
+    const SurfHit = pickRock2SculptHitAtRay(BaseSculptComp, [0.0, 6.0, 0.0], [0.0, -1.0, 0.0]);
+    assert.ok(SurfHit && SurfHit.normal[1] > 0.85, 'pickRock2SculptHitAtRay must find top boulder surface and upward unit normal');
+    const [hx, hy, hz] = SurfHit.hitPoint;
+
+    // 1. `add` brush builds outward clay mass (`d` becomes negative above original surface!)
+    const AddLayer = createRock2Layer('sculpt_layer', { params: { brushOp: 'add', brushRadius: 0.85, brushStrength: 0.72, brushHardness: 0.45 } });
+    appendRock2SculptDab(AddLayer, { x: hx, y: hy, z: hz, nx: 0, ny: 1, nz: 0, strokeId: 1 });
+    const AddComp = compileRock2Stack({ layers: [SculptRock, AddLayer] });
+    assert.ok(evalRock2StackSdf(AddComp, hx, hy + 0.22, hz) < -0.05, 'Sculpt Clay Add brush must build solid SDF mass outward');
+
+    // 2. `carve` brush chisels inward hollow (`d` becomes positive below original surface!)
+    const CarveLayer = createRock2Layer('sculpt_layer', { params: { brushOp: 'carve', brushRadius: 0.85, brushStrength: 0.75, brushHardness: 0.55 } });
+    appendRock2SculptDab(CarveLayer, { x: hx, y: hy, z: hz, nx: 0, ny: 1, nz: 0, strokeId: 1 });
+    const CarveComp = compileRock2Stack({ layers: [SculptRock, CarveLayer] });
+    assert.ok(evalRock2StackSdf(CarveComp, hx, hy - 0.22, hz) > 0.05, 'Sculpt Carve brush must chisel hollow SDF concavity inward');
+
+    // 3. `flatten` brush scrapes convex crown down into a planar facet (`d` increases at crown peak)
+    const FlatLayer = createRock2Layer('sculpt_layer', { params: { brushOp: 'flatten', brushRadius: 0.95, brushStrength: 0.85, brushHardness: 0.65 } });
+    appendRock2SculptDab(FlatLayer, { x: hx, y: hy, z: hz, nx: 0, ny: 1, nz: 0, strokeId: 1 });
+    const FlatComp = compileRock2Stack({ layers: [SculptRock, FlatLayer] });
+    assert.ok(evalRock2StackSdf(FlatComp, hx, hy - 0.04, hz) > evalRock2StackSdf(BaseSculptComp, hx, hy - 0.04, hz) + 0.03, 'Sculpt Flatten brush must scrape convex peak down toward tangent plane');
+
+    // 4. `inflate` brush expands SDF surface outward along isosurface
+    const InfLayer = createRock2Layer('sculpt_layer', { params: { brushOp: 'inflate', brushRadius: 0.85, brushStrength: 0.70, brushHardness: 0.45 } });
+    appendRock2SculptDab(InfLayer, { x: hx, y: hy, z: hz, nx: 0, ny: 1, nz: 0, strokeId: 1 });
+    const InfComp = compileRock2Stack({ layers: [SculptRock, InfLayer] });
+    assert.ok(evalRock2StackSdf(InfComp, hx, hy + 0.14, hz) < 0.0, 'Sculpt Inflate brush must expand rock surface outward');
+
+    // 5. `crease` brush incises sharp V-groove along stroke tangent while flanks stay solid
+    const CreaseLayer = createRock2Layer('sculpt_layer', { params: { brushOp: 'crease', brushRadius: 0.80, brushStrength: 0.85, brushHardness: 0.75 } });
+    appendRock2SculptDab(CreaseLayer, { x: hx, y: hy, z: hz, nx: 0, ny: 1, nz: 0, tx: 1, tz: 0, strokeId: 1 });
+    const CreaseComp = compileRock2Stack({ layers: [SculptRock, CreaseLayer] });
+    const dCreaseCenter = evalRock2StackSdf(CreaseComp, hx, hy - 0.08, hz);
+    const dCreaseFlank  = evalRock2StackSdf(CreaseComp, hx, hy - 0.08, hz + 0.45);
+    assert.ok(dCreaseCenter > dCreaseFlank + 0.08, 'Sculpt Crease brush must incise sharp groove along stroke centerline');
+
+    // 6. `smooth` brush relaxes sharp carved crease toward mean neighborhood SDF
+    const SmoothLayer = createRock2Layer('sculpt_layer', { params: { brushOp: 'smooth', brushRadius: 0.85, brushStrength: 0.80, brushHardness: 0.35 } });
+    appendRock2SculptDab(SmoothLayer, { x: hx, y: hy, z: hz, nx: 0, ny: 1, nz: 0, strokeId: 1 });
+    const SmoothComp = compileRock2Stack({ layers: [SculptRock, CreaseLayer, SmoothLayer] });
+    assert.ok(Math.abs(evalRock2StackSdf(SmoothComp, hx, hy - 0.08, hz) - dCreaseCenter) > 0.01, 'Sculpt Smooth brush must relax sharp SDF crease');
+
+    // Mirror X Symmetry + Stroke-level Undo (`undoLastRock2SculptStroke`)
+    const SymLayer = createRock2Layer('sculpt_layer', { params: { brushOp: 'add', brushRadius: 0.65, brushStrength: 0.65, symmetryMode: 'x' } });
+    appendRock2SculptDab(SymLayer, { x: 1.15, y: 2.2, z: 0.0, nx: 0.5, ny: 0.86, nz: 0.0, strokeId: 10 });
+    assert.equal(SymLayer.params.dabs.length, 2, 'Mirror X symmetry must record 2 symmetric dabs');
+    appendRock2SculptDab(SymLayer, { x: 0.80, y: 2.5, z: 0.4, nx: 0.3, ny: 0.92, nz: 0.2, strokeId: 11 });
+    assert.equal(SymLayer.params.dabs.length, 4, 'Second symmetric stroke brings dab count to 4');
+    const RemovedOk = undoLastRock2SculptStroke(SymLayer);
+    assert.equal(RemovedOk, true, 'undoLastRock2SculptStroke must return true when removing strokeId=11');
+    assert.equal(SymLayer.params.dabs.length, 2, 'Earlier strokeId=10 (2 dabs) must remain intact');
+    clearRock2SculptLayer(SymLayer);
+    assert.equal(SymLayer.params.dabs.length, 0, 'clearRock2SculptLayer must empty all dabs');
+
+    // C. Starter Stack #15 (`stack-live-boolean-sculpt`) + GPU Sculpt Pass + JSON Round-Trip + QEF Mesh (`0` Mesh->SDF)
+    assert.ok(ROCK2_STARTER_STACKS.some(s => s.id === 'stack-live-boolean-sculpt'), 'Starter Stack #15 must exist');
+    const Starter15 = createDefaultRock2Document('stack-live-boolean-sculpt');
+    const Comp15 = compileRock2Stack(Starter15);
+    const Packed15 = packRock2StackGpuBuffers(Comp15);
+    assert.equal(Packed15.hasBooleanLayers, true, 'Starter Stack #15 must contain active Boolean Cutter layers');
+    assert.ok(Packed15.gpuPasses.some(p => p.kind === 'sculpt_layer'), 'Starter Stack #15 GPU packer must emit sculpt_layer pass');
+
+    const Doc15RT = deserializeRock2Document(JSON.parse(JSON.stringify(serializeRock2Document(Starter15))));
+    const Comp15RT = compileRock2Stack(Doc15RT);
+    for (const [px, py, pz] of [[0.0, 2.2, 0.0], [1.3, 1.4, 0.8], [-1.3, 2.5, 0.8]])
+    {
+        const d1 = evalRock2StackSdf(Comp15, px, py, pz);
+        const d2 = evalRock2StackSdf(Comp15RT, px, py, pz);
+        assert.ok(Math.abs(d1 - d2) < 1e-5, `Boolean + Sculpt JSON round-trip mismatch at (${px},${py},${pz}): ${d1} vs ${d2}`);
+    }
+
+    const Baked15 = bakeRock2StackQefMesh(Comp15, { resolution: 52 });
+    assert.equal(Baked15.sdfStats.meshToSdfCount, 0, 'Boolean + 3D Sculpt QEF mesh extraction must perform ZERO Mesh->SDF conversions');
+    assert.ok(Baked15.sdfStats.triangles > 800, `Boolean + 3D Sculpt monolith must extract clean QEF mesh (${Baked15.sdfStats.triangles} tris)`);
+
+    // Verify HTML & CSS wiring for Sculpt (`B`) & Semi-Transparent Red Boolean Ghosts
+    const HtmlText = readFileSync(new URL('./index.html', import.meta.url), 'utf8');
+    const CssText = readFileSync(new URL('./TerrainWorldEditor.css', import.meta.url), 'utf8');
+    assert.ok(HtmlText.includes('id="rock2-tool-sculpt"') && HtmlText.includes('id="rock2-bool-ghosts-btn"'), 'index.html must expose Sculpt (B) tool and Bool Ghosts toggle');
+    assert.ok(CssText.includes('.boolean-card') && CssText.includes('.rock2-sculpt-brush-grid'), 'TerrainWorldEditor.css must style crimson Boolean cards and 3D Sculpt brush grid');
+});
+
+console.log(`\nAll ${Passed}/34 Open-World SDF Terrain & Pure-SDF Rock Formation 1.0 + 2.0 Studio validation suites passed!`);

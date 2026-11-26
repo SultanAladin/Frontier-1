@@ -12,6 +12,7 @@ import { clamp, DEG2RAD } from './Core/SpatialNoise3D.js';
 import {
     evalRock2StackSdf,
     pickRock2LayerAtRay,
+    pickRock2SculptHitAtRay,
     packRock2StackGpuBuffers,
     buildRock2EulerMatrix3,
     mulRock2Mat3,
@@ -22,6 +23,7 @@ import {
     getOrCreateRock2InstanceOverride,
     normalizeSplineKnots,
     isRock2ModifierType,
+    isRock2BooleanLayer,
     computeRock2FaultBasis,
     rock2FaultNormalToStrikeDip
 } from './RockFormationStackEngine.js';
@@ -53,6 +55,7 @@ uniform int uHasPrevVol;
 uniform int uLayerStart;
 uniform int uLayerCount;
 uniform int uForceFirstUnion;
+uniform int uBoolMaskOnly;
 uniform vec3 uVolMin;
 uniform vec3 uVolMax;
 uniform float uSliceZNorm;
@@ -73,6 +76,12 @@ float chamferMin(float a, float b, float r) {
     float m = min(a, b);
     if (r <= 1e-5) return m;
     return min(m, (a + b - r) * 0.70710678);
+}
+
+float chamferSubtract(float a, float b, float r) {
+    float m = max(a, -b);
+    if (r <= 1e-5) return m;
+    return max(m, (a - b + r) * 0.70710678);
 }
 
 float evalPlainPrimitive(int bi, vec3 p) {
@@ -266,8 +275,17 @@ void main() {
             dLyr = (dLyr > 1e8) ? dInst : (intraBlend > 1e-4 ? sminPoly(dLyr, dInst, intraBlend) : min(dLyr, dInst));
         }
 
+        if (uBoolMaskOnly == 1) {
+            if (!hasBase || dLyr < dAcc) {
+                dAcc = dLyr;
+                colAcc = vec3(lm0.z, lm0.w, 1.0); // (combineOpCode, isSelectedFlag, 1)
+                hasBase = true;
+            }
+            continue;
+        }
+
         if (!hasBase) {
-            if (combineOp == 3) continue;
+            if (combineOp == 3 || combineOp == 5) continue;
             dAcc = dLyr;
             colAcc = lyrCol;
             hasBase = true;
@@ -296,6 +314,11 @@ void main() {
             float w = dLyr > dAcc ? 1.0 : 0.0;
             dAcc = smaxPoly(dAcc, dLyr, blendR);
             colAcc = mix(colAcc, lyrCol, w * 0.5);
+        } else if (combineOp == 5) {
+            float prev = dAcc;
+            dAcc = chamferSubtract(dAcc, dLyr, blendR);
+            float cutW = smoothstep(0.0, max(0.02, blendR + 0.04), dAcc - prev);
+            colAcc = mix(colAcc, lyrCol, cutW * 0.70);
         }
     }
 
@@ -540,6 +563,145 @@ void main() {
 }
 `;
 
+const ROCK2_SCULPT_MOD_FS = `#version 300 es
+precision highp float;
+precision highp int;
+precision highp sampler2D;
+precision highp sampler3D;
+
+in vec2 vNdc;
+out vec4 outSdf;
+
+uniform sampler3D uSrcVol;
+uniform sampler2D uSculptMetaTex;
+uniform sampler2D uSculptDabTex;
+uniform int uSculptIndex;
+uniform vec3 uVolMin;
+uniform vec3 uVolMax;
+uniform float uSliceZNorm;
+
+float sminPoly(float a, float b, float k) {
+    if (k <= 1e-5) return min(a, b);
+    float h = max(k - abs(a - b), 0.0) / k;
+    return min(a, b) - h * h * k * 0.25;
+}
+
+float smaxPoly(float a, float b, float k) {
+    if (k <= 1e-5) return max(a, b);
+    float h = max(k - abs(a - b), 0.0) / k;
+    return max(a, b) + h * h * k * 0.25;
+}
+
+vec4 sampleSrcVol(vec3 q) {
+    vec3 uvw = (q - uVolMin) / (uVolMax - uVolMin);
+    vec3 clamped = clamp(uvw, vec3(0.004), vec3(0.996));
+    vec4 v = textureLod(uSrcVol, clamped, 0.0);
+    vec3 over = max(vec3(0.0), max(uVolMin - q, q - uVolMax));
+    return vec4(v.x + length(over), v.yzw);
+}
+
+void main() {
+    vec2 uv = vNdc * 0.5 + 0.5;
+    vec3 p = mix(uVolMin, uVolMax, vec3(uv.x, uv.y, uSliceZNorm));
+
+    vec4 src0 = sampleSrcVol(p);
+    float dAcc = src0.x;
+    vec3 colAcc = src0.yzw;
+
+    vec4 meta = texelFetch(uSculptMetaTex, ivec2(0, uSculptIndex), 0);
+    int dStart = int(meta.x + 0.5);
+    int dCount = int(meta.y + 0.5);
+
+    for (int k = 0; k < 512; k++) {
+        if (k >= dCount) break;
+        int row = dStart + k;
+        vec4 d0 = texelFetch(uSculptDabTex, ivec2(0, row), 0); // (cx, cy, cz, r)
+        vec4 d1 = texelFetch(uSculptDabTex, ivec2(1, row), 0); // (nx, ny, nz, s)
+        vec4 d2 = texelFetch(uSculptDabTex, ivec2(2, row), 0); // (tx, tz, opCode, h)
+        vec4 d3 = texelFetch(uSculptDabTex, ivec2(3, row), 0); // (colR, colG, colB, useTone)
+
+        float r = d0.w;
+        float s = d1.w;
+        int op = int(d2.z + 0.5);
+        float h = d2.w;
+        bool useTone = d3.w > 0.5;
+
+        vec3 v = p - d0.xyz;
+        float dist = length(v);
+        float blendK = r * (0.14 + 0.48 * (1.0 - h));
+
+        if (op == 0) {
+            float sink = -0.18 * r * (1.0 - 0.5 * s);
+            if (dist - (r + abs(sink)) > dAcc + blendK) continue;
+            vec3 q = v - d1.xyz * sink;
+            float vn = dot(q, d1.xyz);
+            float tang2 = max(0.0, dot(q, q) - vn * vn);
+            float tau = clamp(0.34 + 0.54 * s, 0.34, 0.88);
+            float ry = r * tau;
+            float dDab = (sqrt(tang2 / (r * r) + (vn * vn) / (ry * ry)) - 1.0) * ry;
+            float wCol = blendK > 1e-4 ? clamp(0.5 + 0.5 * (dAcc - dDab) / blendK, 0.0, 1.0) : (dDab < dAcc ? 1.0 : 0.0);
+            dAcc = sminPoly(dAcc, dDab, blendK);
+            if (useTone && wCol > 1e-3) {
+                colAcc = mix(colAcc, d3.rgb, wCol * 0.88);
+            }
+        } else if (op == 1) {
+            float lift = 0.18 * r * (1.0 - 0.55 * s);
+            if (dist - (r + lift) > -dAcc + blendK) continue;
+            vec3 q = v - d1.xyz * lift;
+            float vn = dot(q, d1.xyz);
+            float tang2 = max(0.0, dot(q, q) - vn * vn);
+            float tau = clamp(0.36 + 0.56 * s, 0.36, 0.92);
+            float ry = r * tau;
+            float dDab = (sqrt(tang2 / (r * r) + (vn * vn) / (ry * ry)) - 1.0) * ry;
+            float prev = dAcc;
+            dAcc = smaxPoly(dAcc, -dDab, blendK);
+            if (dAcc > prev + 1e-4) {
+                float cutW = smoothstep(0.0, max(0.02, blendK + 0.04), dAcc - prev);
+                vec3 tCol = useTone ? d3.rgb : clamp(colAcc * vec3(0.86, 0.85, 0.84) + vec3(0.03), 0.0, 1.0);
+                colAcc = mix(colAcc, tCol, cutW * (useTone ? 0.85 : 0.55));
+            }
+        } else {
+            if (dist >= r) continue;
+            float fall = 1.0 - smoothstep(h * 0.58, 1.0, dist / r);
+            float w = fall * fall;
+            if (w <= 1e-5) continue;
+
+            if (op == 2) {
+                float dPlane = dot(v, d1.xyz) + 0.14 * r * s;
+                float target = smaxPoly(dAcc, dPlane, 0.04 * r * (1.0 - h));
+                dAcc = mix(dAcc, target, clamp(s * 1.15, 0.05, 1.0) * w);
+            } else if (op == 3) {
+                float stepH = clamp(r * 0.24, 0.04, 0.42);
+                float dAvg = (
+                    sampleSrcVol(p + vec3(stepH, 0.0, 0.0)).x +
+                    sampleSrcVol(p - vec3(stepH, 0.0, 0.0)).x +
+                    sampleSrcVol(p + vec3(0.0, stepH, 0.0)).x +
+                    sampleSrcVol(p - vec3(0.0, stepH, 0.0)).x +
+                    sampleSrcVol(p + vec3(0.0, 0.0, stepH)).x +
+                    sampleSrcVol(p - vec3(0.0, 0.0, stepH)).x
+                ) / 6.0;
+                dAcc = mix(dAcc, dAvg, clamp(s * 0.92, 0.05, 0.95) * w);
+            } else if (op == 4) {
+                dAcc -= (0.34 * r * s) * w;
+            } else if (op == 5) {
+                vec3 bVec = cross(d1.xyz, vec3(d2.x, 0.0, d2.y));
+                float bLen = max(1e-4, length(bVec));
+                bVec /= bLen;
+                float crossCoord = abs(dot(v, bVec));
+                float grooveDepth = 0.36 * r * s * w;
+                float vCut = max(0.0, grooveDepth - crossCoord * (0.75 + 1.35 * h));
+                dAcc += vCut * exp(-max(0.0, dAcc) * 2.5 / r);
+            }
+            if (useTone && w > 1e-3) {
+                colAcc = mix(colAcc, d3.rgb, w * s * 0.75);
+            }
+        }
+    }
+
+    outSdf = vec4(dAcc, colAcc);
+}
+`;
+
 const ROCK2_COMBINE_VOL_FS = `#version 300 es
 precision highp float;
 precision highp sampler3D;
@@ -569,6 +731,11 @@ float chamferMin(float a, float b, float r) {
     if (r <= 1e-5) return m;
     return min(m, (a + b - r) * 0.70710678);
 }
+float chamferSubtract(float a, float b, float r) {
+    float m = max(a, -b);
+    if (r <= 1e-5) return m;
+    return max(m, (a - b + r) * 0.70710678);
+}
 
 void main() {
     vec2 uv = vNdc * 0.5 + 0.5;
@@ -578,7 +745,7 @@ void main() {
     vec3 lyrCol = lyr.yzw;
 
     if (uHasPrevVol == 0) {
-        outSdf = (uCombineOp == 3) ? vec4(10.0, 0.58, 0.57, 0.55) : lyr;
+        outSdf = (uCombineOp == 3 || uCombineOp == 5) ? vec4(10.0, 0.58, 0.57, 0.55) : lyr;
         return;
     }
 
@@ -605,6 +772,11 @@ void main() {
         float w = dLyr > dAcc ? 1.0 : 0.0;
         dAcc = smaxPoly(dAcc, dLyr, uBlendRadius);
         colAcc = mix(colAcc, lyrCol, w * 0.5);
+    } else if (uCombineOp == 5) {
+        float p0 = dAcc;
+        dAcc = chamferSubtract(dAcc, dLyr, uBlendRadius);
+        float cutW = smoothstep(0.0, max(0.02, uBlendRadius + 0.04), dAcc - p0);
+        colAcc = mix(colAcc, lyrCol, cutW * 0.70);
     }
     outSdf = vec4(dAcc, colAcc);
 }
@@ -618,6 +790,8 @@ in vec2 vNdc;
 out vec4 outColor;
 
 uniform sampler3D uSdfVol;
+uniform sampler3D uBoolVol;
+uniform int uShowBoolGhosts;
 uniform vec3 uVolMin;
 uniform vec3 uVolMax;
 
@@ -655,6 +829,24 @@ vec4 sampleVol(vec3 p) {
 
 float evalD(vec3 p) {
     return sampleVol(p).x;
+}
+
+vec4 sampleBoolVol(vec3 p) {
+    vec3 uvw = (p - uVolMin) / (uVolMax - uVolMin);
+    vec3 clamped = clamp(uvw, vec3(0.004), vec3(0.996));
+    vec4 v = textureLod(uBoolVol, clamped, 0.0);
+    vec3 over = max(vec3(0.0), max(uVolMin - p, p - uVolMax));
+    return vec4(v.x + length(over), v.yzw);
+}
+
+vec3 calcBoolNormal(vec3 p, float eps) {
+    vec2 e = vec2(1.0, -1.0) * eps;
+    return normalize(
+        e.xyy * sampleBoolVol(p + e.xyy).x +
+        e.yyx * sampleBoolVol(p + e.yyx).x +
+        e.yxy * sampleBoolVol(p + e.yxy).x +
+        e.xxx * sampleBoolVol(p + e.xxx).x
+    );
 }
 
 vec3 calcNormal(vec3 p, float eps) {
@@ -785,9 +977,129 @@ void main() {
         col = mix(col, floorCol, fade);
     }
 
+    // Semi-Transparent Red 3D Boolean Ghost Volume Overlay (Subtract / Chamfer-Subtract / Intersect)
+    if (uShowBoolGhosts == 1 && box.y > box.x) {
+        float tScene = (hitRock && (tFloor <= 0.0 || tHit < tFloor)) ? tHit : (tFloor > 0.0 ? tFloor : 1e9);
+        float voxelDiag = length(uVolMax - uVolMin) / 112.0;
+        float tB = box.x;
+        bool hitBool = false;
+        for (int i = 0; i < 104; i++) {
+            vec3 pB = ro + rd * tB;
+            float dB = sampleBoolVol(pB).x;
+            if (dB < voxelDiag * 0.20) {
+                hitBool = true;
+                break;
+            }
+            tB += max(voxelDiag * 0.28, dB * 0.82);
+            if (tB > box.y) break;
+        }
+
+        if (hitBool) {
+            vec3 pB = ro + rd * tB;
+            vec4 bMeta = sampleBoolVol(pB);
+            vec3 nB = calcBoolNormal(pB, voxelDiag * 0.48);
+            float opCode = bMeta.y;
+            bool isSel = bMeta.z > 0.5;
+            bool isIntersect = abs(opCode - 4.0) < 0.4;
+
+            vec3 baseRed = isIntersect
+                ? (isSel ? vec3(1.25, 0.24, 0.12) : vec3(0.95, 0.22, 0.12))
+                : (isSel ? vec3(1.30, 0.10, 0.14) : vec3(0.96, 0.10, 0.13));
+            float ndlB = 0.45 + 0.55 * max(0.0, dot(nB, uSunDir));
+            float fres = pow(1.0 - clamp(abs(dot(nB, -rd)), 0.0, 1.0), 2.1);
+            float scan = 0.5 + 0.5 * sin((pB.x + pB.y * 1.35 + pB.z) * 12.0);
+            vec3 boolCol = baseRed * ndlB + vec3(1.15, 0.22, 0.24) * fres * (isSel ? 0.85 : 0.55);
+
+            if (tB <= tScene + voxelDiag * 0.65) {
+                float alphaFront = clamp(mix(isSel ? 0.30 : 0.21, isSel ? 0.72 : 0.54, fres) + scan * 0.04, 0.16, 0.78);
+                col = mix(col, boolCol, alphaFront);
+            } else {
+                // Subtle X-ray semi-transparent red silhouette when boolean cutter is embedded inside rock
+                float alphaXray = (isSel ? 0.20 : 0.10) * (0.30 + 0.70 * fres);
+                col = mix(col, boolCol, alphaXray);
+            }
+        }
+    }
+
     col = acesk(col * uExposure);
     col = pow(col, vec3(1.0 / 2.2));
     outColor = vec4(col, 1.0);
+}
+`;
+
+const ROCK2_BOOL_OVERLAY_FS = `#version 300 es
+precision highp float;
+precision highp sampler3D;
+
+in vec2 vNdc;
+out vec4 outColor;
+
+uniform sampler3D uBoolVol;
+uniform vec3 uVolMin;
+uniform vec3 uVolMax;
+uniform vec3 uCamPos;
+uniform vec3 uCamFwd;
+uniform vec3 uCamRight;
+uniform vec3 uCamUp;
+uniform vec2 uResolution;
+uniform vec3 uSunDir;
+
+vec2 intersectAabb(vec3 ro, vec3 rd, vec3 bmin, vec3 bmax) {
+    vec3 invD = 1.0 / rd;
+    vec3 t0s = (bmin - ro) * invD;
+    vec3 t1s = (bmax - ro) * invD;
+    vec3 tsmaller = min(t0s, t1s);
+    vec3 tbigger  = max(t0s, t1s);
+    return vec2(max(0.0, max(max(tsmaller.x, tsmaller.y), tsmaller.z)), min(min(tbigger.x, tbigger.y), tbigger.z));
+}
+
+vec4 sampleBoolVol(vec3 p) {
+    vec3 uvw = (p - uVolMin) / (uVolMax - uVolMin);
+    vec3 clamped = clamp(uvw, vec3(0.004), vec3(0.996));
+    vec4 v = textureLod(uBoolVol, clamped, 0.0);
+    vec3 over = max(vec3(0.0), max(uVolMin - p, p - uVolMax));
+    return vec4(v.x + length(over), v.yzw);
+}
+
+vec3 calcBoolNormal(vec3 p, float eps) {
+    vec2 e = vec2(1.0, -1.0) * eps;
+    return normalize(
+        e.xyy * sampleBoolVol(p + e.xyy).x +
+        e.yyx * sampleBoolVol(p + e.yyx).x +
+        e.yxy * sampleBoolVol(p + e.yxy).x +
+        e.xxx * sampleBoolVol(p + e.xxx).x
+    );
+}
+
+void main() {
+    vec2 aspect = vec2(uResolution.x / max(1.0, uResolution.y), 1.0);
+    vec2 screen = vNdc * aspect * 0.44;
+    vec3 ro = uCamPos;
+    vec3 rd = normalize(uCamFwd + screen.x * uCamRight + screen.y * uCamUp);
+
+    vec2 box = intersectAabb(ro, rd, uVolMin, uVolMax);
+    if (box.y <= box.x) discard;
+
+    float voxelDiag = length(uVolMax - uVolMin) / 112.0;
+    float tB = box.x;
+    bool hitBool = false;
+    for (int i = 0; i < 96; i++) {
+        float dB = sampleBoolVol(ro + rd * tB).x;
+        if (dB < voxelDiag * 0.20) { hitBool = true; break; }
+        tB += max(voxelDiag * 0.28, dB * 0.82);
+        if (tB > box.y) break;
+    }
+    if (!hitBool) discard;
+
+    vec3 pB = ro + rd * tB;
+    vec4 bMeta = sampleBoolVol(pB);
+    vec3 nB = calcBoolNormal(pB, voxelDiag * 0.48);
+    bool isSel = bMeta.z > 0.5;
+    float fres = pow(1.0 - clamp(abs(dot(nB, -rd)), 0.0, 1.0), 2.1);
+    float ndl = 0.48 + 0.52 * max(0.0, dot(nB, uSunDir));
+    vec3 col = (isSel ? vec3(1.0, 0.22, 0.25) : vec3(0.92, 0.18, 0.21)) * ndl + vec3(1.0, 0.35, 0.35) * fres * 0.45;
+    float alpha = clamp(mix(isSel ? 0.28 : 0.19, isSel ? 0.68 : 0.50, fres), 0.15, 0.72);
+    outColor = vec4(col, alpha);
 }
 `;
 
@@ -886,7 +1198,21 @@ export class RockFormation2Viewport
         this.compiledStack = null;
         this.activeLayer = null;
         this.showGizmos = true;
-        this.gizmoToolMode = 'path'; // 'path' | 'translate' | 'rotate' | 'scale'
+        this.showBooleanGhosts = true;
+        this.hasBooleanLayers = false;
+        this.numBooleanLayers = 0;
+        this.gizmoToolMode = 'path'; // 'path' | 'translate' | 'rotate' | 'scale' | 'sculpt'
+        this.sculptBrushPreview = {
+            brushOp: 'add',
+            brushRadius: 0.78,
+            brushStrength: 0.58,
+            brushHardness: 0.42,
+            strokeSpacing: 0.28,
+            symmetryMode: 'none'
+        };
+        this._sculptHover = null;
+        this._sculptDrag = null;
+        this._sculptModDown = { shift: false, ctrl: false };
         this.selectedInstanceIndex = -1; // -1 = Whole Layer; >= 0 = Individual Rock #k inside multi-rock layer
         this.instancePickLock = false;
         this.selectedKnotIndex = 0;
@@ -989,22 +1315,28 @@ export class RockFormation2Viewport
 
         this.bakeProg = this._linkProgram(FULLSCREEN_VS, ROCK2_BAKE_FS);
         this.faultModProg = this._linkProgram(FULLSCREEN_VS, ROCK2_FAULT_MOD_FS);
+        this.sculptModProg = this._linkProgram(FULLSCREEN_VS, ROCK2_SCULPT_MOD_FS);
         this.combineVolProg = this._linkProgram(FULLSCREEN_VS, ROCK2_COMBINE_VOL_FS);
         this.rayProg = this._linkProgram(FULLSCREEN_VS, ROCK2_RAYMARCH_FS);
+        this.boolOverlayProg = this._linkProgram(FULLSCREEN_VS, ROCK2_BOOL_OVERLAY_FS);
         this.meshProg = this._linkProgram(ROCK2_MESH_VS, ROCK2_MESH_FS);
 
         this.emptyVao = gl.createVertexArray();
         this.layerTex = this._create2DDataTex();
+        this.boolLayerTex = this._create2DDataTex();
         this.blockTex = this._create2DDataTex();
         this.planeTex = this._create2DDataTex();
         this.modMetaTex = this._create2DDataTex();
         this.faultPlaneTex = this._create2DDataTex();
         this.faultBlockTex = this._create2DDataTex();
+        this.sculptMetaTex = this._create2DDataTex();
+        this.sculptDabTex = this._create2DDataTex();
 
         this.sdfVolTexA = this._create3DVolumeTex(this.volRes);
         this.sdfVolTexB = this._create3DVolumeTex(this.volRes);
         this.sdfVolScratchA = this._create3DVolumeTex(this.volRes);
         this.sdfVolScratchB = this._create3DVolumeTex(this.volRes);
+        this.boolVolTex = this._create3DVolumeTex(this.volRes);
         this.sdfVolTex = this.sdfVolTexA;
         this._gpuPasses = [];
 
@@ -1056,12 +1388,17 @@ export class RockFormation2Viewport
         this.volMin[0] = b.minX; this.volMin[1] = b.minY; this.volMin[2] = b.minZ;
         this.volMax[0] = b.maxX; this.volMax[1] = b.maxY; this.volMax[2] = b.maxZ;
 
-        const packed = packRock2StackGpuBuffers(compiledStack);
+        const packed = packRock2StackGpuBuffers(compiledStack, { selectedLayerId: this.activeLayer?.id || '' });
         this.numLayers = packed.numLayers;
+        this.hasBooleanLayers = !!packed.hasBooleanLayers;
+        this.numBooleanLayers = packed.numBooleanLayers || 0;
         this._gpuPasses = packed.gpuPasses || [{ kind: 'plain', layerStart: 0, layerCount: packed.numLayers, hasPrevVol: false }];
 
         gl.bindTexture(gl.TEXTURE_2D, this.layerTex);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, packed.layerTexWidth, packed.layerTexHeight, 0, gl.RGBA, gl.FLOAT, packed.layerTexData);
+
+        gl.bindTexture(gl.TEXTURE_2D, this.boolLayerTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, packed.boolLayerTexWidth, packed.boolLayerTexHeight, 0, gl.RGBA, gl.FLOAT, packed.boolLayerTexData);
 
         gl.bindTexture(gl.TEXTURE_2D, this.blockTex);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, packed.blockTexWidth, packed.blockTexHeight, 0, gl.RGBA, gl.FLOAT, packed.blockTexData);
@@ -1077,6 +1414,12 @@ export class RockFormation2Viewport
 
         gl.bindTexture(gl.TEXTURE_2D, this.faultBlockTex);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, packed.faultBlockTexWidth, packed.faultBlockTexHeight, 0, gl.RGBA, gl.FLOAT, packed.faultBlockTexData);
+
+        gl.bindTexture(gl.TEXTURE_2D, this.sculptMetaTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, packed.sculptMetaTexWidth, packed.sculptMetaTexHeight, 0, gl.RGBA, gl.FLOAT, packed.sculptMetaTexData);
+
+        gl.bindTexture(gl.TEXTURE_2D, this.sculptDabTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, packed.sculptDabTexWidth, packed.sculptDabTexHeight, 0, gl.RGBA, gl.FLOAT, packed.sculptDabTexData);
 
         if (this.gpuVolBakeSupported)
         {
@@ -1106,12 +1449,12 @@ export class RockFormation2Viewport
         }
     }
 
-    _bakePlainSubpass(targetVol, prevVol, hasPrevVol, layerStart, layerCount, forceFirstUnion = false)
+    _bakePlainSubpass(targetVol, prevVol, hasPrevVol, layerStart, layerCount, forceFirstUnion = false, boolMaskOnly = false)
     {
         const gl = this.gl;
         gl.useProgram(this.bakeProg);
         gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, this.layerTex);
+        gl.bindTexture(gl.TEXTURE_2D, boolMaskOnly ? this.boolLayerTex : this.layerTex);
         gl.uniform1i(gl.getUniformLocation(this.bakeProg, 'uLayerTex'), 0);
 
         gl.activeTexture(gl.TEXTURE1);
@@ -1130,10 +1473,34 @@ export class RockFormation2Viewport
         gl.uniform1i(gl.getUniformLocation(this.bakeProg, 'uLayerStart'), layerStart);
         gl.uniform1i(gl.getUniformLocation(this.bakeProg, 'uLayerCount'), layerCount);
         gl.uniform1i(gl.getUniformLocation(this.bakeProg, 'uForceFirstUnion'), forceFirstUnion ? 1 : 0);
+        gl.uniform1i(gl.getUniformLocation(this.bakeProg, 'uBoolMaskOnly'), boolMaskOnly ? 1 : 0);
         gl.uniform3fv(gl.getUniformLocation(this.bakeProg, 'uVolMin'), this.volMin);
         gl.uniform3fv(gl.getUniformLocation(this.bakeProg, 'uVolMax'), this.volMax);
 
         this._runVolumeSlices(this.bakeProg, targetVol);
+    }
+
+    _bakeSculptModifierSubpass(targetVol, srcVol, sculptIndex)
+    {
+        const gl = this.gl;
+        gl.useProgram(this.sculptModProg);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_3D, srcVol);
+        gl.uniform1i(gl.getUniformLocation(this.sculptModProg, 'uSrcVol'), 0);
+
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, this.sculptMetaTex);
+        gl.uniform1i(gl.getUniformLocation(this.sculptModProg, 'uSculptMetaTex'), 1);
+
+        gl.activeTexture(gl.TEXTURE2);
+        gl.bindTexture(gl.TEXTURE_2D, this.sculptDabTex);
+        gl.uniform1i(gl.getUniformLocation(this.sculptModProg, 'uSculptDabTex'), 2);
+
+        gl.uniform1i(gl.getUniformLocation(this.sculptModProg, 'uSculptIndex'), sculptIndex);
+        gl.uniform3fv(gl.getUniformLocation(this.sculptModProg, 'uVolMin'), this.volMin);
+        gl.uniform3fv(gl.getUniformLocation(this.sculptModProg, 'uVolMax'), this.volMax);
+
+        this._runVolumeSlices(this.sculptModProg, targetVol);
     }
 
     _bakeFaultModifierSubpass(targetVol, srcVol, modIndex)
@@ -1224,14 +1591,33 @@ export class RockFormation2Viewport
                     this._bakeFaultModifierSubpass(nextVol, curVol, pass.modIndex);
                     const tmp = curVol; curVol = nextVol; nextVol = tmp;
                 }
+                else if (pass.kind === 'sculpt_layer')
+                {
+                    if (!hasValidMain)
+                    {
+                        this._bakePlainSubpass(curVol, nextVol, false, 0, 0, false);
+                        hasValidMain = true;
+                    }
+                    this._bakeSculptModifierSubpass(nextVol, curVol, pass.sculptIndex);
+                    const tmp = curVol; curVol = nextVol; nextVol = tmp;
+                }
                 else if (pass.kind === 'single_layer_mod')
                 {
                     let sCur = this.sdfVolScratchA;
                     let sNext = this.sdfVolScratchB;
                     this._bakePlainSubpass(sCur, sNext, false, pass.layerIndex, 1, true);
-                    for (let m = 0; m < pass.modIndices.length; m++)
+                    const steps = pass.modSteps || (pass.modIndices || []).map(mi => ({ kind: 'split_fault', modIndex: mi }));
+                    for (let m = 0; m < steps.length; m++)
                     {
-                        this._bakeFaultModifierSubpass(sNext, sCur, pass.modIndices[m]);
+                        const ms = steps[m];
+                        if (ms.kind === 'sculpt_layer')
+                        {
+                            this._bakeSculptModifierSubpass(sNext, sCur, ms.sculptIndex);
+                        }
+                        else
+                        {
+                            this._bakeFaultModifierSubpass(sNext, sCur, ms.modIndex);
+                        }
                         const st = sCur; sCur = sNext; sNext = st;
                     }
                     this._bakeCombineVolSubpass(nextVol, curVol, sCur, hasValidMain && pass.hasPrevVol, pass.combineOp, pass.blendRadius);
@@ -1240,6 +1626,12 @@ export class RockFormation2Viewport
                 }
             }
             this.sdfVolTex = curVol;
+        }
+
+        // Bake Semi-Transparent Red Boolean Ghost Volume (`boolVolTex`) when Boolean layers exist
+        if (this.hasBooleanLayers && this.numBooleanLayers > 0)
+        {
+            this._bakePlainSubpass(this.boolVolTex, this.sdfVolScratchA, false, 0, this.numBooleanLayers, false, true);
         }
 
         gl.activeTexture(gl.TEXTURE3);
@@ -1347,6 +1739,7 @@ export class RockFormation2Viewport
 
     setActiveLayer(layer)
     {
+        const prevId = this.activeLayer?.id || '';
         this.activeLayer = layer || null;
         const knots = layer?.generator?.knots;
         if (Array.isArray(knots) && knots.length > 0)
@@ -1357,6 +1750,72 @@ export class RockFormation2Viewport
         {
             this.selectedKnotIndex = 0;
         }
+
+        if (layer?.type === 'sculpt_layer' && layer.params)
+        {
+            this.setSculptBrushPreview(layer.params);
+        }
+
+        // Refresh Boolean selection highlight flag in `boolVolTex` when active layer changes
+        const nextId = this.activeLayer?.id || '';
+        if (prevId !== nextId && this.hasBooleanLayers && this.compiledStack && this.gl && this.gpuVolBakeSupported)
+        {
+            this._refreshBooleanGhostSelection();
+        }
+    }
+
+    _refreshBooleanGhostSelection()
+    {
+        if (!this.compiledStack || !this.gl || !this.hasBooleanLayers) return;
+        const gl = this.gl;
+        const boolLayers = this.compiledStack.compiledLayers.filter(l => l.isBoolean);
+        if (!boolLayers.length) return;
+        const selId = this.activeLayer?.id || '';
+        const data = new Float32Array(boolLayers.length * 8);
+        for (let i = 0; i < boolLayers.length; i++)
+        {
+            const bl = boolLayers[i];
+            const off = i * 8;
+            data[off + 0] = bl.blockStart;
+            data[off + 1] = bl.blockCount;
+            data[off + 2] = bl.combineOp;
+            data[off + 3] = bl.id === selId ? 1.0 : 0.0;
+            data[off + 4] = bl.color[0];
+            data[off + 5] = bl.color[1];
+            data[off + 6] = bl.color[2];
+            data[off + 7] = bl.intraBlend;
+        }
+        gl.bindTexture(gl.TEXTURE_2D, this.boolLayerTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 2, boolLayers.length, 0, gl.RGBA, gl.FLOAT, data);
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.bakeFbo);
+        gl.viewport(0, 0, this.volRes, this.volRes);
+        gl.disable(gl.DEPTH_TEST);
+        gl.disable(gl.BLEND);
+        gl.bindVertexArray(this.emptyVao);
+        this._bakePlainSubpass(this.boolVolTex, this.sdfVolScratchA, false, 0, boolLayers.length, false, true);
+        gl.activeTexture(gl.TEXTURE3);
+        gl.bindTexture(gl.TEXTURE_3D, null);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+        gl.bindVertexArray(null);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    }
+
+    setShowBooleanGhosts(visible)
+    {
+        this.showBooleanGhosts = !!visible;
+    }
+
+    setSculptBrushPreview(params = {})
+    {
+        if (!params) return;
+        if (params.brushOp !== undefined) this.sculptBrushPreview.brushOp = params.brushOp;
+        if (params.brushRadius !== undefined) this.sculptBrushPreview.brushRadius = clamp(Number(params.brushRadius) || 0.78, 0.08, 4.5);
+        if (params.brushStrength !== undefined) this.sculptBrushPreview.brushStrength = clamp(Number(params.brushStrength) || 0.58, 0.02, 1.0);
+        if (params.brushHardness !== undefined) this.sculptBrushPreview.brushHardness = clamp(Number(params.brushHardness) ?? 0.42, 0.0, 1.0);
+        if (params.strokeSpacing !== undefined) this.sculptBrushPreview.strokeSpacing = clamp(Number(params.strokeSpacing) || 0.28, 0.08, 0.85);
+        if (params.symmetryMode !== undefined) this.sculptBrushPreview.symmetryMode = params.symmetryMode;
     }
 
     _getLayerTransform(layer)
@@ -1453,8 +1912,13 @@ export class RockFormation2Viewport
 
     setGizmoToolMode(mode = 'path')
     {
-        const valid = (mode === 'translate' || mode === 'rotate' || mode === 'scale') ? mode : 'path';
+        const valid = (mode === 'translate' || mode === 'rotate' || mode === 'scale' || mode === 'sculpt') ? mode : 'path';
         this.gizmoToolMode = valid;
+        if (valid !== 'sculpt')
+        {
+            this._sculptHover = null;
+            this._sculptDrag = null;
+        }
     }
 
     _projectRayOntoWorldAxis(clientX, clientY, originW, axisW)
@@ -1600,7 +2064,39 @@ export class RockFormation2Viewport
             const sy = e.clientY - rect.top;
             downClientX = e.clientX;
             downClientY = e.clientY;
-            clickCandidate = (e.button === 0 && !e.altKey && !e.shiftKey);
+            clickCandidate = (e.button === 0 && !e.altKey && !e.shiftKey && this.gizmoToolMode !== 'sculpt');
+
+            // 3D Pure-SDF Brush Sculpting Stroke Start (`gizmoToolMode === 'sculpt'`)
+            if (e.button === 0 && !e.altKey && this.gizmoToolMode === 'sculpt' && this.compiledStack)
+            {
+                const { ro, rd } = this._screenRay(e.clientX, e.clientY);
+                const hit = pickRock2SculptHitAtRay(this.compiledStack, ro, rd);
+                if (hit)
+                {
+                    this._sculptHover = hit;
+                    const baseOp = this.sculptBrushPreview.brushOp || 'add';
+                    const opOverride = e.shiftKey
+                        ? 'smooth'
+                        : ((e.ctrlKey || e.metaKey) ? (baseOp === 'carve' ? 'add' : 'carve') : baseOp);
+
+                    const strokeCtx = this.callbacks.onSculptStrokeStart?.() || {};
+                    const strokeId = strokeCtx.strokeId ?? Math.floor(Math.random() * 1e9);
+                    this._sculptDrag = {
+                        strokeId,
+                        opOverride,
+                        lastPt: [hit.hitPoint[0], hit.hitPoint[1], hit.hitPoint[2]]
+                    };
+                    this.callbacks.onSculptDab?.({
+                        x: hit.hitPoint[0], y: hit.hitPoint[1], z: hit.hitPoint[2],
+                        nx: hit.normal[0],  ny: hit.normal[1],  nz: hit.normal[2],
+                        tx: 1.0, tz: 0.0,
+                        strokeId,
+                        opOverride
+                    });
+                    this.canvas.setPointerCapture?.(e.pointerId);
+                    return;
+                }
+            }
 
             if (e.button === 0 && !e.altKey && this.showGizmos && this.activeLayer && this.activeLayer.enabled)
             {
@@ -1783,6 +2279,40 @@ export class RockFormation2Viewport
 
         this.canvas.addEventListener('pointermove', e =>
         {
+            this._sculptModDown.shift = !!e.shiftKey;
+            this._sculptModDown.ctrl  = !!(e.ctrlKey || e.metaKey);
+
+            if (this._sculptDrag && this.compiledStack)
+            {
+                const { ro, rd } = this._screenRay(e.clientX, e.clientY);
+                const hit = pickRock2SculptHitAtRay(this.compiledStack, ro, rd);
+                this._sculptHover = hit;
+                if (hit)
+                {
+                    const lp = this._sculptDrag.lastPt;
+                    const dx3 = hit.hitPoint[0] - lp[0];
+                    const dy3 = hit.hitPoint[1] - lp[1];
+                    const dz3 = hit.hitPoint[2] - lp[2];
+                    const dist3 = Math.hypot(dx3, dy3, dz3);
+                    const minSpacing = Math.max(0.035, (this.sculptBrushPreview.brushRadius || 0.78) * (this.sculptBrushPreview.strokeSpacing || 0.28));
+                    if (dist3 >= minSpacing)
+                    {
+                        const tLen = Math.hypot(dx3, dz3);
+                        const tx = tLen > 1e-4 ? (dx3 / tLen) : 1.0;
+                        const tz = tLen > 1e-4 ? (dz3 / tLen) : 0.0;
+                        this._sculptDrag.lastPt = [hit.hitPoint[0], hit.hitPoint[1], hit.hitPoint[2]];
+                        this.callbacks.onSculptDab?.({
+                            x: hit.hitPoint[0], y: hit.hitPoint[1], z: hit.hitPoint[2],
+                            nx: hit.normal[0],  ny: hit.normal[1],  nz: hit.normal[2],
+                            tx, tz,
+                            strokeId: this._sculptDrag.strokeId,
+                            opOverride: this._sculptDrag.opOverride
+                        });
+                    }
+                }
+                return;
+            }
+
             if (this._gizmoDrag)
             {
                 const dg = this._gizmoDrag;
@@ -2212,6 +2742,16 @@ export class RockFormation2Viewport
 
             if (!camDragging)
             {
+                if (this.gizmoToolMode === 'sculpt' && this.compiledStack)
+                {
+                    const { ro, rd } = this._screenRay(e.clientX, e.clientY);
+                    this._sculptHover = pickRock2SculptHitAtRay(this.compiledStack, ro, rd);
+                    this._hoveredHandle = null;
+                    this._hoveredCurveInsert = null;
+                    this.canvas.style.cursor = this._sculptHover ? 'crosshair' : '';
+                    return;
+                }
+
                 const rect = this.canvas.getBoundingClientRect();
                 const sx = e.clientX - rect.left;
                 const sy = e.clientY - rect.top;
@@ -2261,8 +2801,23 @@ export class RockFormation2Viewport
             }
         });
 
+        this.canvas.addEventListener('pointerleave', () =>
+        {
+            if (!this._sculptDrag) this._sculptHover = null;
+        });
+
         const endDrag = e =>
         {
+            if (this._sculptDrag)
+            {
+                this._sculptDrag = null;
+                this.canvas.style.cursor = this._sculptHover ? 'crosshair' : '';
+                this.callbacks.onSculptStrokeEnd?.();
+                clickCandidate = false;
+                camDragging = false;
+                return;
+            }
+
             if (this._gizmoDrag)
             {
                 const wasMoved = this._gizmoDrag.moved;
@@ -2273,10 +2828,11 @@ export class RockFormation2Viewport
             else if (clickCandidate && e && e.type === 'pointerup' && Math.hypot(e.clientX - downClientX, e.clientY - downClientY) <= 4.5)
             {
                 // Click-on-rock in 3D Viewport -> Sphere-trace Pure-SDF stack!
-                // First click on another layer selects that Layer; clicking a rock inside an already-selected
-                // multi-rock layer (or with Instance Lock ON) drills directly into that individual rock #k!
+                // When Semi-Transparent Red Boolean Ghosts are shown, clicking a red boolean helper directly selects it!
                 const { ro, rd } = this._screenRay(e.clientX, e.clientY);
-                const picked = pickRock2LayerAtRay(this.compiledStack, ro, rd);
+                const picked = pickRock2LayerAtRay(this.compiledStack, ro, rd, {
+                    pickBooleanGhosts: this.showBooleanGhosts
+                });
                 if (picked && picked.layerId)
                 {
                     const isSameLayer = (picked.layerId === this.activeLayer?.id);
@@ -3514,6 +4070,157 @@ export class RockFormation2Viewport
         }
     }
 
+    _renderSculptBrushOverlay(ctx, cam, cssW, cssH)
+    {
+        const hov = this._sculptHover;
+        if (!hov) return;
+
+        const bp = this.sculptBrushPreview;
+        const baseOp = bp.brushOp || 'add';
+        const effOp = this._sculptDrag?.opOverride
+            || (this._sculptModDown.shift ? 'smooth' : (this._sculptModDown.ctrl ? (baseOp === 'carve' ? 'add' : 'carve') : baseOp));
+
+        const opPalette = {
+            add:     { stroke: '#4ade80', fill: 'rgba(74, 222, 128, 0.13)', label: 'CLAY ADD' },
+            carve:   { stroke: '#fb7185', fill: 'rgba(251, 113, 133, 0.14)', label: 'CARVE CHISEL' },
+            flatten: { stroke: '#fbbf24', fill: 'rgba(251, 191, 36, 0.13)',  label: 'FLATTEN FACET' },
+            smooth:  { stroke: '#38bdf8', fill: 'rgba(56, 189, 248, 0.13)',  label: 'SMOOTH RELAX' },
+            inflate: { stroke: '#c084fc', fill: 'rgba(192, 132, 252, 0.13)', label: 'INFLATE BULGE' },
+            crease:  { stroke: '#f97316', fill: 'rgba(249, 115, 22, 0.14)',  label: 'CREASE FISSURE' }
+        };
+        const style = opPalette[effOp] || opPalette.add;
+        const rad = clamp(bp.brushRadius ?? 0.78, 0.08, 4.5);
+        const hard = clamp(bp.brushHardness ?? 0.42, 0.0, 1.0);
+        const sym = bp.symmetryMode || 'none';
+
+        const drawRing3D = (pt, nrm, isMirror = false) =>
+        {
+            const pCenter = this._projectWorldPoint(pt[0], pt[1], pt[2], cam, cssW, cssH);
+            if (!pCenter) return null;
+
+            // Tangent basis perpendicular to 3D rock surface normal `nrm`
+            let refX = 0, refY = 1, refZ = 0;
+            if (Math.abs(nrm[1]) > 0.92) { refX = 1; refY = 0; refZ = 0; }
+            let uX = refY * nrm[2] - refZ * nrm[1];
+            let uY = refZ * nrm[0] - refX * nrm[2];
+            let uZ = refX * nrm[1] - refY * nrm[0];
+            const uL = Math.hypot(uX, uY, uZ) || 1;
+            uX /= uL; uY /= uL; uZ /= uL;
+            const vX = nrm[1] * uZ - nrm[2] * uY;
+            const vY = nrm[2] * uX - nrm[0] * uZ;
+            const vZ = nrm[0] * uY - nrm[1] * uX;
+
+            const segs = 40;
+            ctx.save();
+            ctx.beginPath();
+            let started = false;
+            for (let i = 0; i <= segs; i++)
+            {
+                const a = (i / segs) * Math.PI * 2.0;
+                const ca = Math.cos(a) * rad, sa = Math.sin(a) * rad;
+                const pr = this._projectWorldPoint(
+                    pt[0] + uX * ca + vX * sa + nrm[0] * 0.015,
+                    pt[1] + uY * ca + vY * sa + nrm[1] * 0.015,
+                    pt[2] + uZ * ca + vZ * sa + nrm[2] * 0.015,
+                    cam, cssW, cssH
+                );
+                if (!pr) continue;
+                if (!started) { ctx.moveTo(pr.sx, pr.sy); started = true; }
+                else ctx.lineTo(pr.sx, pr.sy);
+            }
+            ctx.closePath();
+            if (!isMirror)
+            {
+                ctx.fillStyle = style.fill;
+                ctx.fill();
+            }
+            ctx.strokeStyle = style.stroke;
+            ctx.globalAlpha = isMirror ? 0.48 : 0.96;
+            ctx.lineWidth = isMirror ? 1.5 : (this._sculptDrag ? 2.8 : 2.1);
+            if (isMirror) ctx.setLineDash([4, 4]);
+            ctx.stroke();
+
+            // Inner Hardness Falloff Ring
+            if (!isMirror && hard > 0.04)
+            {
+                const inR = rad * clamp(0.18 + 0.72 * hard, 0.18, 0.92);
+                ctx.beginPath();
+                let sIn = false;
+                for (let i = 0; i <= 32; i++)
+                {
+                    const a = (i / 32) * Math.PI * 2.0;
+                    const ca = Math.cos(a) * inR, sa = Math.sin(a) * inR;
+                    const pr = this._projectWorldPoint(
+                        pt[0] + uX * ca + vX * sa + nrm[0] * 0.015,
+                        pt[1] + uY * ca + vY * sa + nrm[1] * 0.015,
+                        pt[2] + uZ * ca + vZ * sa + nrm[2] * 0.015,
+                        cam, cssW, cssH
+                    );
+                    if (!pr) continue;
+                    if (!sIn) { ctx.moveTo(pr.sx, pr.sy); sIn = true; }
+                    else ctx.lineTo(pr.sx, pr.sy);
+                }
+                ctx.closePath();
+                ctx.setLineDash([3, 3]);
+                ctx.lineWidth = 1.25;
+                ctx.globalAlpha = 0.68;
+                ctx.stroke();
+            }
+
+            // Surface Normal Needle + Center Dot
+            const nLen = rad * 0.42;
+            const pTip = this._projectWorldPoint(
+                pt[0] + nrm[0] * nLen,
+                pt[1] + nrm[1] * nLen,
+                pt[2] + nrm[2] * nLen,
+                cam, cssW, cssH
+            );
+            ctx.setLineDash([]);
+            ctx.globalAlpha = isMirror ? 0.45 : 0.92;
+            if (pTip)
+            {
+                ctx.beginPath();
+                ctx.moveTo(pCenter.sx, pCenter.sy);
+                ctx.lineTo(pTip.sx, pTip.sy);
+                ctx.lineWidth = 1.8;
+                ctx.stroke();
+            }
+            ctx.beginPath();
+            ctx.arc(pCenter.sx, pCenter.sy, isMirror ? 2.5 : 3.6, 0, Math.PI * 2);
+            ctx.fillStyle = style.stroke;
+            ctx.fill();
+            ctx.restore();
+            return pCenter;
+        };
+
+        const pMain = drawRing3D(hov.hitPoint, hov.normal, false);
+        if ((sym === 'x' || sym === 'xz') && Math.abs(hov.hitPoint[0]) > 0.05)
+        {
+            drawRing3D([-hov.hitPoint[0], hov.hitPoint[1], hov.hitPoint[2]], [-hov.normal[0], hov.normal[1], hov.normal[2]], true);
+        }
+        if ((sym === 'z' || sym === 'xz') && Math.abs(hov.hitPoint[2]) > 0.05)
+        {
+            drawRing3D([hov.hitPoint[0], hov.hitPoint[1], -hov.hitPoint[2]], [hov.normal[0], hov.normal[1], -hov.normal[2]], true);
+        }
+        if (sym === 'xz' && Math.abs(hov.hitPoint[0]) > 0.05 && Math.abs(hov.hitPoint[2]) > 0.05)
+        {
+            drawRing3D([-hov.hitPoint[0], hov.hitPoint[1], -hov.hitPoint[2]], [-hov.normal[0], hov.normal[1], -hov.normal[2]], true);
+        }
+
+        if (pMain)
+        {
+            const strPct = Math.round((bp.brushStrength ?? 0.58) * 100);
+            const symTxt = sym !== 'none' ? ` · Sym ${sym.toUpperCase()}` : '';
+            this._drawGizmoReadoutPill(
+                ctx,
+                pMain.sx,
+                pMain.sy + 30,
+                `${style.label} · R ${rad.toFixed(2)}m · S ${strPct}%${symTxt}`,
+                style.stroke
+            );
+        }
+    }
+
     _renderGizmoOverlay(cam)
     {
         const ov = this.overlayCanvas;
@@ -3537,6 +4244,12 @@ export class RockFormation2Viewport
         this._screenHandles = [];
         this._screenSplineSegs = [];
         this._screenRotateSegs = [];
+
+        if (this.gizmoToolMode === 'sculpt')
+        {
+            this._renderSculptBrushOverlay(ctx, cam, cssW, cssH);
+            return;
+        }
 
         const layer = this.activeLayer;
         if (!this.showGizmos || !layer || !layer.enabled) return;
@@ -4216,7 +4929,7 @@ export class RockFormation2Viewport
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.iboTris);
             gl.drawElements(gl.TRIANGLES, this.meshIndexCount, gl.UNSIGNED_INT, 0);
 
-            if (this.showWireframe && this.wireIndexCount > 0)
+                if (this.showWireframe && this.wireIndexCount > 0)
             {
                 gl.enable(gl.BLEND);
                 gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -4226,6 +4939,29 @@ export class RockFormation2Viewport
                 gl.disable(gl.BLEND);
             }
             gl.bindVertexArray(null);
+
+            if (this.showBooleanGhosts && this.hasBooleanLayers && this.boolOverlayProg)
+            {
+                gl.disable(gl.DEPTH_TEST);
+                gl.enable(gl.BLEND);
+                gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+                gl.useProgram(this.boolOverlayProg);
+                gl.activeTexture(gl.TEXTURE0);
+                gl.bindTexture(gl.TEXTURE_3D, this.boolVolTex);
+                gl.uniform1i(gl.getUniformLocation(this.boolOverlayProg, 'uBoolVol'), 0);
+                gl.uniform3fv(gl.getUniformLocation(this.boolOverlayProg, 'uVolMin'), this.volMin);
+                gl.uniform3fv(gl.getUniformLocation(this.boolOverlayProg, 'uVolMax'), this.volMax);
+                gl.uniform3fv(gl.getUniformLocation(this.boolOverlayProg, 'uCamPos'), camPos);
+                gl.uniform3fv(gl.getUniformLocation(this.boolOverlayProg, 'uCamFwd'), fwd);
+                gl.uniform3fv(gl.getUniformLocation(this.boolOverlayProg, 'uCamRight'), right);
+                gl.uniform3fv(gl.getUniformLocation(this.boolOverlayProg, 'uCamUp'), up);
+                gl.uniform2f(gl.getUniformLocation(this.boolOverlayProg, 'uResolution'), w, h);
+                gl.uniform3fv(gl.getUniformLocation(this.boolOverlayProg, 'uSunDir'), sunDir);
+                gl.bindVertexArray(this.emptyVao);
+                gl.drawArrays(gl.TRIANGLES, 0, 3);
+                gl.bindVertexArray(null);
+                gl.disable(gl.BLEND);
+            }
         }
         else
         {
@@ -4234,6 +4970,10 @@ export class RockFormation2Viewport
             gl.activeTexture(gl.TEXTURE0);
             gl.bindTexture(gl.TEXTURE_3D, this.sdfVolTex);
             gl.uniform1i(gl.getUniformLocation(this.rayProg, 'uSdfVol'), 0);
+            gl.activeTexture(gl.TEXTURE1);
+            gl.bindTexture(gl.TEXTURE_3D, this.boolVolTex);
+            gl.uniform1i(gl.getUniformLocation(this.rayProg, 'uBoolVol'), 1);
+            gl.uniform1i(gl.getUniformLocation(this.rayProg, 'uShowBoolGhosts'), (this.showBooleanGhosts && this.hasBooleanLayers) ? 1 : 0);
             gl.uniform3fv(gl.getUniformLocation(this.rayProg, 'uVolMin'), this.volMin);
             gl.uniform3fv(gl.getUniformLocation(this.rayProg, 'uVolMax'), this.volMax);
             gl.uniform3fv(gl.getUniformLocation(this.rayProg, 'uCamPos'), camPos);

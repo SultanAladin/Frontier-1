@@ -275,6 +275,9 @@
                             <button id="rock2-tool-scale" class="rock2-gizmo-tool-btn" type="button" title="Scale Selected Layer or Rock Instance X / Y / Z or Uniformly in 3D (R)">
                                 <span>Scale</span><kbd>R</kbd>
                             </button>
+                            <button id="rock2-tool-sculpt" class="rock2-gizmo-tool-btn sculpt-tool-btn" type="button" title="Interactive 3D Pure-SDF Brush Sculpting on Rock Surface (B · Shift=Smooth · Ctrl=Invert · [ / ]=Radius)">
+                                <span>Sculpt</span><kbd>B</kbd>
+                            </button>
                             <span class="rock2-gizmo-rail-sep"></span>
                             <button id="rock2-tool-reset" class="rock2-gizmo-tool-btn subtle" type="button" title="Reset Selected Rock Instance Override (or Whole-Layer TRS)">
                                 <span>Reset</span>
@@ -285,6 +288,7 @@
                             <button id="rock2-mode-ray-btn" class="fracture-pill-btn active" type="button" title="Real-time 60 FPS GPU Pure-SDF Layer Stack Raymarcher">60 FPS GPU SDF</button>
                             <button id="rock2-mode-qef-btn" class="fracture-pill-btn" type="button" title="4^3 Sparse-Brick QEF Dual-Contoured Manifold Mesh">QEF Dual-Contour Mesh</button>
                             <button id="rock2-gizmo-btn" class="fracture-pill-btn active" type="button" title="Show/hide interactive 3D Layer Transform &amp; Generator Gizmos">3D Gizmos</button>
+                            <button id="rock2-bool-ghosts-btn" class="fracture-pill-btn bool-ghost-pill active" type="button" title="Show/hide Semi-Transparent Red 3D Boolean Volumes for Subtract / Chamfer-Subtract / Intersect layers">Bool Ghosts</button>
                             <button id="rock2-wire-btn" class="fracture-pill-btn" type="button" title="Overlay QEF sharp-crease wireframe" style="display:none">Wireframe</button>
                             <select id="rock2-lens-select" class="fracture-lens-select" aria-label="RockFormation 2.0 form lens">
                                 <option value="0" selected>Lens · Plain Stone Studio</option>
@@ -301,7 +305,7 @@
                         </div>
 
                         <div class="viewport-help">
-                            <span>Click Rock: select layer</span><i>·</i><span>Q/W/E/R: Path · Move · Rotate · Scale</span><i>·</i><span>Dbl-Click Spline: +Knot</span><i>·</i><span>Drag Space: orbit</span>
+                            <span>Click Rock / Red Ghost: select</span><i>·</i><span>Q/W/E/R: Gizmo</span><i>·</i><span>B: 3D Sculpt ([ / ] Radius · Shift Smooth)</span><i>·</i><span>Drag Space: orbit</span>
                         </div>
                     </div>
                 </div>

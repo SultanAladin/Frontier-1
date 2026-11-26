@@ -47,8 +47,15 @@ export const ROCK2_COMBINE_MODES = [
     ['Union (Add Solid Rock)', 'union'],
     ['Smooth Blend (Fuse Mass)', 'smooth_union'],
     ['Chamfer Seam (45° Contact)', 'chamfer_union'],
-    ['Subtract (Carve / Cavity)', 'subtract'],
-    ['Intersect (Clip Volume)', 'intersect']
+    ['Boolean Subtract (Carve A − B)', 'subtract'],
+    ['Boolean Chamfer Subtract (45° Bevel Cut)', 'chamfer_subtract'],
+    ['Boolean Intersect (Clip A ∩ B)', 'intersect']
+];
+
+export const ROCK2_BOOLEAN_MODES = [
+    ['Subtract (Carve Cavity A − B)', 'subtract'],
+    ['Chamfer Subtract (45° Bevel Cut)', 'chamfer_subtract'],
+    ['Intersect (Clip Volume A ∩ B)', 'intersect']
 ];
 
 export const ROCK2_COMBINE_OP_CODE = {
@@ -56,7 +63,8 @@ export const ROCK2_COMBINE_OP_CODE = {
     smooth_union: 1,
     chamfer_union: 2,
     subtract: 3,
-    intersect: 4
+    intersect: 4,
+    chamfer_subtract: 5
 };
 
 export const ROCK2_STONE_TONES = {
@@ -671,7 +679,48 @@ export const DEFAULT_ROCK2_SPLIT_FAULT_PARAMS = {
     seed: 1409
 };
 
+export const ROCK2_SCULPT_BRUSH_MODES = [
+    ['Clay Buildup / Add (+)', 'add'],
+    ['Carve / Chisel Gouge (−)', 'carve'],
+    ['Flatten / Planar Facet', 'flatten'],
+    ['Smooth / Polish', 'smooth'],
+    ['Inflate / Bulge', 'inflate'],
+    ['Crease / Fissure Groove', 'crease']
+];
+
+export const ROCK2_SCULPT_OP_CODE = {
+    add: 0,
+    carve: 1,
+    flatten: 2,
+    smooth: 3,
+    inflate: 4,
+    crease: 5
+};
+
+export const DEFAULT_ROCK2_SCULPT_LAYER_PARAMS = {
+    targetScope: 'stack_below', // 'stack_below' | 'single_layer'
+    targetLayerId: '',
+    brushOp: 'add',             // 'add' | 'carve' | 'flatten' | 'smooth' | 'inflate' | 'crease'
+    brushRadius: 0.78,
+    brushStrength: 0.58,
+    brushHardness: 0.50,
+    strokeSpacing: 0.28,
+    symmetryMode: 'none',       // 'none' | 'x' | 'z' | 'xz'
+    stoneTone: 'inherit',       // 'inherit' or key in ROCK2_STONE_TONES
+    dabs: []                    // [{ x, y, z, nx, ny, nz, tx, tz, r, s, h, op, tone, strokeId }]
+};
+
 export const ROCK2_MODIFIER_CATALOG = [
+    {
+        type: 'sculpt_layer',
+        kind: 'modifier',
+        name: '3D Sculpt Layer',
+        shortBadge: 'SCULPT',
+        glyph: 'Brush',
+        desc: 'Non-destructive 3D Pure-SDF surface sculpting layer (Clay Add, Carve, Planar Facet, Smooth, Inflate & Crease with symmetry).',
+        defaults: { ...DEFAULT_ROCK2_SCULPT_LAYER_PARAMS, dabs: [] },
+        controlGroups: []
+    },
     {
         type: 'split_fault',
         kind: 'modifier',
@@ -683,6 +732,42 @@ export const ROCK2_MODIFIER_CATALOG = [
         controlGroups: []
     }
 ];
+
+export function isRock2BooleanCombineMode(mode)
+{
+    return mode === 'subtract' || mode === 'chamfer_subtract' || mode === 'intersect';
+}
+
+export function isRock2BooleanLayer(layer)
+{
+    if (!layer || isRock2ModifierType(layer.type)) return false;
+    return !!layer.isBoolean || isRock2BooleanCombineMode(layer.combineMode);
+}
+
+export function setRock2LayerBooleanMode(layer, enableBool, boolOp = 'subtract')
+{
+    if (!layer || isRock2ModifierType(layer.type)) return layer;
+    const validBoolOp = (boolOp === 'intersect' || boolOp === 'chamfer_subtract') ? boolOp : 'subtract';
+    if (enableBool)
+    {
+        if (!isRock2BooleanCombineMode(layer.combineMode))
+        {
+            layer.nonBoolCombineMode = layer.combineMode || 'smooth_union';
+        }
+        layer.isBoolean = true;
+        layer.booleanOp = validBoolOp;
+        layer.combineMode = validBoolOp;
+    }
+    else
+    {
+        layer.isBoolean = false;
+        if (isRock2BooleanCombineMode(layer.combineMode))
+        {
+            layer.combineMode = layer.nonBoolCombineMode || 'smooth_union';
+        }
+    }
+    return layer;
+}
 
 export function isRock2ModifierType(type)
 {
@@ -1155,10 +1240,15 @@ export function createRock2Layer(type = 'big_boulder', overrides = {})
     if (modSpec)
     {
         const seq = _nextRock2LayerSeq++;
-        const params = { ...modSpec.defaults, ...(overrides.params || {}) };
+        const rawDefaults = JSON.parse(JSON.stringify(modSpec.defaults));
+        const params = { ...rawDefaults, ...(overrides.params ? JSON.parse(JSON.stringify(overrides.params)) : {}) };
         for (const k of Object.keys(modSpec.defaults))
         {
-            if (overrides[k] !== undefined) params[k] = overrides[k];
+            if (overrides[k] !== undefined) params[k] = JSON.parse(JSON.stringify(overrides[k]));
+        }
+        if (modSpec.type === 'sculpt_layer' && !Array.isArray(params.dabs))
+        {
+            params.dabs = [];
         }
         return {
             id: overrides.id || `r2_mod_${seq}_${Math.floor(1000 + Math.random() * 8999)}`,
@@ -1185,6 +1275,16 @@ export function createRock2Layer(type = 'big_boulder', overrides = {})
     const genRaw = overrides.generator || { type: 'none' };
     const generator = createRock2Generator(genRaw.type || 'none', genRaw);
 
+    let combineMode = overrides.combineMode || 'union';
+    const isBool = overrides.isBoolean !== undefined ? !!overrides.isBoolean : isRock2BooleanCombineMode(combineMode);
+    const booleanOp = isRock2BooleanCombineMode(overrides.booleanOp)
+        ? overrides.booleanOp
+        : (isRock2BooleanCombineMode(combineMode) ? combineMode : 'subtract');
+    if (isBool && !isRock2BooleanCombineMode(combineMode))
+    {
+        combineMode = booleanOp;
+    }
+
     return {
         id: overrides.id || `r2_layer_${seq}_${Math.floor(1000 + Math.random() * 8999)}`,
         name: overrides.name || `${spec.name} ${String(seq).padStart(2, '0')}`,
@@ -1192,8 +1292,11 @@ export function createRock2Layer(type = 'big_boulder', overrides = {})
         kind: 'rock',
         enabled: overrides.enabled !== undefined ? !!overrides.enabled : true,
         solo: !!overrides.solo,
-        combineMode: overrides.combineMode || 'union',
-        blendRadius: overrides.blendRadius ?? 0.35,
+        isBoolean: isBool,
+        booleanOp,
+        nonBoolCombineMode: overrides.nonBoolCombineMode || (isRock2BooleanCombineMode(combineMode) ? 'smooth_union' : combineMode),
+        combineMode,
+        blendRadius: overrides.blendRadius ?? (isBool ? 0.14 : 0.35),
         params,
         generator
     };
@@ -1203,6 +1306,7 @@ export function cloneRock2Layer(layer)
 {
     const seq = _nextRock2LayerSeq++;
     const isMod = isRock2ModifierType(layer.type);
+    const isBool = !isMod && isRock2BooleanLayer(layer);
     return {
         id: `r2_${isMod ? 'mod' : 'layer'}_${seq}_${Math.floor(1000 + Math.random() * 8999)}`,
         name: `${layer.name} Copy`,
@@ -1210,6 +1314,9 @@ export function cloneRock2Layer(layer)
         kind: isMod ? 'modifier' : 'rock',
         enabled: layer.enabled,
         solo: false,
+        isBoolean: isBool,
+        booleanOp: layer.booleanOp || (isRock2BooleanCombineMode(layer.combineMode) ? layer.combineMode : 'subtract'),
+        nonBoolCombineMode: layer.nonBoolCombineMode || 'smooth_union',
         combineMode: layer.combineMode,
         blendRadius: layer.blendRadius,
         params: JSON.parse(JSON.stringify(layer.params || {})),
@@ -1708,6 +1815,55 @@ export const ROCK2_STARTER_STACKS = [
                 seed: 2207
             })
         ]
+    },
+    {
+        id: 'stack-live-boolean-sculpt',
+        name: '15 · Live Boolean Cutters + 3D Sculpted Monolith',
+        badge: 'BOOLEAN + SCULPT',
+        buildLayers: () => [
+            createRock2Layer('cliff_block', {
+                name: 'Primary Sandstone Monolith',
+                combineMode: 'union',
+                stoneTone: 'sandstone',
+                seed: 4410,
+                width: 5.6, height: 4.8, length: 4.2,
+                cliffProfile: 'rampart', roundness: 0.16, batterTaper: 0.16, flatBottom: 0.94
+            }),
+            createRock2Layer('smooth_rock', {
+                name: 'Boolean Cavern Portal Cutter',
+                isBoolean: true,
+                booleanOp: 'subtract',
+                combineMode: 'subtract',
+                blendRadius: 0.18,
+                stoneTone: 'bryceCoral',
+                seed: 7712,
+                posX: -0.2, posY: 0.85, posZ: 1.05,
+                width: 2.55, height: 2.50, length: 3.10, roundness: 0.42
+            }),
+            createRock2Layer('rock_slab', {
+                name: 'Boolean Chamfer Notch Cutter',
+                isBoolean: true,
+                booleanOp: 'chamfer_subtract',
+                combineMode: 'chamfer_subtract',
+                blendRadius: 0.22,
+                stoneTone: 'redSlate',
+                seed: 9103,
+                posX: 1.85, posY: 2.75, posZ: 0.25,
+                yawDeg: -22, pitchDeg: 18,
+                width: 2.4, height: 1.4, length: 2.8, roundness: 0.12
+            }),
+            createRock2Layer('sculpt_layer', {
+                name: 'Hand-Sculpted Facets & Ledges',
+                brushOp: 'add',
+                brushRadius: 0.82,
+                brushStrength: 0.62,
+                dabs: [
+                    { x: -1.85, y: 2.35, z: 1.15, nx: -0.52, ny: 0.32, nz: 0.79, tx: 0.85, tz: 0.52, r: 0.95, s: 0.68, h: 0.45, op: 'add', tone: 'inherit', strokeId: 1 },
+                    { x: -1.35, y: 3.45, z: 0.65, nx: -0.35, ny: 0.74, nz: 0.57, tx: 0.92, tz: 0.39, r: 0.85, s: 0.65, h: 0.65, op: 'flatten', tone: 'inherit', strokeId: 2 },
+                    { x: 1.35,  y: 1.55, z: 1.45, nx: 0.44,  ny: 0.22, nz: 0.87, tx: 0.89, tz: -0.45, r: 0.72, s: 0.60, h: 0.52, op: 'carve', tone: 'inherit', strokeId: 3 }
+                ]
+            })
+        ]
     }
 ];
 
@@ -1743,6 +1899,9 @@ export function serializeRock2Document(doc)
             type: l.type,
             enabled: !!l.enabled,
             solo: !!l.solo,
+            isBoolean: isRock2BooleanLayer(l),
+            booleanOp: l.booleanOp || (isRock2BooleanCombineMode(l.combineMode) ? l.combineMode : 'subtract'),
+            nonBoolCombineMode: l.nonBoolCombineMode || 'smooth_union',
             combineMode: l.combineMode || 'union',
             blendRadius: l.blendRadius ?? 0.35,
             params: JSON.parse(JSON.stringify(l.params || {})),
@@ -1773,6 +1932,9 @@ export function deserializeRock2Document(raw)
                 name: l.name,
                 enabled: l.enabled !== false,
                 solo: !!l.solo,
+                isBoolean: l.isBoolean,
+                booleanOp: l.booleanOp,
+                nonBoolCombineMode: l.nonBoolCombineMode,
                 combineMode: l.combineMode || 'union',
                 blendRadius: Number.isFinite(l.blendRadius) ? l.blendRadius : 0.35,
                 params: l.params || {},
@@ -5002,6 +5164,369 @@ export function evalRock2SplitFaultModifier(mod, evalUpstreamFn, wx, wy, wz, out
     return bestD;
 }
 
+/*==========================================================================================================================================
+               7B. PURE-SDF 3D BRUSH SCULPTING MODIFIER (`sculpt_layer` — ADD / CARVE / FLATTEN / SMOOTH / INFLATE / CREASE)
+==========================================================================================================================================*/
+
+export function appendRock2SculptDab(sculptLayer, dabInput)
+{
+    if (!sculptLayer || sculptLayer.type !== 'sculpt_layer') return 0;
+    if (!sculptLayer.params) sculptLayer.params = { ...DEFAULT_ROCK2_SCULPT_LAYER_PARAMS, dabs: [] };
+    if (!Array.isArray(sculptLayer.params.dabs)) sculptLayer.params.dabs = [];
+
+    const p = sculptLayer.params;
+    const op = dabInput.op || p.brushOp || 'add';
+    const r = clamp(dabInput.r ?? p.brushRadius ?? 0.78, 0.08, 6.0);
+    const s = clamp(dabInput.s ?? p.brushStrength ?? 0.58, 0.02, 1.0);
+    const h = clamp(dabInput.h ?? p.brushHardness ?? 0.50, 0.0, 1.0);
+    const tone = dabInput.tone ?? p.stoneTone ?? 'inherit';
+    const strokeId = dabInput.strokeId ?? 1;
+    const sym = dabInput.symmetryMode ?? p.symmetryMode ?? 'none';
+
+    const nNorm = vnorm([dabInput.nx ?? 0.0, dabInput.ny ?? 1.0, dabInput.nz ?? 0.0]);
+    const tLen = Math.hypot(dabInput.tx ?? 1.0, dabInput.tz ?? 0.0) || 1.0;
+    const tx0 = (dabInput.tx ?? 1.0) / tLen;
+    const tz0 = (dabInput.tz ?? 0.0) / tLen;
+
+    const mirrors = [[1, 1]];
+    if (sym === 'x' || sym === 'xz') mirrors.push([-1, 1]);
+    if (sym === 'z' || sym === 'xz') mirrors.push([1, -1]);
+    if (sym === 'xz') mirrors.push([-1, -1]);
+
+    let added = 0;
+    for (let mi = 0; mi < mirrors.length; mi++)
+    {
+        const [mx, mz] = mirrors[mi];
+        if (mi > 0)
+        {
+            if (mx === -1 && Math.abs(dabInput.x) < r * 0.12 && mz === 1) continue;
+            if (mz === -1 && Math.abs(dabInput.z) < r * 0.12 && mx === 1) continue;
+            if (mx === -1 && mz === -1 && Math.hypot(dabInput.x, dabInput.z) < r * 0.12) continue;
+        }
+        p.dabs.push({
+            x: Number((dabInput.x * mx).toFixed(4)),
+            y: Number(dabInput.y.toFixed(4)),
+            z: Number((dabInput.z * mz).toFixed(4)),
+            nx: Number((nNorm[0] * mx).toFixed(4)),
+            ny: Number(nNorm[1].toFixed(4)),
+            nz: Number((nNorm[2] * mz).toFixed(4)),
+            tx: Number((tx0 * mx).toFixed(4)),
+            tz: Number((tz0 * mz).toFixed(4)),
+            r: Number(r.toFixed(3)),
+            s: Number(s.toFixed(3)),
+            h: Number(h.toFixed(3)),
+            op,
+            tone,
+            strokeId
+        });
+        added++;
+    }
+
+    if (p.dabs.length > 512)
+    {
+        p.dabs.splice(0, p.dabs.length - 512);
+    }
+    return added;
+}
+
+export function undoLastRock2SculptStroke(sculptLayer)
+{
+    const dabs = sculptLayer?.params?.dabs;
+    if (!Array.isArray(dabs) || dabs.length === 0) return false;
+    const lastStrokeId = dabs[dabs.length - 1].strokeId;
+    if (lastStrokeId !== undefined)
+    {
+        while (dabs.length > 0 && dabs[dabs.length - 1].strokeId === lastStrokeId)
+        {
+            dabs.pop();
+        }
+    }
+    else
+    {
+        dabs.pop();
+    }
+    return true;
+}
+
+export function clearRock2SculptLayer(sculptLayer)
+{
+    if (sculptLayer?.params && Array.isArray(sculptLayer.params.dabs))
+    {
+        sculptLayer.params.dabs.length = 0;
+    }
+}
+
+export function compileRock2SculptModifier(lyr, srcBounds)
+{
+    const p = { ...DEFAULT_ROCK2_SCULPT_LAYER_PARAMS, ...(lyr.params || {}) };
+    const rawDabs = Array.isArray(p.dabs) ? p.dabs : [];
+    const sb = srcBounds || { minX: -3, minY: 0, minZ: -3, maxX: 3, maxY: 4, maxZ: 3 };
+
+    let outMinX = sb.minX, outMinY = sb.minY, outMinZ = sb.minZ;
+    let outMaxX = sb.maxX, outMaxY = sb.maxY, outMaxZ = sb.maxZ;
+    let maxDisp = 0.0;
+
+    const dabs = [];
+    const startIdx = Math.max(0, rawDabs.length - 512);
+    for (let i = startIdx; i < rawDabs.length; i++)
+    {
+        const raw = rawDabs[i];
+        if (!raw || !Number.isFinite(raw.x) || !Number.isFinite(raw.y) || !Number.isFinite(raw.z)) continue;
+        const r = clamp(raw.r ?? 0.78, 0.08, 6.0);
+        const s = clamp(raw.s ?? 0.58, 0.02, 1.0);
+        const h = clamp(raw.h ?? 0.50, 0.0, 1.0);
+        const opCode = ROCK2_SCULPT_OP_CODE[raw.op] ?? 0;
+        const nVec = vnorm([raw.nx ?? 0.0, raw.ny ?? 1.0, raw.nz ?? 0.0]);
+        const tLen = Math.hypot(raw.tx ?? 1.0, raw.tz ?? 0.0) || 1.0;
+        const tx = (raw.tx ?? 1.0) / tLen;
+        const tz = (raw.tz ?? 0.0) / tLen;
+
+        const toneSpec = (raw.tone && raw.tone !== 'inherit') ? ROCK2_STONE_TONES[raw.tone] : null;
+        const useTone = toneSpec ? 1 : 0;
+        const col = toneSpec ? toneSpec.rgb : [0.58, 0.57, 0.55];
+
+        dabs.push({
+            cx: raw.x, cy: raw.y, cz: raw.z, r,
+            nx: nVec[0], ny: nVec[1], nz: nVec[2], s,
+            tx, tz, opCode, h,
+            colR: col[0], colG: col[1], colB: col[2], useTone
+        });
+
+        if (opCode === 0 || opCode === 4)
+        {
+            const pad = r * 1.45;
+            if (raw.x - pad < outMinX) outMinX = raw.x - pad;
+            if (raw.x + pad > outMaxX) outMaxX = raw.x + pad;
+            if (raw.y - pad < outMinY) outMinY = raw.y - pad;
+            if (raw.y + pad > outMaxY) outMaxY = raw.y + pad;
+            if (raw.z - pad < outMinZ) outMinZ = raw.z - pad;
+            if (raw.z + pad > outMaxZ) outMaxZ = raw.z + pad;
+            if (pad > maxDisp) maxDisp = pad;
+        }
+    }
+
+    return {
+        id: lyr.id,
+        name: lyr.name,
+        type: 'sculpt_layer',
+        targetScope: p.targetScope === 'single_layer' ? 'single_layer' : 'stack_below',
+        targetLayerId: p.targetLayerId || '',
+        dabs,
+        maxDisplacement: maxDisp,
+        outBounds: {
+            minX: outMinX, minY: outMinY, minZ: outMinZ,
+            maxX: outMaxX, maxY: outMaxY, maxZ: outMaxZ,
+            cx: 0.5 * (outMinX + outMaxX),
+            cy: 0.5 * (outMinY + outMaxY),
+            cz: 0.5 * (outMinZ + outMaxZ)
+        }
+    };
+}
+
+export function evalRock2SculptModifier(mod, evalUpstreamFn, wx, wy, wz, outColor = null)
+{
+    const col = outColor || null;
+    let dAcc = evalUpstreamFn(wx, wy, wz, col);
+    const dabs = mod.dabs;
+    if (!dabs || dabs.length === 0) return dAcc;
+
+    for (let i = 0; i < dabs.length; i++)
+    {
+        const db = dabs[i];
+        const r = db.r;
+        const s = db.s;
+        const h = db.h;
+        const op = db.opCode;
+
+        const vx = wx - db.cx;
+        const vy = wy - db.cy;
+        const vz = wz - db.cz;
+        const dist2 = vx * vx + vy * vy + vz * vz;
+        const dist = Math.sqrt(dist2);
+        const blendK = r * (0.14 + 0.48 * (1.0 - h));
+
+        if (op === 0)
+        {
+            // Clay Buildup / Add (+): oblate stone-clay pad aligned with surface normal
+            const sink = -0.18 * r * (1.0 - 0.5 * s);
+            const lb = dist - (r + Math.abs(sink));
+            if (lb > dAcc + blendK) continue;
+
+            const qx = vx - db.nx * sink;
+            const qy = vy - db.ny * sink;
+            const qz = vz - db.nz * sink;
+            const vn = qx * db.nx + qy * db.ny + qz * db.nz;
+            const tang2 = Math.max(0.0, qx * qx + qy * qy + qz * qz - vn * vn);
+            const tau = clamp(0.34 + 0.54 * s, 0.34, 0.88);
+            const ry = r * tau;
+            const fEllip = Math.sqrt(tang2 / (r * r) + (vn * vn) / (ry * ry));
+            const dDab = (fEllip - 1.0) * ry;
+
+            const wCol = blendK > 1e-4 ? clamp(0.5 + 0.5 * (dAcc - dDab) / blendK, 0.0, 1.0) : (dDab < dAcc ? 1.0 : 0.0);
+            dAcc = sminPoly(dAcc, dDab, blendK);
+            if (col && db.useTone && wCol > 1e-3)
+            {
+                col.r = lerp(col.r, db.colR, wCol * 0.88);
+                col.g = lerp(col.g, db.colG, wCol * 0.88);
+                col.b = lerp(col.b, db.colB, wCol * 0.88);
+            }
+        }
+        else if (op === 1)
+        {
+            // Carve / Chisel Gouge (-): subtracts oriented stone dish / cavity
+            const lift = 0.18 * r * (1.0 - 0.55 * s);
+            const lb = dist - (r + lift);
+            if (lb > -dAcc + blendK) continue;
+
+            const qx = vx - db.nx * lift;
+            const qy = vy - db.ny * lift;
+            const qz = vz - db.nz * lift;
+            const vn = qx * db.nx + qy * db.ny + qz * db.nz;
+            const tang2 = Math.max(0.0, qx * qx + qy * qy + qz * qz - vn * vn);
+            const tau = clamp(0.36 + 0.56 * s, 0.36, 0.92);
+            const ry = r * tau;
+            const fEllip = Math.sqrt(tang2 / (r * r) + (vn * vn) / (ry * ry));
+            const dDab = (fEllip - 1.0) * ry;
+
+            const prev = dAcc;
+            dAcc = smaxPoly(dAcc, -dDab, blendK);
+            if (col && dAcc > prev + 1e-4)
+            {
+                const cutW = smoothstep(0.0, Math.max(0.02, blendK + 0.04), dAcc - prev);
+                const tr = db.useTone ? db.colR : clamp(col.r * 0.86 + 0.03, 0.0, 1.0);
+                const tg = db.useTone ? db.colG : clamp(col.g * 0.85 + 0.03, 0.0, 1.0);
+                const tb = db.useTone ? db.colB : clamp(col.b * 0.84 + 0.025, 0.0, 1.0);
+                col.r = lerp(col.r, tr, cutW * (db.useTone ? 0.85 : 0.55));
+                col.g = lerp(col.g, tg, cutW * (db.useTone ? 0.85 : 0.55));
+                col.b = lerp(col.b, tb, cutW * (db.useTone ? 0.85 : 0.55));
+            }
+        }
+        else
+        {
+            if (dist >= r) continue;
+            const uRad = dist / r;
+            const fall = 1.0 - smoothstep(h * 0.58, 1.0, uRad);
+            const w = fall * fall;
+            if (w <= 1e-5) continue;
+
+            if (op === 2)
+            {
+                // Flatten / Planar Facet Scrape (`TrimDynamic` rock plane shave)
+                const scrapeDepth = 0.14 * r * s;
+                const dPlane = (vx * db.nx + vy * db.ny + vz * db.nz) + scrapeDepth;
+                const target = smaxPoly(dAcc, dPlane, 0.04 * r * (1.0 - h));
+                dAcc = lerp(dAcc, target, clamp(s * 1.15, 0.05, 1.0) * w);
+            }
+            else if (op === 3)
+            {
+                // Smooth / Polish: 6-tap 3D volumetric Laplacian relaxation
+                const stepH = clamp(r * 0.24, 0.04, 0.42);
+                const dAvg = (
+                    evalUpstreamFn(wx + stepH, wy, wz, null) +
+                    evalUpstreamFn(wx - stepH, wy, wz, null) +
+                    evalUpstreamFn(wx, wy + stepH, wz, null) +
+                    evalUpstreamFn(wx, wy - stepH, wz, null) +
+                    evalUpstreamFn(wx, wy, wz + stepH, null) +
+                    evalUpstreamFn(wx, wy, wz - stepH, null)
+                ) / 6.0;
+                dAcc = lerp(dAcc, dAvg, clamp(s * 0.92, 0.05, 0.95) * w);
+            }
+            else if (op === 4)
+            {
+                // Inflate / Bulge: expands rock volume outward along existing SDF
+                dAcc -= (0.34 * r * s) * w;
+            }
+            else if (op === 5)
+            {
+                // Crease / Chisel Groove: sharp V-fissure oriented along 3D stroke tangent
+                let bx = db.ny * db.tz - db.nz * 0.0;
+                let by = db.nz * db.tx - db.nx * db.tz;
+                let bz = db.nx * 0.0 - db.ny * db.tx;
+                const bLen = Math.hypot(bx, by, bz) || 1.0;
+                bx /= bLen; by /= bLen; bz /= bLen;
+                const crossCoord = Math.abs(vx * bx + vy * by + vz * bz);
+                const grooveDepth = 0.36 * r * s * w;
+                const vSlope = 0.75 + 1.35 * h;
+                const vCut = Math.max(0.0, grooveDepth - crossCoord * vSlope);
+                dAcc += vCut * Math.exp(-Math.max(0.0, dAcc) * 2.5 / r);
+            }
+
+            if (col && db.useTone && w > 1e-3)
+            {
+                col.r = lerp(col.r, db.colR, w * s * 0.75);
+                col.g = lerp(col.g, db.colG, w * s * 0.75);
+                col.b = lerp(col.b, db.colB, w * s * 0.75);
+            }
+        }
+    }
+
+    return dAcc;
+}
+
+export function evalRock2AnyModifier(mod, evalUpstreamFn, wx, wy, wz, outColor = null)
+{
+    if (!mod) return evalUpstreamFn(wx, wy, wz, outColor);
+    if (mod.type === 'sculpt_layer')
+    {
+        return evalRock2SculptModifier(mod, evalUpstreamFn, wx, wy, wz, outColor);
+    }
+    return evalRock2SplitFaultModifier(mod, evalUpstreamFn, wx, wy, wz, outColor);
+}
+
+/**
+ * Sphere-traces `(ro, rd)` against the full Pure-SDF stack for live 3D Brush Sculpting
+ * and returns `{ hitPoint: [x, y, z], normal: [nx, ny, nz], distance }`!
+ */
+export function pickRock2SculptHitAtRay(compiledStack, ro, rd)
+{
+    if (!compiledStack || !compiledStack.compiledLayers || compiledStack.compiledLayers.length === 0)
+    {
+        return null;
+    }
+
+    const b = compiledStack.bounds;
+    const invDx = 1.0 / (Math.abs(rd[0]) > 1e-8 ? rd[0] : 1e-8);
+    const invDy = 1.0 / (Math.abs(rd[1]) > 1e-8 ? rd[1] : 1e-8);
+    const invDz = 1.0 / (Math.abs(rd[2]) > 1e-8 ? rd[2] : 1e-8);
+
+    const tx1 = (b.minX - ro[0]) * invDx, tx2 = (b.maxX - ro[0]) * invDx;
+    const ty1 = (b.minY - ro[1]) * invDy, ty2 = (b.maxY - ro[1]) * invDy;
+    const tz1 = (b.minZ - ro[2]) * invDz, tz2 = (b.maxZ - ro[2]) * invDz;
+
+    const tEnter = Math.max(0.05, Math.min(tx1, tx2), Math.min(ty1, ty2), Math.min(tz1, tz2));
+    const tExit  = Math.min(160.0, Math.max(tx1, tx2), Math.max(ty1, ty2), Math.max(tz1, tz2));
+    if (tExit < tEnter) return null;
+
+    let t = tEnter;
+    let hit = false;
+    for (let step = 0; step < 92 && t <= tExit; step++)
+    {
+        const d = evalRock2StackSdf(compiledStack, ro[0] + rd[0] * t, ro[1] + rd[1] * t, ro[2] + rd[2] * t);
+        if (d < 0.015)
+        {
+            hit = true;
+            break;
+        }
+        t += Math.max(0.014, d * 0.82);
+    }
+    if (!hit) return null;
+
+    const hx = ro[0] + rd[0] * t;
+    const hy = ro[1] + rd[1] * t;
+    const hz = ro[2] + rd[2] * t;
+    const eps = 0.025;
+    const gx = evalRock2StackSdf(compiledStack, hx + eps, hy, hz) - evalRock2StackSdf(compiledStack, hx - eps, hy, hz);
+    const gy = evalRock2StackSdf(compiledStack, hx, hy + eps, hz) - evalRock2StackSdf(compiledStack, hx, hy - eps, hz);
+    const gz = evalRock2StackSdf(compiledStack, hx, hy, hz + eps) - evalRock2StackSdf(compiledStack, hx, hy, hz - eps);
+    const nVec = vnorm([gx, gy, gz]);
+
+    return {
+        hitPoint: [hx, hy, hz],
+        normal: nVec,
+        distance: t
+    };
+}
+
 export function compileRock2Stack(doc)
 {
     const layers = doc?.layers || [];
@@ -5041,7 +5566,9 @@ export function compileRock2Stack(doc)
                 const curStackBounds = Number.isFinite(minX)
                     ? { minX, minY, minZ, maxX, maxY, maxZ, cx: 0.5 * (minX + maxX), cy: 0.5 * (minY + maxY), cz: 0.5 * (minZ + maxZ) }
                     : { minX: -3, minY: 0, minZ: -3, maxX: 3, maxY: 4, maxZ: 3, cx: 0, cy: 2, cz: 0 };
-                const mod = compileRock2SplitFaultModifier(lyr, curStackBounds);
+                const mod = lyr.type === 'sculpt_layer'
+                    ? compileRock2SculptModifier(lyr, curStackBounds)
+                    : compileRock2SplitFaultModifier(lyr, curStackBounds);
                 const modIdx = compiledModifiers.length;
                 compiledModifiers.push(mod);
                 executionSteps.push({ kind: 'stack_modifier', modIndex: modIdx });
@@ -5165,7 +5692,8 @@ export function compileRock2Stack(doc)
                 if (pr.maxZ > lMaxZ) lMaxZ = pr.maxZ;
             }
 
-            if ((lyr.combineMode !== 'subtract' || compiledLayers.length === 0) && pr.primOp > -1.5)
+            const isBoolSub = lyr.combineMode === 'subtract' || lyr.combineMode === 'chamfer_subtract';
+            if ((!isBoolSub || compiledLayers.length === 0 || lyr.isBoolean) && pr.primOp > -1.5)
             {
                 if (pr.minX < minX) minX = pr.minX;
                 if (pr.maxX > maxX) maxX = pr.maxX;
@@ -5192,10 +5720,12 @@ export function compileRock2Stack(doc)
 
         const tone = ROCK2_STONE_TONES[p.stoneTone] || ROCK2_STONE_TONES.clay;
         const cLayerIdx = compiledLayers.length;
+        const isBoolLayer = isRock2BooleanLayer(lyr);
         compiledLayers.push({
             id: lyr.id,
             name: lyr.name,
             type: spec.type,
+            isBoolean: isBoolLayer,
             generatorType: lyr.generator?.type || 'none',
             instanceCount: builtInstances,
             rawInstanceCount: rawCount ?? builtInstances,
@@ -5217,7 +5747,9 @@ export function compileRock2Stack(doc)
         const mLyr = pendingSingleLayerModSpecs[mi];
         const targetCL = compiledLayers.find(cl => cl.id === mLyr.params?.targetLayerId);
         if (!targetCL) continue;
-        const mod = compileRock2SplitFaultModifier(mLyr, targetCL.bounds);
+        const mod = mLyr.type === 'sculpt_layer'
+            ? compileRock2SculptModifier(mLyr, targetCL.bounds)
+            : compileRock2SplitFaultModifier(mLyr, targetCL.bounds);
         const modIdx = compiledModifiers.length;
         compiledModifiers.push(mod);
         targetCL.attachedModifierIndices.push(modIdx);
@@ -5276,6 +5808,13 @@ function chamferMin(a, b, r)
     const m = Math.min(a, b);
     if (r <= 1e-6) return m;
     return Math.min(m, (a + b - r) * 0.70710678);
+}
+
+function chamferSubtract(a, b, r)
+{
+    const m = Math.max(a, -b);
+    if (r <= 1e-6) return m;
+    return Math.max(m, (a - b + r) * 0.70710678);
 }
 
 export function evalRock2PrimitiveSdf(prim, wx, wy, wz)
@@ -5478,7 +6017,7 @@ function evalRock2LayerWithAttachedMods(compiledStack, layerIndex, wx, wy, wz, o
     {
         if (mCursor < 0) return evalBase(qx, qy, qz, col);
         const mod = mods[att[mCursor]];
-        return evalRock2SplitFaultModifier(mod, (ux, uy, uz, uCol) => evalChain(mCursor - 1, ux, uy, uz, uCol), qx, qy, qz, col);
+        return evalRock2AnyModifier(mod, (ux, uy, uz, uCol) => evalChain(mCursor - 1, ux, uy, uz, uCol), qx, qy, qz, col);
     };
     return evalChain(att.length - 1, wx, wy, wz, outColor);
 }
@@ -5487,7 +6026,7 @@ function combineRock2LayerSdf(dAcc, colAcc, dLyr, lr, lg, lbCol, op, br)
 {
     if (dAcc > 1e8)
     {
-        if (op === 3) return dAcc;
+        if (op === 3 || op === 5) return dAcc;
         colAcc.r = lr; colAcc.g = lg; colAcc.b = lbCol;
         return dLyr;
     }
@@ -5522,6 +6061,14 @@ function combineRock2LayerSdf(dAcc, colAcc, dLyr, lr, lg, lbCol, op, br)
         const w = dLyr > dAcc ? 1.0 : 0.0;
         colAcc.r = lerp(colAcc.r, lr, w * 0.5); colAcc.g = lerp(colAcc.g, lg, w * 0.5); colAcc.b = lerp(colAcc.b, lbCol, w * 0.5);
         return smaxPoly(dAcc, dLyr, br);
+    }
+    if (op === 5)
+    {
+        const prev = dAcc;
+        const next = chamferSubtract(dAcc, dLyr, br);
+        const cutW = smoothstep(0.0, Math.max(0.02, br + 0.04), next - prev);
+        colAcc.r = lerp(colAcc.r, lr, cutW * 0.70); colAcc.g = lerp(colAcc.g, lg, cutW * 0.70); colAcc.b = lerp(colAcc.b, lbCol, cutW * 0.70);
+        return next;
     }
     return dAcc;
 }
@@ -5569,7 +6116,7 @@ export function evalRock2StackSdf(compiledStack, wx, wy, wz, outColor = null)
         if (lastModStep >= 0)
         {
             const mod = compiledModifiers[steps[lastModStep].modIndex];
-            dAcc = evalRock2SplitFaultModifier(
+            dAcc = evalRock2AnyModifier(
                 mod,
                 (qx, qy, qz, uCol) => evalUpToStep(lastModStep - 1, qx, qy, qz, uCol),
                 px, py, pz,
@@ -5615,7 +6162,7 @@ export function evalRock2SingleLayerSdf(compiledStack, layerIndex, wx, wy, wz)
  * Sphere-traces a 3D viewport camera ray `(ro, rd)` against the compiled Pure-SDF stack
  * and returns the exact layer `{ layerId, layerIndex, hitPoint, distance }` whose surface was clicked!
  */
-export function pickRock2LayerAtRay(compiledStack, ro, rd)
+export function pickRock2LayerAtRay(compiledStack, ro, rd, options = {})
 {
     if (!compiledStack || !compiledStack.compiledLayers || compiledStack.compiledLayers.length === 0)
     {
@@ -5651,6 +6198,92 @@ export function pickRock2LayerAtRay(compiledStack, ro, rd)
         t += Math.max(0.016, d * 0.85);
     }
 
+    // Optional: allow clicking visible Semi-Transparent Red Boolean Ghost Volumes directly in the 3D Viewport!
+    let boolGhostHit = null;
+    if (options.pickBooleanGhosts)
+    {
+        const boolIndices = [];
+        for (let li = 0; li < compiledStack.compiledLayers.length; li++)
+        {
+            if (compiledStack.compiledLayers[li].isBoolean) boolIndices.push(li);
+        }
+        if (boolIndices.length > 0)
+        {
+            const maxTBool = hit ? (t + 0.06) : tExit;
+            let tB = tEnter;
+            let hitBoolIdx = -1;
+            for (let step = 0; step < 84 && tB <= maxTBool; step++)
+            {
+                const wx = ro[0] + rd[0] * tB;
+                const wy = ro[1] + rd[1] * tB;
+                const wz = ro[2] + rd[2] * tB;
+                let minDB = 1e9;
+                let bestBLi = -1;
+                for (let k = 0; k < boolIndices.length; k++)
+                {
+                    const li = boolIndices[k];
+                    const dL = evalRock2LayerRawPrimitives(compiledStack.compiledLayers[li], compiledStack.primitives, wx, wy, wz);
+                    if (dL < minDB) { minDB = dL; bestBLi = li; }
+                }
+                if (minDB < 0.018)
+                {
+                    hitBoolIdx = bestBLi;
+                    break;
+                }
+                tB += Math.max(0.016, minDB * 0.85);
+            }
+
+            if (hitBoolIdx >= 0 && (!hit || tB <= t + 0.04))
+            {
+                const bhx = ro[0] + rd[0] * tB;
+                const bhy = ro[1] + rd[1] * tB;
+                const bhz = ro[2] + rd[2] * tB;
+                const bLayer = compiledStack.compiledLayers[hitBoolIdx];
+                const primitives = compiledStack.primitives;
+                let bInstIdx = 0;
+                let bInstScore = 1e9;
+                let curI = 0, curD = 1e9, hasC = false;
+                const flushC = () =>
+                {
+                    if (!hasC) return;
+                    if (Math.abs(curD) < bInstScore) { bInstScore = Math.abs(curD); bInstIdx = curI; }
+                };
+                for (let k = 0; k < bLayer.blockCount; k++)
+                {
+                    const prim = primitives[bLayer.blockStart + k];
+                    const pOp = prim.primOp ?? -1.0;
+                    if (pOp > -1.5 && pOp < -0.5)
+                    {
+                        flushC(); hasC = true; curI = prim.instanceIndex ?? 0;
+                        curD = evalRock2PrimitiveSdf(prim, bhx, bhy, bhz);
+                    }
+                    else if (pOp >= 0.0)
+                    {
+                        const dP = evalRock2PrimitiveSdf(prim, bhx, bhy, bhz);
+                        curD = curD > 1e8 ? dP : (pOp > 1e-4 ? sminPoly(curD, dP, pOp) : Math.min(curD, dP));
+                        hasC = true;
+                    }
+                    else if (hasC)
+                    {
+                        const cutB = Math.max(0.0, -pOp - 2.0);
+                        curD = smaxPoly(curD, -evalRock2PrimitiveSdf(prim, bhx, bhy, bhz), cutB);
+                    }
+                }
+                flushC();
+                boolGhostHit = {
+                    layerId: bLayer.id,
+                    layerIndex: hitBoolIdx,
+                    instanceIndex: bInstIdx,
+                    rawInstanceCount: bLayer.rawInstanceCount ?? bLayer.instanceCount ?? 1,
+                    isBooleanGhost: true,
+                    hitPoint: [bhx, bhy, bhz],
+                    distance: tB
+                };
+            }
+        }
+    }
+
+    if (boolGhostHit) return boolGhostHit;
     if (!hit) return null;
 
     const hx = ro[0] + rd[0] * t;
@@ -5745,9 +6378,10 @@ export function pickRock2LayerAtRay(compiledStack, ro, rd)
                                8. GPU TEXTURE PACKER & QEF DUAL-CONTOUR MESH BAKER
 ==========================================================================================================================================*/
 
-export function packRock2StackGpuBuffers(compiledStack)
+export function packRock2StackGpuBuffers(compiledStack, options = {})
 {
     const { compiledLayers, compiledModifiers = [], executionSteps = [], primitives } = compiledStack;
+    const selectedLayerId = options.selectedLayerId || '';
     const numLayers = Math.max(1, compiledLayers.length);
     const numBlocks = Math.max(1, primitives.length);
     const totalPlanes = Math.max(1, compiledStack.totalPlanes);
@@ -5756,6 +6390,7 @@ export function packRock2StackGpuBuffers(compiledStack)
     const blockTexData = new Float32Array(numBlocks * 11 * 4);
     const planeTexData = new Float32Array(totalPlanes * 4);
 
+    const boolLayers = [];
     for (let li = 0; li < compiledLayers.length; li++)
     {
         const lyr = compiledLayers[li];
@@ -5768,6 +6403,24 @@ export function packRock2StackGpuBuffers(compiledStack)
         layerTexData[off + 5] = lyr.color[1];
         layerTexData[off + 6] = lyr.color[2];
         layerTexData[off + 7] = lyr.intraBlend;
+
+        if (lyr.isBoolean) boolLayers.push(lyr);
+    }
+
+    const boolLayerTexHeight = Math.max(1, boolLayers.length);
+    const boolLayerTexData = new Float32Array(boolLayerTexHeight * 2 * 4);
+    for (let bi = 0; bi < boolLayers.length; bi++)
+    {
+        const bl = boolLayers[bi];
+        const bOff = bi * 8;
+        boolLayerTexData[bOff + 0] = bl.blockStart;
+        boolLayerTexData[bOff + 1] = bl.blockCount;
+        boolLayerTexData[bOff + 2] = bl.combineOp;
+        boolLayerTexData[bOff + 3] = bl.id === selectedLayerId ? 1.0 : 0.0;
+        boolLayerTexData[bOff + 4] = bl.color[0];
+        boolLayerTexData[bOff + 5] = bl.color[1];
+        boolLayerTexData[bOff + 6] = bl.color[2];
+        boolLayerTexData[bOff + 7] = bl.intraBlend;
     }
 
     let planeCursor = 0;
@@ -5832,15 +6485,35 @@ export function packRock2StackGpuBuffers(compiledStack)
     }
 
     const numMods = compiledModifiers.length;
+    const faultMods = [];
+    const sculptMods = [];
+    const modGpuEntry = new Array(numMods);
+
     let totalFaultPlanes = 0;
     let totalFaultBlocks = 0;
+    let totalSculptDabs = 0;
+
     for (let mi = 0; mi < numMods; mi++)
     {
-        totalFaultPlanes += compiledModifiers[mi].planes.length;
-        totalFaultBlocks += compiledModifiers[mi].blocks.length;
+        const m = compiledModifiers[mi];
+        if (m.type === 'sculpt_layer')
+        {
+            const sIdx = sculptMods.length;
+            sculptMods.push(m);
+            totalSculptDabs += (m.dabs?.length || 0);
+            modGpuEntry[mi] = { kind: 'sculpt_layer', sculptIndex: sIdx, dabs: m.dabs?.length || 0 };
+        }
+        else
+        {
+            const fIdx = faultMods.length;
+            faultMods.push(m);
+            totalFaultPlanes += (m.planes?.length || 0);
+            totalFaultBlocks += (m.blocks?.length || 0);
+            modGpuEntry[mi] = { kind: 'split_fault', modIndex: fIdx };
+        }
     }
 
-    const modMetaHeight = Math.max(1, numMods);
+    const modMetaHeight = Math.max(1, faultMods.length);
     const faultPlaneHeight = Math.max(1, totalFaultPlanes);
     const faultBlockHeight = Math.max(1, totalFaultBlocks);
 
@@ -5850,10 +6523,10 @@ export function packRock2StackGpuBuffers(compiledStack)
 
     let fpCursor = 0;
     let fbCursor = 0;
-    for (let mi = 0; mi < numMods; mi++)
+    for (let fi = 0; fi < faultMods.length; fi++)
     {
-        const m = compiledModifiers[mi];
-        const mOff = mi * 20;
+        const m = faultMods[fi];
+        const mOff = fi * 20;
 
         modMetaTexData[mOff + 0] = fpCursor;
         modMetaTexData[mOff + 1] = m.planes.length;
@@ -5903,6 +6576,33 @@ export function packRock2StackGpuBuffers(compiledStack)
         fbCursor += m.blocks.length;
     }
 
+    const sculptMetaHeight = Math.max(1, sculptMods.length);
+    const sculptDabHeight = Math.max(1, totalSculptDabs);
+    const sculptMetaTexData = new Float32Array(sculptMetaHeight * 4);
+    const sculptDabTexData = new Float32Array(sculptDabHeight * 4 * 4);
+
+    let sdCursor = 0;
+    for (let si = 0; si < sculptMods.length; si++)
+    {
+        const sm = sculptMods[si];
+        const dabs = sm.dabs || [];
+        sculptMetaTexData[si * 4 + 0] = sdCursor;
+        sculptMetaTexData[si * 4 + 1] = dabs.length;
+        sculptMetaTexData[si * 4 + 2] = 0.0;
+        sculptMetaTexData[si * 4 + 3] = 0.0;
+
+        for (let di = 0; di < dabs.length; di++)
+        {
+            const db = dabs[di];
+            const dOff = (sdCursor + di) * 16;
+            sculptDabTexData[dOff + 0]  = db.cx;   sculptDabTexData[dOff + 1]  = db.cy;   sculptDabTexData[dOff + 2]  = db.cz;   sculptDabTexData[dOff + 3]  = db.r;
+            sculptDabTexData[dOff + 4]  = db.nx;   sculptDabTexData[dOff + 5]  = db.ny;   sculptDabTexData[dOff + 6]  = db.nz;   sculptDabTexData[dOff + 7]  = db.s;
+            sculptDabTexData[dOff + 8]  = db.tx;   sculptDabTexData[dOff + 9]  = db.tz;   sculptDabTexData[dOff + 10] = db.opCode; sculptDabTexData[dOff + 11] = db.h;
+            sculptDabTexData[dOff + 12] = db.colR; sculptDabTexData[dOff + 13] = db.colG; sculptDabTexData[dOff + 14] = db.colB; sculptDabTexData[dOff + 15] = db.useTone;
+        }
+        sdCursor += dabs.length;
+    }
+
     const gpuPasses = [];
     if (numMods === 0)
     {
@@ -5928,10 +6628,19 @@ export function packRock2StackGpuBuffers(compiledStack)
             const st = executionSteps[s];
             if (st.kind === 'stack_modifier')
             {
+                const entry = modGpuEntry[st.modIndex];
+                if (!entry || (entry.kind === 'sculpt_layer' && entry.dabs === 0)) continue;
                 flushPlainRun();
                 if (hasMainVol)
                 {
-                    gpuPasses.push({ kind: 'split_fault', modIndex: st.modIndex });
+                    if (entry.kind === 'sculpt_layer')
+                    {
+                        gpuPasses.push({ kind: 'sculpt_layer', sculptIndex: entry.sculptIndex });
+                    }
+                    else
+                    {
+                        gpuPasses.push({ kind: 'split_fault', modIndex: entry.modIndex });
+                    }
                 }
             }
             else if (st.kind === 'rock_layer')
@@ -5939,16 +6648,28 @@ export function packRock2StackGpuBuffers(compiledStack)
                 const cl = compiledLayers[st.layerIndex];
                 if (cl.attachedModifierIndices && cl.attachedModifierIndices.length > 0)
                 {
-                    flushPlainRun();
-                    gpuPasses.push({
-                        kind: 'single_layer_mod',
-                        layerIndex: st.layerIndex,
-                        modIndices: cl.attachedModifierIndices,
-                        combineOp: cl.combineOp,
-                        blendRadius: cl.blendRadius,
-                        hasPrevVol: hasMainVol
-                    });
-                    hasMainVol = true;
+                    const modSteps = cl.attachedModifierIndices
+                        .map(idx => modGpuEntry[idx])
+                        .filter(e => e && !(e.kind === 'sculpt_layer' && e.dabs === 0));
+                    if (modSteps.length > 0)
+                    {
+                        flushPlainRun();
+                        gpuPasses.push({
+                            kind: 'single_layer_mod',
+                            layerIndex: st.layerIndex,
+                            modSteps,
+                            modIndices: modSteps.filter(e => e.kind === 'split_fault').map(e => e.modIndex),
+                            combineOp: cl.combineOp,
+                            blendRadius: cl.blendRadius,
+                            hasPrevVol: hasMainVol
+                        });
+                        hasMainVol = true;
+                    }
+                    else
+                    {
+                        if (runCount === 0) runStart = st.layerIndex;
+                        runCount++;
+                    }
                 }
                 else
                 {
@@ -5973,16 +6694,33 @@ export function packRock2StackGpuBuffers(compiledStack)
         planeTexWidth: 1,
         planeTexHeight: totalPlanes,
         planeTexData,
+        hasBooleanLayers: boolLayers.length > 0,
+        numBooleanLayers: boolLayers.length,
+        boolLayerTexWidth: 2,
+        boolLayerTexHeight,
+        boolLayerTexData,
         numModifiers: numMods,
         modMetaWidth: 5,
         modMetaHeight,
+        modMetaTexWidth: 5,
+        modMetaTexHeight: modMetaHeight,
         modMetaTexData,
         faultPlaneWidth: 4,
         faultPlaneHeight,
+        faultPlaneTexWidth: 4,
+        faultPlaneTexHeight: faultPlaneHeight,
         faultPlaneTexData,
         faultBlockWidth: 4,
         faultBlockHeight,
+        faultBlockTexWidth: 4,
+        faultBlockTexHeight: faultBlockHeight,
         faultBlockTexData,
+        sculptMetaTexWidth: 1,
+        sculptMetaTexHeight: sculptMetaHeight,
+        sculptMetaTexData,
+        sculptDabTexWidth: 4,
+        sculptDabTexHeight: sculptDabHeight,
+        sculptDabTexData,
         gpuPasses
     };
 }

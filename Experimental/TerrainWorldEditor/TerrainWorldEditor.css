@@ -945,6 +945,173 @@ body.ws-rock2 .quick-lib-scroll {
     color: #bae6fd;
 }
 
+/* 3D Pure-SDF Brush Sculpting (`sculpt_layer`) + First-Class Crimson Boolean Objects */
+.rock2-gizmo-tool-btn.sculpt-tool-btn.active {
+    background: rgba(52, 211, 153, 0.22);
+    border-color: rgba(110, 231, 183, 0.80);
+    color: #a7f3d0;
+}
+.fracture-pill-btn.bool-ghost-pill.active {
+    background: rgba(244, 63, 94, 0.22);
+    border-color: rgba(251, 113, 133, 0.72);
+    color: #fecdd3;
+}
+.quick-add-card.rock2-sculpt-add-card {
+    border-color: rgba(52, 211, 153, 0.38);
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.13), rgba(20, 22, 27, 0.86));
+}
+.quick-add-card.rock2-sculpt-add-card:hover {
+    border-color: rgba(110, 231, 183, 0.76);
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.22), rgba(24, 27, 34, 0.95));
+}
+.preset-badge.sculpt-badge {
+    background: rgba(16, 185, 129, 0.22);
+    border-color: rgba(110, 231, 183, 0.55);
+    color: #a7f3d0;
+}
+.quick-add-card.rock2-bool-add-card {
+    border-color: rgba(244, 63, 94, 0.42);
+    background: linear-gradient(135deg, rgba(225, 29, 72, 0.14), rgba(20, 22, 27, 0.86));
+}
+.quick-add-card.rock2-bool-add-card:hover {
+    border-color: rgba(251, 113, 133, 0.80);
+    background: linear-gradient(135deg, rgba(225, 29, 72, 0.24), rgba(24, 27, 34, 0.95));
+}
+.preset-badge.bool-badge {
+    background: rgba(225, 29, 72, 0.25);
+    border-color: rgba(251, 113, 133, 0.62);
+    color: #fecdd3;
+}
+.rock2-layer-card.sculpt-card {
+    border-left: 3px solid #10b981;
+    background: linear-gradient(90deg, rgba(16, 185, 129, 0.09), rgba(255, 255, 255, 0.02));
+}
+.rock2-layer-card.sculpt-card.selected {
+    border-color: rgba(110, 231, 183, 0.72);
+    border-left: 3px solid #34d399;
+    background: linear-gradient(90deg, rgba(16, 185, 129, 0.17), rgba(239, 244, 207, 0.06));
+}
+.rock2-tone-dot.sculpt-dot {
+    border-radius: 50%;
+    box-shadow: 0 0 7px rgba(52, 211, 153, 0.65);
+}
+.rock2-op-pill.op-sculpt {
+    background: rgba(16, 185, 129, 0.22);
+    border: 1px solid rgba(110, 231, 183, 0.48);
+    color: #a7f3d0;
+}
+.rock2-layer-card.boolean-card {
+    border-left: 3px solid #f43f5e;
+    background: linear-gradient(90deg, rgba(244, 63, 94, 0.11), rgba(255, 255, 255, 0.02));
+}
+.rock2-layer-card.boolean-card.selected {
+    border-color: rgba(251, 113, 133, 0.80);
+    border-left: 3px solid #fb7185;
+    background: linear-gradient(90deg, rgba(244, 63, 94, 0.20), rgba(255, 255, 255, 0.04));
+}
+.rock2-tone-dot.bool-dot {
+    background: rgba(244, 63, 94, 0.85) !important;
+    box-shadow: 0 0 7px rgba(244, 63, 94, 0.75);
+}
+.rock2-op-pill.op-boolean,
+.rock2-op-pill.op-chamfer_subtract {
+    background: rgba(225, 29, 72, 0.26);
+    border: 1px solid rgba(251, 113, 133, 0.62);
+    color: #fecdd3;
+}
+.rock2-mini-btn.bool-toggle-btn.bool-on {
+    background: rgba(225, 29, 72, 0.32);
+    border-color: rgba(251, 113, 133, 0.78);
+    color: #ffe4e6;
+    font-weight: 700;
+}
+.rock2-bool-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 10px;
+    margin-bottom: 8px;
+    border-radius: 7px;
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    background: rgba(255, 255, 255, 0.03);
+    transition: all 0.14s ease;
+}
+.rock2-bool-banner.active {
+    border-color: rgba(251, 113, 133, 0.62);
+    background: linear-gradient(90deg, rgba(225, 29, 72, 0.18), rgba(244, 63, 94, 0.07));
+}
+.rock2-bool-banner-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+.rock2-bool-banner-copy strong {
+    font-size: 11.5px;
+    color: #f3f4f6;
+}
+.rock2-bool-banner.active .rock2-bool-banner-copy strong {
+    color: #ffe4e6;
+}
+.rock2-bool-banner-copy small {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.58);
+}
+.rock2-bool-toggle-pill {
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.06);
+    color: #d1d5db;
+    font-size: 10.5px;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.rock2-bool-toggle-pill.active {
+    border-color: #fb7185;
+    background: rgba(225, 29, 72, 0.38);
+    color: #fff1f2;
+}
+.rock2-sculpt-brush-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 5px;
+    margin-bottom: 8px;
+}
+.rock2-sculpt-brush-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 7px 4px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    background: rgba(255, 255, 255, 0.035);
+    color: #d1d5db;
+    font-size: 10.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.12s ease;
+}
+.rock2-sculpt-brush-btn small {
+    font-size: 9px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.48);
+}
+.rock2-sculpt-brush-btn:hover {
+    border-color: rgba(110, 231, 183, 0.48);
+    background: rgba(16, 185, 129, 0.10);
+}
+.rock2-sculpt-brush-btn.active {
+    border-color: #34d399;
+    background: rgba(16, 185, 129, 0.22);
+    color: #ecfdf5;
+}
+.rock2-sculpt-brush-btn.active small {
+    color: #a7f3d0;
+}
+
 
 
 

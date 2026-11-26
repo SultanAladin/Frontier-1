@@ -62,6 +62,8 @@ import {
 import { FractureLabViewport } from './Engine/RockCliff/FractureLabViewport.js';
 import {
     ROCK2_COMBINE_MODES,
+    ROCK2_BOOLEAN_MODES,
+    ROCK2_SCULPT_BRUSH_MODES,
     ROCK2_STONE_TONES,
     ROCK2_NODE_CATALOG,
     ROCK2_MODIFIER_CATALOG,
@@ -69,6 +71,12 @@ import {
     ROCK2_ROCK_POOL_OPTIONS,
     ROCK2_ARCH_SPLINE_PRESETS,
     isRock2ModifierType,
+    isRock2BooleanLayer,
+    isRock2BooleanCombineMode,
+    setRock2LayerBooleanMode,
+    appendRock2SculptDab,
+    undoLastRock2SculptStroke,
+    clearRock2SculptLayer,
     getRock2NodeSpec,
     buildRock2SplinePresetKnots,
     normalizeSplineKnots,
@@ -367,9 +375,15 @@ class TerrainWorldStudioApp
                         this.rock2.selectedInstanceIndex = -1;
                         if (this.rock2View)
                         {
-                            this.rock2View.activeLayer = this._getSelectedRock2Layer();
                             this.rock2View.selectedInstanceIndex = -1;
                             this.rock2View.selectedKnotIndex = 0;
+                            const SelLyr = this._getSelectedRock2Layer();
+                            this.rock2View.setActiveLayer(SelLyr);
+                            // When clicking a Boolean ghost rock in 3D, auto-enable Move (W) if it's a single rock so user can drag it immediately!
+                            if (SelLyr && isRock2BooleanLayer(SelLyr) && (SelLyr.generator?.type || 'none') === 'none' && this.rock2View.gizmoToolMode === 'path')
+                            {
+                                this.rock2View.setGizmoToolMode('translate');
+                            }
                         }
                         this._syncRock2ToolbarButtons();
                         this.refreshChrome();
@@ -382,13 +396,38 @@ class TerrainWorldStudioApp
                         this.rock2.selectedInstanceIndex = (InstIdx >= 0) ? (InstIdx | 0) : -1;
                         if (this.rock2View)
                         {
-                            this.rock2View.activeLayer = this._getSelectedRock2Layer();
+                            this.rock2View.setActiveLayer(this._getSelectedRock2Layer());
                             this.rock2View.selectedInstanceIndex = this.rock2.selectedInstanceIndex;
                             if (this.rock2.selectedInstanceIndex >= 0 && this.rock2View.gizmoToolMode === 'path')
                             {
                                 this.rock2View.setGizmoToolMode('translate');
                             }
                         }
+                        this._syncRock2ToolbarButtons();
+                        this.refreshChrome();
+                        this.rebuildInspector();
+                    },
+                    onSculptStrokeStart: () =>
+                    {
+                        this._pushRock2UndoSnapshot();
+                        const SculptLayer = this._getOrCreateActiveRock2SculptLayer();
+                        this._sculptStrokeCounter = (this._sculptStrokeCounter || 0) + 1;
+                        this._activeSculptLayerId = SculptLayer?.id || null;
+                        if (this.rock2View && SculptLayer?.params)
+                        {
+                            this.rock2View.setSculptBrushPreview(SculptLayer.params);
+                        }
+                        return { strokeId: this._sculptStrokeCounter };
+                    },
+                    onSculptDab: Dab =>
+                    {
+                        const SculptLayer = this._getActiveRock2SculptLayerForPaint();
+                        if (!SculptLayer) return;
+                        appendRock2SculptDab(SculptLayer, Dab);
+                        this._rebuildRock2StackNow(false);
+                    },
+                    onSculptStrokeEnd: () =>
+                    {
                         this._syncRock2ToolbarButtons();
                         this.refreshChrome();
                         this.rebuildInspector();
@@ -530,23 +569,43 @@ class TerrainWorldStudioApp
         if (this.workspaceMode === 'rock2')
         {
             const Q = (this.outlinerSearch || '').toLowerCase();
+            const ShowBoolQuick = !Q || 'boolean cutter subtract carve red'.includes(Q);
             const ModItems = ROCK2_MODIFIER_CATALOG.filter(M => !Q || M.name.toLowerCase().includes(Q) || M.shortBadge.toLowerCase().includes(Q) || M.desc.toLowerCase().includes(Q));
             const Items = ROCK2_NODE_CATALOG.filter(N => !Q || N.name.toLowerCase().includes(Q) || N.shortBadge.toLowerCase().includes(Q) || N.desc.toLowerCase().includes(Q));
-            if (TitleEl) TitleEl.textContent = 'Add Rock & SDF Modifiers';
-            if (CountEl) CountEl.textContent = String(ModItems.length + Items.length);
+            if (TitleEl) TitleEl.textContent = 'Add Rock, Booleans & Sculpt';
+            if (CountEl) CountEl.textContent = String((ShowBoolQuick ? 1 : 0) + ModItems.length + Items.length);
+
+            if (ShowBoolQuick)
+            {
+                const BoolBtn = MakeEl('button', 'quick-add-card rock2-bool-add-card');
+                BoolBtn.type = 'button';
+                BoolBtn.title = 'Add a Semi-Transparent Red 3D Boolean Cutter Rock (Subtract / Chamfer Cut / Intersect)';
+                const BIcon = MakeEl('span', 'quick-add-icon', ConstructGlyph('Boolean'));
+                const BCopy = MakeEl('span', 'quick-add-copy', [
+                    MakeEl('strong', '', '+ Boolean Cutter Rock'),
+                    MakeEl('small', '', 'Semi-transparent red 3D Subtract / Chamfer / Intersect')
+                ]);
+                const BBadge = MakeEl('span', 'preset-badge bool-badge', 'BOOL');
+                BoolBtn.append(BIcon, BCopy, BBadge);
+                BoolBtn.addEventListener('click', () => this._addRock2BooleanLayer());
+                List.appendChild(BoolBtn);
+            }
 
             for (let M = 0; M < ModItems.length; M++)
             {
                 const Mod = ModItems[M];
-                const Btn = MakeEl('button', 'quick-add-card rock2-mod-add-card');
+                const IsSculpt = Mod.type === 'sculpt_layer';
+                const Btn = MakeEl('button', 'quick-add-card ' + (IsSculpt ? 'rock2-sculpt-add-card' : 'rock2-mod-add-card'));
                 Btn.type = 'button';
-                Btn.title = `Add ${Mod.name} Pure-SDF Modifier to cleave & displace rock layers below`;
+                Btn.title = IsSculpt
+                    ? 'Add non-destructive 3D Pure-SDF Brush Sculpting Layer and enter 3D Sculpt Brush mode (B)'
+                    : `Add ${Mod.name} Pure-SDF Modifier to cleave & displace rock layers below`;
                 const Icon = MakeEl('span', 'quick-add-icon', ConstructGlyph(Mod.glyph || 'SplitFault'));
                 const Copy = MakeEl('span', 'quick-add-copy', [
                     MakeEl('strong', '', `+ ${Mod.name}`),
                     MakeEl('small', '', Mod.desc)
                 ]);
-                const Badge = MakeEl('span', 'preset-badge mod-badge', Mod.shortBadge || 'MOD');
+                const Badge = MakeEl('span', 'preset-badge ' + (IsSculpt ? 'sculpt-badge' : 'mod-badge'), Mod.shortBadge || 'MOD');
                 Btn.append(Icon, Copy, Badge);
                 Btn.addEventListener('click', () => this._addRock2Layer(Mod.type));
                 List.appendChild(Btn);
@@ -1530,10 +1589,32 @@ class TerrainWorldStudioApp
                 E.preventDefault();
                 document.getElementById('maximize-btn')?.click();
             }
-            else if (this.workspaceMode === 'rock2' && !E.ctrlKey && !E.metaKey && !E.altKey && (K === 'q' || K === 'w' || K === 'e' || K === 'r' || K === 'g' || K === 'i' || E.key === 'Escape'))
+            else if (this.workspaceMode === 'rock2' && !E.ctrlKey && !E.metaKey && !E.altKey && (K === 'q' || K === 'w' || K === 'e' || K === 'r' || K === 'b' || K === 'g' || K === 'i' || E.key === '[' || E.key === ']' || E.key === 'Escape'))
             {
+                if (E.key === '[' || E.key === ']')
+                {
+                    if (this.rock2View?.gizmoToolMode === 'sculpt' || this._getSelectedRock2Layer()?.type === 'sculpt_layer')
+                    {
+                        const SL = this._getActiveRock2SculptLayerForPaint();
+                        if (SL && SL.params)
+                        {
+                            const Factor = E.key === ']' ? 1.16 : (1.0 / 1.16);
+                            SL.params.brushRadius = Number(Clamp((SL.params.brushRadius ?? 0.78) * Factor, 0.08, 4.5).toFixed(2));
+                            this.rock2View?.setSculptBrushPreview(SL.params);
+                            this.rebuildInspector();
+                        }
+                    }
+                    return;
+                }
                 if (E.key === 'Escape')
                 {
+                    if (this.rock2View?.gizmoToolMode === 'sculpt')
+                    {
+                        this.rock2View.setGizmoToolMode('path');
+                        this._syncRock2ToolbarButtons();
+                        this.rebuildInspector();
+                        return;
+                    }
                     if ((this.rock2.selectedInstanceIndex ?? -1) >= 0)
                     {
                         this.rock2.selectedInstanceIndex = -1;
@@ -1546,6 +1627,11 @@ class TerrainWorldStudioApp
                 if (K === 'i')
                 {
                     this._toggleRock2InstanceScope();
+                    return;
+                }
+                if (K === 'b')
+                {
+                    this._activateRock2SculptTool();
                     return;
                 }
                 if (K === 'g')
@@ -3819,6 +3905,14 @@ class TerrainWorldStudioApp
             this._syncRock2ToolbarButtons();
         });
 
+        document.getElementById('rock2-bool-ghosts-btn')?.addEventListener('click', () =>
+        {
+            if (!this.rock2View) return;
+            this.rock2View.setShowBooleanGhosts(!this.rock2View.showBooleanGhosts);
+            this._syncRock2ToolbarButtons();
+            if (this.workspaceMode === 'rock2') this.rebuildInspector();
+        });
+
         WireBtn?.addEventListener('click', () =>
         {
             if (!this.rock2View) return;
@@ -3863,13 +3957,22 @@ class TerrainWorldStudioApp
             });
         }
 
+        document.getElementById('rock2-tool-sculpt')?.addEventListener('click', () =>
+        {
+            this._activateRock2SculptTool();
+        });
+
         document.getElementById('rock2-tool-reset')?.addEventListener('click', () =>
         {
             const Lyr = this._getSelectedRock2Layer();
             if (!Lyr || !Lyr.params) return;
             const SelInst = this.rock2.selectedInstanceIndex ?? -1;
             this._pushRock2UndoSnapshot();
-            if (isRock2ModifierType(Lyr.type))
+            if (Lyr.type === 'sculpt_layer')
+            {
+                clearRock2SculptLayer(Lyr);
+            }
+            else if (isRock2ModifierType(Lyr.type))
             {
                 const B = this.rock2.compiled?.bounds;
                 Lyr.params.originX = B ? Number(((B.minX + B.maxX) * 0.5).toFixed(2)) : 0.0;
@@ -3958,6 +4061,14 @@ class TerrainWorldStudioApp
         document.getElementById('rock2-mode-qef-btn')?.classList.toggle('active', !!IsQef);
         const ShowGiz = this.rock2View ? !!this.rock2View.showGizmos : true;
         document.getElementById('rock2-gizmo-btn')?.classList.toggle('active', ShowGiz);
+        const BoolGhostsBtn = document.getElementById('rock2-bool-ghosts-btn');
+        if (BoolGhostsBtn)
+        {
+            const ShowBool = this.rock2View ? !!this.rock2View.showBooleanGhosts : true;
+            const BoolCount = this.rock2?.compiled?.compiledLayers?.filter(C => C.isBoolean).length || 0;
+            BoolGhostsBtn.classList.toggle('active', ShowBool);
+            BoolGhostsBtn.textContent = BoolCount > 0 ? `Bool Ghosts (${BoolCount})` : 'Bool Ghosts';
+        }
         const WireBtn = document.getElementById('rock2-wire-btn');
         if (WireBtn)
         {
@@ -3995,11 +4106,139 @@ class TerrainWorldStudioApp
         }
 
         const CurTool = this.rock2View?.gizmoToolMode || 'path';
-        const EffTool = (SelInst >= 0 && CurTool === 'path') ? 'translate' : CurTool;
-        document.getElementById('rock2-tool-path')?.classList.toggle('active', ShowGiz && SelInst < 0 && EffTool === 'path');
-        document.getElementById('rock2-tool-move')?.classList.toggle('active', ShowGiz && EffTool === 'translate');
-        document.getElementById('rock2-tool-rotate')?.classList.toggle('active', ShowGiz && EffTool === 'rotate');
-        ScaleBtn?.classList.toggle('active', ShowGiz && !IsMod && EffTool === 'scale');
+        const IsSculptTool = CurTool === 'sculpt';
+        const EffTool = (!IsSculptTool && SelInst >= 0 && CurTool === 'path') ? 'translate' : CurTool;
+        document.getElementById('rock2-tool-path')?.classList.toggle('active', ShowGiz && !IsSculptTool && SelInst < 0 && EffTool === 'path');
+        document.getElementById('rock2-tool-move')?.classList.toggle('active', ShowGiz && !IsSculptTool && EffTool === 'translate');
+        document.getElementById('rock2-tool-rotate')?.classList.toggle('active', ShowGiz && !IsSculptTool && EffTool === 'rotate');
+        ScaleBtn?.classList.toggle('active', ShowGiz && !IsMod && !IsSculptTool && EffTool === 'scale');
+        document.getElementById('rock2-tool-sculpt')?.classList.toggle('active', IsSculptTool);
+    }
+
+    _getActiveRock2SculptLayerForPaint()
+    {
+        const Stack = this.rock2?.stack;
+        if (!Stack?.layers?.length) return null;
+        if (this._activeSculptLayerId)
+        {
+            const ById = Stack.layers.find(L => L.id === this._activeSculptLayerId && L.type === 'sculpt_layer');
+            if (ById) return ById;
+        }
+        const Sel = this._getSelectedRock2Layer();
+        if (Sel?.type === 'sculpt_layer') return Sel;
+        for (let i = Stack.layers.length - 1; i >= 0; i--)
+        {
+            if (Stack.layers[i].type === 'sculpt_layer' && Stack.layers[i].enabled) return Stack.layers[i];
+        }
+        return null;
+    }
+
+    _getOrCreateActiveRock2SculptLayer()
+    {
+        const Existing = this._getActiveRock2SculptLayerForPaint();
+        if (Existing)
+        {
+            Existing.enabled = true;
+            this.rock2.selectedLayerId = Existing.id;
+            if (this.rock2View) this.rock2View.setActiveLayer(Existing);
+            return Existing;
+        }
+        const SculptLayer = createRock2Layer('sculpt_layer');
+        this.rock2.stack.layers.push(SculptLayer);
+        this.rock2.selectedLayerId = SculptLayer.id;
+        this.rock2.selectedInstanceIndex = -1;
+        if (this.rock2View)
+        {
+            this.rock2View.selectedInstanceIndex = -1;
+            this.rock2View.setActiveLayer(SculptLayer);
+        }
+        return SculptLayer;
+    }
+
+    _activateRock2SculptTool()
+    {
+        if (!this.rock2View) return;
+        if (this.rock2View.gizmoToolMode === 'sculpt')
+        {
+            this.rock2View.setGizmoToolMode('path');
+            this._syncRock2ToolbarButtons();
+            this.rebuildInspector();
+            return;
+        }
+        let SL = this._getActiveRock2SculptLayerForPaint();
+        if (!SL)
+        {
+            this._pushRock2UndoSnapshot();
+            SL = this._getOrCreateActiveRock2SculptLayer();
+            this._rebuildRock2StackNow(false);
+        }
+        else
+        {
+            this.rock2.selectedLayerId = SL.id;
+            this.rock2.selectedInstanceIndex = -1;
+            this.rock2View.selectedInstanceIndex = -1;
+            this.rock2View.setActiveLayer(SL);
+        }
+        this.rock2View.showGizmos = true;
+        this.rock2View.setSculptBrushPreview(SL.params);
+        this.rock2View.setGizmoToolMode('sculpt');
+        this._syncRock2ToolbarButtons();
+        this.refreshChrome();
+        this.rebuildInspector();
+    }
+
+    _addRock2BooleanLayer(BaseRockType = 'smooth_rock', BoolOp = 'subtract')
+    {
+        this._pushRock2UndoSnapshot();
+        const Stack = this.rock2.stack;
+        if (Stack.layers.length === 0)
+        {
+            Stack.layers.push(createRock2Layer('big_boulder', { combineMode: 'union' }));
+        }
+        const Count = Stack.layers.length;
+        const B = this.rock2.compiled?.bounds;
+        const CenterX = B ? Number(((B.minX + B.maxX) * 0.5 + 0.55).toFixed(2)) : 0.65;
+        const CenterY = B ? Number((B.minY + (B.maxY - B.minY) * 0.42).toFixed(2)) : 1.15;
+        const CenterZ = B ? Number(((B.minZ + B.maxZ) * 0.5 + 0.65).toFixed(2)) : 0.70;
+
+        const BoolLayer = createRock2Layer(BaseRockType, {
+            name: `Boolean Cutter (${BoolOp === 'intersect' ? 'Intersect' : (BoolOp === 'chamfer_subtract' ? 'Chamfer Cut' : 'Subtract')})`,
+            isBoolean: true,
+            booleanOp: BoolOp,
+            combineMode: BoolOp,
+            blendRadius: BoolOp === 'chamfer_subtract' ? 0.22 : 0.16,
+            stoneTone: 'bryceCoral',
+            posX: CenterX,
+            posY: CenterY,
+            posZ: CenterZ,
+            seed: 503 + Count * 113,
+            width: 2.4,
+            height: 2.2,
+            length: 2.4
+        });
+
+        // Insert Boolean cutter right before any top-level stack modifier (or at top of stack) so it carves the rock cleanly
+        let InsertAt = Stack.layers.length;
+        while (InsertAt > 1 && isRock2ModifierType(Stack.layers[InsertAt - 1].type))
+        {
+            InsertAt--;
+        }
+        Stack.layers.splice(InsertAt, 0, BoolLayer);
+
+        this.rock2.selectedLayerId = BoolLayer.id;
+        this.rock2.selectedInstanceIndex = -1;
+        if (this.rock2View)
+        {
+            this.rock2View.showBooleanGhosts = true;
+            this.rock2View.showGizmos = true;
+            this.rock2View.selectedInstanceIndex = -1;
+            this.rock2View.setActiveLayer(BoolLayer);
+            this.rock2View.setGizmoToolMode('translate');
+        }
+        this._rebuildRock2StackNow(false);
+        this._syncRock2ToolbarButtons();
+        this.refreshChrome();
+        this.rebuildInspector();
     }
 
     _pushRock2UndoSnapshot()
@@ -4056,6 +4295,27 @@ class TerrainWorldStudioApp
 
         if (isRock2ModifierType(NodeType))
         {
+            if (NodeType === 'sculpt_layer')
+            {
+                const SculptLayer = createRock2Layer('sculpt_layer');
+                Stack.layers.push(SculptLayer);
+                this.rock2.selectedLayerId = SculptLayer.id;
+                this.rock2.selectedInstanceIndex = -1;
+                if (this.rock2View)
+                {
+                    this.rock2View.showGizmos = true;
+                    this.rock2View.selectedInstanceIndex = -1;
+                    this.rock2View.setActiveLayer(SculptLayer);
+                    this.rock2View.setSculptBrushPreview(SculptLayer.params);
+                    this.rock2View.setGizmoToolMode('sculpt');
+                }
+                this._rebuildRock2StackNow(false);
+                this._syncRock2ToolbarButtons();
+                this.refreshChrome();
+                this.rebuildInspector();
+                return;
+            }
+
             const B = this.rock2.compiled?.bounds;
             const OrigX = B ? Number(((B.minX + B.maxX) * 0.5).toFixed(2)) : 0.0;
             const OrigY = B ? Number((B.minY + (B.maxY - B.minY) * 0.45).toFixed(2)) : 1.85;
@@ -4324,6 +4584,7 @@ class TerrainWorldStudioApp
             smooth_union: 'Smooth',
             chamfer_union: 'Chamfer',
             subtract: 'Subtract',
+            chamfer_subtract: 'Chamfer Cut',
             intersect: 'Intersect'
         };
 
@@ -4331,6 +4592,8 @@ class TerrainWorldStudioApp
         {
             const Lyr = Stack.layers[I];
             const IsMod = isRock2ModifierType(Lyr.type);
+            const IsSculpt = Lyr.type === 'sculpt_layer';
+            const IsBool = !IsMod && I > 0 && isRock2BooleanLayer(Lyr);
             const Def = getRock2NodeSpec(Lyr.type);
             if (Q && !Lyr.name.toLowerCase().includes(Q) && !Def.name.toLowerCase().includes(Q)) continue;
 
@@ -4342,7 +4605,12 @@ class TerrainWorldStudioApp
             const ToneKey = Lyr.params?.stoneTone || 'clay';
             const Tone = ROCK2_STONE_TONES[ToneKey] || ROCK2_STONE_TONES.clay;
 
-            const Card = MakeEl('div', 'rock2-layer-card' + (IsMod ? ' modifier-card' : '') + (IsSel ? ' selected' : '') + (IsMuted ? ' muted' : ''));
+            const Card = MakeEl('div',
+                'rock2-layer-card'
+                + (IsSculpt ? ' sculpt-card' : (IsMod ? ' modifier-card' : (IsBool ? ' boolean-card' : '')))
+                + (IsSel ? ' selected' : '')
+                + (IsMuted ? ' muted' : '')
+            );
             Card.addEventListener('click', () =>
             {
                 this.rock2.selectedLayerId = Lyr.id;
@@ -4351,6 +4619,15 @@ class TerrainWorldStudioApp
                 {
                     this.rock2View.selectedInstanceIndex = -1;
                     this.rock2View.setActiveLayer(Lyr);
+                    if (IsSculpt)
+                    {
+                        this.rock2View.setSculptBrushPreview(Lyr.params);
+                        this.rock2View.setGizmoToolMode('sculpt');
+                    }
+                    else if (IsBool && (Lyr.generator?.type || 'none') === 'none' && this.rock2View.gizmoToolMode === 'path')
+                    {
+                        this.rock2View.setGizmoToolMode('translate');
+                    }
                 }
                 this._syncRock2ToolbarButtons();
                 this.refreshChrome();
@@ -4358,13 +4635,22 @@ class TerrainWorldStudioApp
             });
 
             const IdxBadge = MakeEl('span', 'rock2-layer-idx', `#${String(I + 1).padStart(2, '0')}`);
-            const Dot = MakeEl('span', 'rock2-tone-dot' + (IsMod ? ' mod-dot' : ''));
-            Dot.style.background = IsMod ? '#f59e0b' : Tone.hex;
+            const Dot = MakeEl('span', 'rock2-tone-dot' + (IsSculpt ? ' sculpt-dot' : (IsMod ? ' mod-dot' : (IsBool ? ' bool-dot' : ''))));
+            Dot.style.background = IsSculpt ? '#10b981' : (IsMod ? '#f59e0b' : (IsBool ? '#f43f5e' : Tone.hex));
             const NameEl = MakeEl('span', 'rock2-layer-name', Lyr.name);
             const TopRow = MakeEl('div', 'rock2-layer-top', [IdxBadge, Dot, NameEl]);
 
             let MetaItems = [];
-            if (IsMod)
+            if (IsSculpt)
+            {
+                const DabN = Array.isArray(Lyr.params?.dabs) ? Lyr.params.dabs.length : 0;
+                const BTag = (Lyr.params?.brushOp || 'add').toUpperCase();
+                const ModPill = MakeEl('span', 'rock2-op-pill op-sculpt', 'MOD · SCULPT');
+                const NodeTag = MakeEl('span', 'rock2-node-tag', BTag);
+                const DabPill = MakeEl('span', 'rock2-gen-pill mod-gen-pill', `DABS ×${DabN}`);
+                MetaItems = [ModPill, NodeTag, DabPill];
+            }
+            else if (IsMod)
             {
                 const ModeMap = {
                     single_plane: 'SINGLE',
@@ -4380,8 +4666,10 @@ class TerrainWorldStudioApp
             }
             else
             {
-                const OpLabel = I === 0 ? 'Base' : (OpShort[Lyr.combineMode] || 'Union');
-                const OpClass = I === 0 ? 'op-union' : `op-${Lyr.combineMode}`;
+                const OpLabel = I === 0
+                    ? 'Base'
+                    : (IsBool ? `BOOL · ${(OpShort[Lyr.combineMode] || 'Subtract').toUpperCase()}` : (OpShort[Lyr.combineMode] || 'Union'));
+                const OpClass = I === 0 ? 'op-union' : (IsBool ? 'op-boolean' : `op-${Lyr.combineMode}`);
                 const OpPill = MakeEl('span', `rock2-op-pill ${OpClass}`, OpLabel);
                 const NodeTag = MakeEl('span', 'rock2-node-tag', Def.name);
                 MetaItems = [OpPill, NodeTag];
@@ -4413,6 +4701,27 @@ class TerrainWorldStudioApp
             BtnDn.disabled = (I === Stack.layers.length - 1);
             BtnDn.addEventListener('click', E => { E.stopPropagation(); this._moveRock2Layer(Lyr.id, +1); });
 
+            let BtnBool = null;
+            if (!IsMod && I > 0)
+            {
+                BtnBool = MakeEl('button', 'rock2-mini-btn bool-toggle-btn' + (IsBool ? ' bool-on' : ''), 'B');
+                BtnBool.type = 'button';
+                BtnBool.title = IsBool
+                    ? 'Boolean Cutter Active (Semi-Transparent Red in 3D) — click to switch back to solid rock'
+                    : 'Mark this rock layer as a Semi-Transparent Red 3D Boolean Cutter (Subtract / Chamfer / Intersect)';
+                BtnBool.addEventListener('click', E =>
+                {
+                    E.stopPropagation();
+                    this._pushRock2UndoSnapshot();
+                    setRock2LayerBooleanMode(Lyr, !IsBool);
+                    if (!IsBool && this.rock2View) this.rock2View.showBooleanGhosts = true;
+                    this._rebuildRock2StackNow(false);
+                    this._syncRock2ToolbarButtons();
+                    this.refreshChrome();
+                    this.rebuildInspector();
+                });
+            }
+
             const BtnSolo = MakeEl('button', 'rock2-mini-btn' + (Lyr.solo ? ' solo-on' : ''), 'S');
             BtnSolo.type = 'button';
             BtnSolo.title = 'Solo isolate this rock layer';
@@ -4442,7 +4751,8 @@ class TerrainWorldStudioApp
             BtnDel.disabled = (Stack.layers.length <= 1);
             BtnDel.addEventListener('click', E => { E.stopPropagation(); this._deleteRock2Layer(Lyr.id); });
 
-            Actions.append(BtnUp, BtnDn, BtnSolo, BtnEye, BtnDup, BtnDel);
+            if (BtnBool) Actions.append(BtnUp, BtnDn, BtnBool, BtnSolo, BtnEye, BtnDup, BtnDel);
+            else Actions.append(BtnUp, BtnDn, BtnSolo, BtnEye, BtnDup, BtnDel);
             const BotRow = MakeEl('div', 'rock2-layer-bottom', [Meta, Actions]);
 
             Card.append(TopRow, BotRow);
@@ -4794,6 +5104,206 @@ class TerrainWorldStudioApp
         Content.appendChild(KinGrp.Group);
     }
 
+    _buildRock2SculptLayerInspector(Content, Stack, Layer, LayerIdx, Def, SavedOpen, OnLive, OnCommit)
+    {
+        const P = Layer.params;
+        const Dabs = Array.isArray(P.dabs) ? P.dabs : (P.dabs = []);
+        const StrokeSet = new Set(Dabs.map((D, I) => D.strokeId ?? I));
+        const IsPainting = this.rock2View?.gizmoToolMode === 'sculpt';
+
+        const Trio = MakeEl('div', 'kpi-trio', [
+            MakeEl('div', 'kpi-card highlight', [
+                MakeEl('span', 'kpi-label', '3D Sculpt Brush'),
+                MakeEl('strong', 'kpi-val', IsPainting ? 'ACTIVE (B)' : 'READY (B)'),
+                MakeEl('span', 'kpi-sub', (P.brushOp || 'add').toUpperCase())
+            ]),
+            MakeEl('div', 'kpi-card', [
+                MakeEl('span', 'kpi-label', 'Recorded Dabs'),
+                MakeEl('strong', 'kpi-val', `${Dabs.length}`),
+                MakeEl('span', 'kpi-sub', `${StrokeSet.size} strokes · max 512`)
+            ]),
+            MakeEl('div', 'kpi-card', [
+                MakeEl('span', 'kpi-label', 'SDF Pipeline'),
+                MakeEl('strong', 'kpi-val', 'Pure SDF'),
+                MakeEl('span', 'kpi-sub', '0 Mesh→SDF')
+            ])
+        ]);
+        Content.appendChild(Trio);
+
+        // 1. 3D Viewport Brush Mode & Palette
+        const BrushTitle = '3D Pure-SDF Sculpt Brushes';
+        const BrushGrp = MakePropertyGroup(
+            BrushTitle,
+            'Brush',
+            IsPainting ? 'PAINTING IN 3D' : 'CLICK ROCK TO SCULPT',
+            SavedOpen(BrushTitle, true),
+            'Drag directly on any rock surface in the 3D viewport! Hold Shift to Smooth, Ctrl to invert Add ↔ Carve, [ / ] to resize radius.'
+        );
+
+        const ActivateRow = MakeEl('div', 'studio-btn-row');
+        const PaintBtn = MakeEl('button', 'button' + (IsPainting ? ' export-button' : ''), IsPainting ? '✓ 3D Sculpt Brush Active (Press B / Esc to Exit)' : '🖌 Activate 3D Sculpt Brush in Viewport (B)');
+        PaintBtn.type = 'button';
+        PaintBtn.addEventListener('click', () => this._activateRock2SculptTool());
+        ActivateRow.appendChild(PaintBtn);
+        BrushGrp.Body.appendChild(ActivateRow);
+
+        const BrushItems = [
+            { id: 'add',     title: 'Clay Add',     sub: 'Build mass' },
+            { id: 'carve',   title: 'Carve',        sub: 'Chisel hollow' },
+            { id: 'flatten', title: 'Flatten',      sub: 'Scrape facet' },
+            { id: 'smooth',  title: 'Smooth',       sub: 'Relax (Shift)' },
+            { id: 'inflate', title: 'Inflate',      sub: 'Outward bulge' },
+            { id: 'crease',  title: 'Crease',       sub: 'Sharp fissure' }
+        ];
+        const BrushGrid = MakeEl('div', 'rock2-sculpt-brush-grid');
+        for (const BItem of BrushItems)
+        {
+            const BBtn = MakeEl('button', 'rock2-sculpt-brush-btn' + ((P.brushOp || 'add') === BItem.id ? ' active' : ''), [
+                MakeEl('span', '', BItem.title),
+                MakeEl('small', '', BItem.sub)
+            ]);
+            BBtn.type = 'button';
+            BBtn.addEventListener('click', () =>
+            {
+                P.brushOp = BItem.id;
+                if (this.rock2View)
+                {
+                    this.rock2View.showGizmos = true;
+                    this.rock2View.setSculptBrushPreview(P);
+                    this.rock2View.setGizmoToolMode('sculpt');
+                }
+                this._syncRock2ToolbarButtons();
+                this.refreshChrome();
+                this.rebuildInspector();
+            });
+            BrushGrid.appendChild(BBtn);
+        }
+        BrushGrp.Body.appendChild(BrushGrid);
+
+        const SyncPreview = () =>
+        {
+            if (this.rock2View) this.rock2View.setSculptBrushPreview(P);
+        };
+
+        BrushGrp.Body.appendChild(MakeSliderPillRow('Brush Radius ([ / ])', 0.08, 4.50, 0.02, P.brushRadius ?? 0.78, 2, 'm', V => { P.brushRadius = V; SyncPreview(); }, OnCommit));
+        BrushGrp.Body.appendChild(MakeSliderPillRow('Brush Strength', 0.04, 1.00, 0.02, P.brushStrength ?? 0.58, 2, 'w', V => { P.brushStrength = V; SyncPreview(); }, OnCommit));
+        BrushGrp.Body.appendChild(MakeSliderPillRow('Edge Hardness', 0.0, 1.00, 0.02, P.brushHardness ?? 0.42, 2, 'w', V => { P.brushHardness = V; SyncPreview(); }, OnCommit));
+        BrushGrp.Body.appendChild(MakeSliderPillRow('Stroke Spacing', 0.08, 0.80, 0.02, P.strokeSpacing ?? 0.28, 2, '×R', V => { P.strokeSpacing = V; SyncPreview(); }, OnCommit));
+
+        BrushGrp.Body.appendChild(MakeSelectRow(
+            'Mirror Symmetry',
+            [
+                ['Off (Asymmetric)', 'none'],
+                ['Mirror X (±X Bilateral)', 'x'],
+                ['Mirror Z (±Z Bilateral)', 'z'],
+                ['Quad Mirror (±X & ±Z)', 'xz']
+            ],
+            P.symmetryMode || 'none',
+            Val =>
+            {
+                P.symmetryMode = Val;
+                SyncPreview();
+                this.rebuildInspector();
+            }
+        ));
+
+        BrushGrp.Body.appendChild(MakeSelectRow(
+            'Target Stack Scope',
+            [
+                ['All Rock Layers Below (#01 … Prev)', 'stack_below'],
+                ['Immediate Rock Layer Below Only', 'single_layer']
+            ],
+            P.targetScope || 'stack_below',
+            Val =>
+            {
+                this._pushRock2UndoSnapshot();
+                P.targetScope = Val;
+                this._rebuildRock2StackNow(false);
+                this.refreshChrome();
+                this.rebuildInspector();
+            }
+        ));
+        Content.appendChild(BrushGrp.Group);
+
+        // 2. Custom Stone Tone Painting + Non-Destructive Stroke History
+        const HistTitle = 'Sculpt Tone & Stroke History';
+        const HistGrp = MakePropertyGroup(
+            HistTitle,
+            'Layers',
+            `${Dabs.length} DABS`,
+            SavedOpen(HistTitle, true),
+            'Every brush stroke is stored non-destructively in this SDF Sculpt Layer — mute, reorder, undo individual strokes, or bake to QEF mesh anytime.'
+        );
+
+        HistGrp.Body.appendChild(MakeSliderPillRow(
+            'Paint Custom Stone Tone', 0, 1, 1, P.useCustomTone ?? 0, 0, '',
+            V => { P.useCustomTone = Math.round(V); },
+            () => { OnCommit(); this.rebuildInspector(); }
+        ));
+
+        if ((P.useCustomTone ?? 0) > 0.5)
+        {
+            const SwatchGrid = MakeEl('div', 'rock2-swatch-grid');
+            for (const [ToneId, Tone] of Object.entries(ROCK2_STONE_TONES))
+            {
+                const Sw = MakeEl('button', 'rock2-swatch-btn' + (P.brushTone === ToneId ? ' active' : ''));
+                Sw.type = 'button';
+                const Dot = MakeEl('i');
+                Dot.style.background = Tone.hex;
+                Sw.append(Dot, MakeEl('span', '', Tone.label));
+                Sw.addEventListener('click', () =>
+                {
+                    P.brushTone = ToneId;
+                    this.rebuildInspector();
+                });
+                SwatchGrid.appendChild(Sw);
+            }
+            HistGrp.Body.appendChild(SwatchGrid);
+        }
+
+        const HistBtns = MakeEl('div', 'studio-btn-row');
+        const BtnUndoStroke = MakeEl('button', 'button', 'Undo Last Stroke');
+        BtnUndoStroke.type = 'button';
+        BtnUndoStroke.disabled = Dabs.length === 0;
+        BtnUndoStroke.addEventListener('click', () =>
+        {
+            this._pushRock2UndoSnapshot();
+            undoLastRock2SculptStroke(Layer);
+            this._rebuildRock2StackNow(false);
+            this.refreshChrome();
+            this.rebuildInspector();
+        });
+
+        const BtnClearDabs = MakeEl('button', 'button', 'Clear All Dabs');
+        BtnClearDabs.type = 'button';
+        BtnClearDabs.disabled = Dabs.length === 0;
+        BtnClearDabs.addEventListener('click', () =>
+        {
+            this._pushRock2UndoSnapshot();
+            clearRock2SculptLayer(Layer);
+            this._rebuildRock2StackNow(false);
+            this.refreshChrome();
+            this.rebuildInspector();
+        });
+        HistBtns.append(BtnUndoStroke, BtnClearDabs);
+        HistGrp.Body.appendChild(HistBtns);
+
+        const LayerActRow = MakeEl('div', 'studio-btn-row');
+        const BtnDup = MakeEl('button', 'button', 'Duplicate Sculpt Layer');
+        BtnDup.type = 'button';
+        BtnDup.addEventListener('click', () => this._duplicateRock2Layer(Layer.id));
+        LayerActRow.appendChild(BtnDup);
+        if (Stack.layers.length > 1)
+        {
+            const BtnDel = MakeEl('button', 'button', 'Delete Sculpt Layer');
+            BtnDel.type = 'button';
+            BtnDel.addEventListener('click', () => this._deleteRock2Layer(Layer.id));
+            LayerActRow.appendChild(BtnDel);
+        }
+        HistGrp.Body.appendChild(LayerActRow);
+        Content.appendChild(HistGrp.Group);
+    }
+
     _buildRock2InspectorTab(Content)
     {
         if (!this.rock2.savedOpenState) this.rock2.savedOpenState = new Map();
@@ -4811,6 +5321,8 @@ class TerrainWorldStudioApp
         const P = Layer.params;
         const LayerIdx = Stack.layers.findIndex(L => L.id === Layer.id);
         const IsMod = isRock2ModifierType(Layer.type);
+        const IsSculpt = Layer.type === 'sculpt_layer';
+        const IsBool = !IsMod && LayerIdx > 0 && isRock2BooleanLayer(Layer);
         const Def = getRock2NodeSpec(Layer.type);
         const IsQef = this.rock2View?.renderMode === 'qef-mesh';
 
@@ -4824,10 +5336,19 @@ class TerrainWorldStudioApp
         if (ObjName) ObjName.value = Layer.name;
         if (ObjType)
         {
-            if (IsMod)
+            if (IsSculpt)
+            {
+                const DabN = Array.isArray(P.dabs) ? P.dabs.length : 0;
+                ObjType.textContent = `3D SDF SCULPT · ${(P.brushOp || 'add').toUpperCase()} · ${DabN} DABS`;
+            }
+            else if (IsMod)
             {
                 const ModeTag = (P.splitMode || 'single_plane').replace('_', ' ').toUpperCase();
                 ObjType.textContent = `MODIFIER D1 · ${ModeTag} · T⁻¹(p) SDF`;
+            }
+            else if (IsBool)
+            {
+                ObjType.textContent = `BOOLEAN OBJECT · ${Layer.combineMode.replace('_', ' ').toUpperCase()} · RED GHOST SDF`;
             }
             else
             {
@@ -4836,7 +5357,7 @@ class TerrainWorldStudioApp
             }
         }
         if (ObjEn) ObjEn.checked = !!Layer.enabled;
-        if (ObjSym) { ObjSym.innerHTML = ''; ObjSym.appendChild(ConstructGlyph(Def.glyph || 'Mountain')); }
+        if (ObjSym) { ObjSym.innerHTML = ''; ObjSym.appendChild(ConstructGlyph(IsBool ? 'Boolean' : (Def.glyph || 'Mountain'))); }
 
         const SavedOpen = (Title, DefaultOpen) =>
             this.rock2.savedOpenState.has(Title) ? this.rock2.savedOpenState.get(Title) : DefaultOpen;
@@ -4847,6 +5368,13 @@ class TerrainWorldStudioApp
             this._pushRock2UndoSnapshot();
             this.refreshChrome();
         };
+
+        if (IsSculpt)
+        {
+            this._buildRock2SculptLayerInspector(Content, Stack, Layer, LayerIdx, Def, SavedOpen, OnLive, OnCommit);
+            this._appendRock2StageExportGroup(Content, Stack, IsQef, SavedOpen, OnLive, OnCommit);
+            return;
+        }
 
         if (IsMod)
         {
@@ -4859,8 +5387,8 @@ class TerrainWorldStudioApp
         const Compiled = this.rock2.compiled;
         const Trio = MakeEl('div', 'kpi-trio', [
             MakeEl('div', 'kpi-card highlight', [
-                MakeEl('span', 'kpi-label', 'Selected Node'),
-                MakeEl('strong', 'kpi-val', `#${String(LayerIdx + 1).padStart(2, '0')} ${Def.shortBadge}`),
+                MakeEl('span', 'kpi-label', IsBool ? 'Boolean Cutter' : 'Selected Node'),
+                MakeEl('strong', 'kpi-val', `#${String(LayerIdx + 1).padStart(2, '0')} ${IsBool ? 'BOOL' : Def.shortBadge}`),
                 MakeEl('span', 'kpi-sub', Def.name)
             ]),
             MakeEl('div', 'kpi-card', [
@@ -4869,26 +5397,90 @@ class TerrainWorldStudioApp
                 MakeEl('span', 'kpi-sub', `${Compiled ? Compiled.totalPlanes : 0} half-spaces`)
             ]),
             MakeEl('div', 'kpi-card', [
-                MakeEl('span', 'kpi-label', 'Surface Purity'),
-                MakeEl('strong', 'kpi-val', 'Plain'),
-                MakeEl('span', 'kpi-sub', '0 fractures · 0 noise')
+                MakeEl('span', 'kpi-label', IsBool ? '3D Viewport Mark' : 'Surface Purity'),
+                MakeEl('strong', 'kpi-val', IsBool ? 'Red Ghost' : 'Plain'),
+                MakeEl('span', 'kpi-sub', IsBool ? Layer.combineMode.replace('_', ' ') : '0 fractures · 0 noise')
             ])
         ]);
         Content.appendChild(Trio);
 
-        // 1. Layer Combine & Stone Tone
+        // 1. Layer Combine, First-Class Boolean Mode & Stone Tone
         const CompTitle = 'Stack Combine & Stone Tone';
         const CompGroup = MakePropertyGroup(
             CompTitle,
-            'Layers',
-            LayerIdx === 0 ? 'BASE #01' : Layer.combineMode.replace('_', ' ').toUpperCase(),
+            IsBool ? 'Boolean' : 'Layers',
+            LayerIdx === 0 ? 'BASE #01' : (IsBool ? `BOOL · ${Layer.combineMode.replace('_', ' ').toUpperCase()}` : Layer.combineMode.replace('_', ' ').toUpperCase()),
             SavedOpen(CompTitle, true),
             LayerIdx === 0
-                ? 'Base Layer (#01) establishes the primary SDF rock volume. Add layers above it to Smooth-Union, Chamfer, Carve, or Intersect.'
-                : 'Choose how this plain rock layer combines with the SDF stack below it.'
+                ? 'Base Layer (#01) establishes the primary SDF rock volume. Add Boolean Cutters or Sculpt Layers above it!'
+                : (IsBool
+                    ? 'Marked as a Boolean Object — rendered in Semi-Transparent Red in the 3D viewport so you can select and position the cutter live!'
+                    : 'Choose how this rock layer combines with the SDF stack below, or mark it as a Semi-Transparent Red Boolean Object.')
         );
 
-        // Quick Swap Base Rock Shape (preserves attached Spline / Array / Splatter / Scatter generator!)
+        // First-Class Boolean Object Banner (for Layer #02+, or quick '+ Boolean Cutter' helper on Base #01)
+        if (LayerIdx > 0)
+        {
+            const BoolBanner = MakeEl('div', 'rock2-bool-banner' + (IsBool ? ' active' : ''));
+            const BoolCopy = MakeEl('div', 'rock2-bool-banner-copy', [
+                MakeEl('strong', '', IsBool ? 'Boolean Object Active (Semi-Transparent Red)' : 'Boolean Cutter Mode'),
+                MakeEl('small', '', IsBool ? 'Click & drag red ghost in 3D with Move (W) / Rotate (E) / Scale (R)' : 'Mark rock in semi-transparent red for Subtract / Chamfer / Intersect')
+            ]);
+            const BoolBtn = MakeEl('button', 'rock2-bool-toggle-pill' + (IsBool ? ' active' : ''), IsBool ? 'BOOL ON' : 'Mark Boolean');
+            BoolBtn.type = 'button';
+            BoolBtn.addEventListener('click', () =>
+            {
+                this._pushRock2UndoSnapshot();
+                setRock2LayerBooleanMode(Layer, !IsBool);
+                if (!IsBool && this.rock2View) this.rock2View.showBooleanGhosts = true;
+                this._rebuildRock2StackNow(false);
+                this._syncRock2ToolbarButtons();
+                this.refreshChrome();
+                this.rebuildInspector();
+            });
+            BoolBanner.append(BoolCopy, BoolBtn);
+            CompGroup.Body.appendChild(BoolBanner);
+
+            if (IsBool)
+            {
+                const BoolOpTabs = MakeEl('div', 'rock2-gen-tabs cols-3');
+                for (const [BLabel, BOp] of [
+                    ['Subtract (A−B)', 'subtract'],
+                    ['Chamfer Cut', 'chamfer_subtract'],
+                    ['Intersect (A∩B)', 'intersect']
+                ])
+                {
+                    const Tab = MakeEl('button', 'rock2-gen-tab' + (Layer.combineMode === BOp ? ' active' : ''), BLabel);
+                    Tab.type = 'button';
+                    Tab.addEventListener('click', () =>
+                    {
+                        if (Layer.combineMode === BOp) return;
+                        this._pushRock2UndoSnapshot();
+                        setRock2LayerBooleanMode(Layer, true, BOp);
+                        this._rebuildRock2StackNow(false);
+                        this._syncRock2ToolbarButtons();
+                        this.refreshChrome();
+                        this.rebuildInspector();
+                    });
+                    BoolOpTabs.appendChild(Tab);
+                }
+                CompGroup.Body.appendChild(BoolOpTabs);
+            }
+        }
+        else
+        {
+            const BaseQuickRow = MakeEl('div', 'studio-btn-row');
+            const QuickAddBool = MakeEl('button', 'button', '+ Add Boolean Cutter Above');
+            QuickAddBool.type = 'button';
+            QuickAddBool.addEventListener('click', () => this._addRock2BooleanLayer());
+            const QuickSculpt = MakeEl('button', 'button', '🖌 3D Sculpt Rock (B)');
+            QuickSculpt.type = 'button';
+            QuickSculpt.addEventListener('click', () => this._activateRock2SculptTool());
+            BaseQuickRow.append(QuickAddBool, QuickSculpt);
+            CompGroup.Body.appendChild(BaseQuickRow);
+        }
+
+        // Quick Swap Base Rock Shape (preserves Boolean state + attached Spline / Array / Splatter / Scatter generator!)
         CompGroup.Body.appendChild(MakeSelectRow(
             'Base Rock Shape',
             ROCK2_NODE_CATALOG.map(N => [N.name, N.type]),
@@ -4900,6 +5492,9 @@ class TerrainWorldStudioApp
                     id: Layer.id,
                     enabled: Layer.enabled,
                     solo: Layer.solo,
+                    isBoolean: Layer.isBoolean,
+                    booleanOp: Layer.booleanOp,
+                    nonBoolCombineMode: Layer.nonBoolCombineMode,
                     combineMode: Layer.combineMode,
                     blendRadius: Layer.blendRadius,
                     stoneTone: P.stoneTone,
@@ -4925,7 +5520,11 @@ class TerrainWorldStudioApp
                 {
                     this._pushRock2UndoSnapshot();
                     Layer.combineMode = Val;
+                    Layer.isBoolean = isRock2BooleanCombineMode(Val);
+                    if (Layer.isBoolean) Layer.booleanOp = Val;
+                    else Layer.nonBoolCombineMode = Val;
                     this._rebuildRock2StackNow(false);
+                    this._syncRock2ToolbarButtons();
                     this.refreshChrome();
                     this.rebuildInspector();
                 }
@@ -4933,8 +5532,11 @@ class TerrainWorldStudioApp
 
             if (Layer.combineMode !== 'union')
             {
+                const RadiusLabel = (Layer.combineMode === 'chamfer_union' || Layer.combineMode === 'chamfer_subtract')
+                    ? 'Chamfer Bevel Width'
+                    : (IsBool ? 'Cut Seam Blend Radius' : 'Blend Radius');
                 CompGroup.Body.appendChild(MakeSliderPillRow(
-                    Layer.combineMode === 'chamfer_union' ? 'Chamfer Width' : 'Blend Radius',
+                    RadiusLabel,
                     0.0, 2.20, 0.02, Layer.blendRadius ?? 0.35, 2, 'm',
                     V => { Layer.blendRadius = V; OnLive(); },
                     OnCommit
