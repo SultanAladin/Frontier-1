@@ -51,6 +51,8 @@ import {
     cloneRock2Layer,
     createDefaultRock2Document,
     evaluateRock2GeneratorInstances,
+    getOrCreateRock2InstanceOverride,
+    hasActiveRock2InstanceOverride,
     compileRock2Stack,
     evalRock2StackSdf,
     pickRock2LayerAtRay,
@@ -1946,4 +1948,106 @@ Suite('31. Step B 3D Spline Arch Span (open portal + grounded piers), 3D Orbital
     }
 });
 
-console.log(`\nAll ${Passed}/31 Open-World SDF Terrain & Pure-SDF Rock Formation 1.0 + 2.0 Studio validation suites passed!`);
+// 32. Phase C: Non-Destructive Per-Instance Rock Selection, TRS Overrides, Archetype Swap & Hidden Toggle
+Suite('32. Phase C: Multi-rock layers support non-destructive per-instance ray-picking, TRS overrides, archetype swap, seed mutation & hiding', () =>
+{
+    const Gen = createRock2Generator('array', {
+        arrayMode: 'line',
+        countX: 5,
+        startX: -8.0, startY: 0.0, startZ: 0.0,
+        endX: 8.0, endY: 0.0, endZ: 0.0,
+        spacingJitter: 0.0,
+        lateralJitter: 0.0,
+        scaleMin: 1.0,
+        scaleMax: 1.0,
+        yawJitterDeg: 0,
+        tiltJitterDeg: 0,
+        rockPoolMode: 'uniform_base',
+        seed: 515
+    });
+    const Layer = createRock2Layer('big_boulder', {
+        id: 'lyr_inst_line',
+        width: 2.2, height: 2.4, length: 2.2,
+        generator: Gen
+    });
+    const LiveGen = Layer.generator;
+
+    const BaseComp = compileRock2Stack({ layers: [Layer] });
+    const BaseCL = BaseComp.compiledLayers[0];
+    assert.equal(BaseCL.rawInstanceCount, 5, 'Line array must report rawInstanceCount = 5');
+    assert.equal(Object.keys(BaseCL.instanceBounds).length, 5, 'All 5 stones must populate per-instance world bounds');
+
+    // A. Sub-Instance 3D Viewport Ray-Picking (`pickRock2LayerAtRay` returns exact `instanceIndex` 0..4!)
+    for (let k = 0; k < 5; k++)
+    {
+        const ib = BaseCL.instanceBounds[k];
+        const Hit = pickRock2LayerAtRay(BaseComp, [ib.cx, ib.cy, 12.0], [0.0, 0.0, -1.0]);
+        assert.ok(Hit, `Ray aimed at rock #${k} center must hit`);
+        assert.equal(Hit.layerId, 'lyr_inst_line', `Ray hit must report lyr_inst_line`);
+        assert.equal(Hit.instanceIndex, k, `Ray aimed at rock #${k} must identify instanceIndex = ${k} (got ${Hit.instanceIndex})`);
+        assert.equal(Hit.rawInstanceCount, 5, 'Ray hit must report rawInstanceCount = 5');
+    }
+
+    // B. Non-destructive Move (`offsetX / offsetY / offsetZ`) on Rock #2 ONLY leaves Rocks #0, #1, #3, #4 untouched!
+    const Sib0Before = { ...BaseCL.instanceBounds[0] };
+    const Sib4Before = { ...BaseCL.instanceBounds[4] };
+    const Ov2 = getOrCreateRock2InstanceOverride(LiveGen, 2);
+    Ov2.offsetY = 3.5;
+    Ov2.offsetZ = -2.2;
+    assert.equal(hasActiveRock2InstanceOverride(Ov2), true, 'Modified override must report active');
+
+    const MovedComp = compileRock2Stack({ layers: [Layer] });
+    const MovedCL = MovedComp.compiledLayers[0];
+    assert.ok(Math.abs(MovedCL.instanceBounds[0].cy - Sib0Before.cy) < 1e-6, 'Sibling rock #0 Y must be untouched when rock #2 moves');
+    assert.ok(Math.abs(MovedCL.instanceBounds[4].cz - Sib4Before.cz) < 1e-6, 'Sibling rock #4 Z must be untouched when rock #2 moves');
+    assert.ok(MovedCL.instanceBounds[2].cy > BaseCL.instanceBounds[2].cy + 3.2, 'Rock #2 center Y must rise by ~3.5m');
+    assert.ok(MovedCL.instanceBounds[2].cz < BaseCL.instanceBounds[2].cz - 1.9, 'Rock #2 center Z must shift by ~-2.2m');
+
+    // Ray-pick at Rock #2's NEW lifted world coordinate hits instanceIndex = 2!
+    const MovedHit2 = pickRock2LayerAtRay(MovedComp, [MovedCL.instanceBounds[2].cx, MovedCL.instanceBounds[2].cy, 12.0], [0.0, 0.0, -1.0]);
+    assert.equal(MovedHit2?.instanceIndex, 2, 'Ray-pick at lifted Rock #2 position must still identify instanceIndex = 2');
+
+    // C. Per-instance Scale (`scaleX / scaleY / scaleZ`), Rotation (`yawDelta / pitchDelta / rollDelta`), `seedDelta` & `rockType` Archetype Swap!
+    const Ov1 = getOrCreateRock2InstanceOverride(LiveGen, 1);
+    Ov1.scaleX = 1.85;
+    Ov1.scaleY = 1.60;
+    Ov1.yawDelta = 42;
+    Ov1.pitchDelta = 15;
+    Ov1.seedDelta = 331;
+    Ov1.rockType = 'hoodoo_column'; // Multi-primitive compound archetype inside a boulder array!
+
+    const CustomComp = compileRock2Stack({ layers: [Layer] });
+    const CustomCL = CustomComp.compiledLayers[0];
+    assert.equal(CustomCL.instanceBounds[1].rockType, 'hoodoo_column', 'Rock #1 must swap cleanly to compound hoodoo_column archetype');
+    const BaseSpan1Y = BaseCL.instanceBounds[1].maxY - BaseCL.instanceBounds[1].minY;
+    const CustSpan1Y = CustomCL.instanceBounds[1].maxY - CustomCL.instanceBounds[1].minY;
+    assert.ok(CustSpan1Y > BaseSpan1Y * 1.35, `Scaled hoodoo Rock #1 height (${CustSpan1Y.toFixed(2)}m) must exceed unscaled boulder (${BaseSpan1Y.toFixed(2)}m)`);
+
+    // D. Non-destructive `hidden = 1` hides Rock #3 while keeping Rock #4 at stable index 4!
+    const Ov3 = getOrCreateRock2InstanceOverride(LiveGen, 3);
+    Ov3.hidden = 1;
+    const HiddenComp = compileRock2Stack({ layers: [Layer] });
+    const HiddenCL = HiddenComp.compiledLayers[0];
+    assert.equal(HiddenCL.rawInstanceCount, 5, 'rawInstanceCount must stay 5 even when 1 rock is hidden');
+    assert.equal(HiddenCL.instanceCount, 4, 'Visible instanceCount must drop from 5 to 4');
+    assert.equal(HiddenCL.instanceBounds[3], undefined, 'Hidden rock #3 must produce no SDF bounds');
+    assert.ok(HiddenCL.instanceBounds[4], 'Sibling rock #4 must retain stable index 4 without shifting');
+    const MissHidden3 = pickRock2LayerAtRay(HiddenComp, [BaseCL.instanceBounds[3].cx, BaseCL.instanceBounds[3].cy, 12.0], [0.0, 0.0, -1.0]);
+    assert.equal(MissHidden3, null, 'Ray through hidden Rock #3 must pass cleanly through empty air');
+
+    // E. JSON v3 Round-Trip + QEF Dual-Contour Mesh Extraction (0 Mesh->SDF)
+    const JsonRT = deserializeRock2Document(JSON.parse(JSON.stringify(serializeRock2Document({ layers: [Layer] }))));
+    const RTComp = compileRock2Stack(JsonRT);
+    for (const [px, py, pz] of [[-8, 1.0, 0], [-4, 1.8, 0], [0, 4.5, -2.2], [4, 1.0, 0], [8, 1.0, 0]])
+    {
+        const dOrig = evalRock2StackSdf(HiddenComp, px, py, pz);
+        const dRest = evalRock2StackSdf(RTComp, px, py, pz);
+        assert.ok(Math.abs(dOrig - dRest) < 1e-6, `Instance overrides must round-trip bit-identically at (${px},${py},${pz}): ${dOrig} vs ${dRest}`);
+    }
+
+    const Baked = bakeRock2StackQefMesh(HiddenComp, { resolution: 52 });
+    assert.equal(Baked.sdfStats.meshToSdfCount, 0, 'Phase C customized multi-rock stack must use 0 Mesh->SDF');
+    assert.ok(Baked.sdfStats.triangles > 800, `Customized multi-rock stack must bake valid QEF mesh (${Baked.sdfStats.triangles} tris)`);
+});
+
+console.log(`\nAll ${Passed}/32 Open-World SDF Terrain & Pure-SDF Rock Formation 1.0 + 2.0 Studio validation suites passed!`);

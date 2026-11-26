@@ -14,23 +14,23 @@
     <meta http-equiv="Expires" content="0" />
     <title>SDF Terrain Studio — Frontier Experimental Remastered</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23161616'/%3E%3Cpath d='M5 23l7-12 5 7 4-5 6 10z' fill='%23eff4cf'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="./TerrainWorldEditor.css?v=20261127e" />
+    <link rel="stylesheet" href="./TerrainWorldEditor.css?v=20261127f" />
     <script type="importmap">
     {
         "imports": {
-            "./Engine/RockCliff/Core/SpatialNoise3D.js": "./Engine/RockCliff/Core/SpatialNoise3D.js?v=20261127e",
-            "./Engine/RockCliff/Core/SparseSdfBrickGrid.js": "./Engine/RockCliff/Core/SparseSdfBrickGrid.js?v=20261127e",
-            "./Engine/RockCliff/Core/QefDualContour.js": "./Engine/RockCliff/Core/QefDualContour.js?v=20261127e",
-            "./Engine/RockCliff/PureSdfFractureEngine.js": "./Engine/RockCliff/PureSdfFractureEngine.js?v=20261127e",
-            "./Engine/RockCliff/FractureLabViewport.js": "./Engine/RockCliff/FractureLabViewport.js?v=20261127e",
-            "./Engine/RockCliff/RockFormationStackEngine.js": "./Engine/RockCliff/RockFormationStackEngine.js?v=20261127e",
-            "./Engine/RockCliff/RockFormation2Viewport.js": "./Engine/RockCliff/RockFormation2Viewport.js?v=20261127e",
-            "./Engine/TerrainLayerStack.js": "./Engine/TerrainLayerStack.js?v=20261127e",
-            "./StudioControls.js": "./StudioControls.js?v=20261127e"
+            "./Engine/RockCliff/Core/SpatialNoise3D.js": "./Engine/RockCliff/Core/SpatialNoise3D.js?v=20261127f",
+            "./Engine/RockCliff/Core/SparseSdfBrickGrid.js": "./Engine/RockCliff/Core/SparseSdfBrickGrid.js?v=20261127f",
+            "./Engine/RockCliff/Core/QefDualContour.js": "./Engine/RockCliff/Core/QefDualContour.js?v=20261127f",
+            "./Engine/RockCliff/PureSdfFractureEngine.js": "./Engine/RockCliff/PureSdfFractureEngine.js?v=20261127f",
+            "./Engine/RockCliff/FractureLabViewport.js": "./Engine/RockCliff/FractureLabViewport.js?v=20261127f",
+            "./Engine/RockCliff/RockFormationStackEngine.js": "./Engine/RockCliff/RockFormationStackEngine.js?v=20261127f",
+            "./Engine/RockCliff/RockFormation2Viewport.js": "./Engine/RockCliff/RockFormation2Viewport.js?v=20261127f",
+            "./Engine/TerrainLayerStack.js": "./Engine/TerrainLayerStack.js?v=20261127f",
+            "./StudioControls.js": "./StudioControls.js?v=20261127f"
         }
     }
     </script>
-    <script type="module" src="./TerrainWorldEditor.js?v=20261127e"></script>
+    <script type="module" src="./TerrainWorldEditor.js?v=20261127f"></script>
 </head>
 <body class="ws-rock2">
     <div id="app">
@@ -259,20 +259,24 @@
                         </div>
 
                         <div class="rock2-gizmo-rail" id="Rock2GizmoRail" role="toolbar" aria-label="RockFormation 2.0 Layer Select &amp; Transform Gizmo Tools">
+                            <button id="rock2-tool-scope" class="rock2-gizmo-tool-btn" type="button" title="Toggle Whole-Layer vs Individual Rock Instance Edit Scope (I · or click a rock twice in 3D)">
+                                <span id="rock2-tool-scope-label">Layer</span><kbd>I</kbd>
+                            </button>
+                            <span class="rock2-gizmo-rail-sep"></span>
                             <button id="rock2-tool-path" class="rock2-gizmo-tool-btn active" type="button" title="Select Rock Layer &amp; Edit 3D Spline / Arch / Cloud / Array Handles (Q)">
                                 <span>Path</span><kbd>Q</kbd>
                             </button>
-                            <button id="rock2-tool-move" class="rock2-gizmo-tool-btn" type="button" title="Move / Translate Selected Layer in 3D (W)">
+                            <button id="rock2-tool-move" class="rock2-gizmo-tool-btn" type="button" title="Move / Translate Selected Layer or Rock Instance in 3D (W)">
                                 <span>Move</span><kbd>W</kbd>
                             </button>
-                            <button id="rock2-tool-rotate" class="rock2-gizmo-tool-btn" type="button" title="Rotate Selected Layer Yaw / Pitch / Roll in 3D (E)">
+                            <button id="rock2-tool-rotate" class="rock2-gizmo-tool-btn" type="button" title="Rotate Selected Layer or Rock Instance Yaw / Pitch / Roll in 3D (E)">
                                 <span>Rotate</span><kbd>E</kbd>
                             </button>
-                            <button id="rock2-tool-scale" class="rock2-gizmo-tool-btn" type="button" title="Scale Selected Layer X / Y / Z or Uniformly in 3D (R)">
+                            <button id="rock2-tool-scale" class="rock2-gizmo-tool-btn" type="button" title="Scale Selected Layer or Rock Instance X / Y / Z or Uniformly in 3D (R)">
                                 <span>Scale</span><kbd>R</kbd>
                             </button>
                             <span class="rock2-gizmo-rail-sep"></span>
-                            <button id="rock2-tool-reset" class="rock2-gizmo-tool-btn subtle" type="button" title="Reset Selected Layer Move / Rotate / Scale to (0,0,0) &amp; (1,1,1)">
+                            <button id="rock2-tool-reset" class="rock2-gizmo-tool-btn subtle" type="button" title="Reset Selected Rock Instance Override (or Whole-Layer TRS)">
                                 <span>Reset</span>
                             </button>
                         </div>

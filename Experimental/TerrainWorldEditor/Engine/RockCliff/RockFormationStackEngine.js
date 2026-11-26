@@ -904,6 +904,85 @@ export const ROCK2_GENERATOR_DEFAULTS = {
     }
 };
 
+export const DEFAULT_ROCK2_INSTANCE_OVERRIDE = {
+    offsetX: 0.0,
+    offsetY: 0.0,
+    offsetZ: 0.0,
+    yawDelta: 0.0,
+    pitchDelta: 0.0,
+    rollDelta: 0.0,
+    scaleX: 1.0,
+    scaleY: 1.0,
+    scaleZ: 1.0,
+    seedDelta: 0,
+    rockType: '',
+    hidden: 0
+};
+
+export function hasActiveRock2InstanceOverride(ov)
+{
+    if (!ov || typeof ov !== 'object') return false;
+    return !!(
+        ov.hidden ||
+        (ov.rockType && ov.rockType !== '') ||
+        Math.abs(ov.offsetX || 0) > 1e-4 ||
+        Math.abs(ov.offsetY || 0) > 1e-4 ||
+        Math.abs(ov.offsetZ || 0) > 1e-4 ||
+        Math.abs(ov.yawDelta || 0) > 1e-3 ||
+        Math.abs(ov.pitchDelta || 0) > 1e-3 ||
+        Math.abs(ov.rollDelta || 0) > 1e-3 ||
+        Math.abs((ov.scaleX ?? 1.0) - 1.0) > 1e-4 ||
+        Math.abs((ov.scaleY ?? 1.0) - 1.0) > 1e-4 ||
+        Math.abs((ov.scaleZ ?? 1.0) - 1.0) > 1e-4 ||
+        (ov.seedDelta | 0) !== 0
+    );
+}
+
+export function normalizeRock2InstanceOverrides(rawMap)
+{
+    const out = {};
+    if (!rawMap || typeof rawMap !== 'object') return out;
+    for (const [k, v] of Object.entries(rawMap))
+    {
+        const idx = Number(k);
+        if (!Number.isInteger(idx) || idx < 0 || idx > 128 || !v || typeof v !== 'object') continue;
+        const clean = {
+            offsetX: Number.isFinite(v.offsetX) ? clamp(v.offsetX, -32.0, 32.0) : 0.0,
+            offsetY: Number.isFinite(v.offsetY) ? clamp(v.offsetY, -24.0, 32.0) : 0.0,
+            offsetZ: Number.isFinite(v.offsetZ) ? clamp(v.offsetZ, -32.0, 32.0) : 0.0,
+            yawDelta: Number.isFinite(v.yawDelta) ? v.yawDelta : 0.0,
+            pitchDelta: Number.isFinite(v.pitchDelta) ? clamp(v.pitchDelta, -89.0, 89.0) : 0.0,
+            rollDelta: Number.isFinite(v.rollDelta) ? clamp(v.rollDelta, -89.0, 89.0) : 0.0,
+            scaleX: Number.isFinite(v.scaleX) ? clamp(v.scaleX, 0.12, 8.0) : 1.0,
+            scaleY: Number.isFinite(v.scaleY) ? clamp(v.scaleY, 0.12, 8.0) : 1.0,
+            scaleZ: Number.isFinite(v.scaleZ) ? clamp(v.scaleZ, 0.12, 8.0) : 1.0,
+            seedDelta: Number.isFinite(v.seedDelta) ? (v.seedDelta | 0) : 0,
+            rockType: (typeof v.rockType === 'string' && ROCK2_NODE_CATALOG.some(n => n.type === v.rockType)) ? v.rockType : '',
+            hidden: v.hidden ? 1 : 0
+        };
+        if (hasActiveRock2InstanceOverride(clean))
+        {
+            out[idx] = clean;
+        }
+    }
+    return out;
+}
+
+export function getOrCreateRock2InstanceOverride(generator, index)
+{
+    if (!generator) return { ...DEFAULT_ROCK2_INSTANCE_OVERRIDE };
+    if (!generator.instanceOverrides || typeof generator.instanceOverrides !== 'object')
+    {
+        generator.instanceOverrides = {};
+    }
+    const idx = Math.max(0, index | 0);
+    if (!generator.instanceOverrides[idx])
+    {
+        generator.instanceOverrides[idx] = { ...DEFAULT_ROCK2_INSTANCE_OVERRIDE };
+    }
+    return generator.instanceOverrides[idx];
+}
+
 export function normalizeSplineKnots(rawKnots, fallbackPreset = 'arc', pathLength = 9.2, curveBend = 2.0)
 {
     if (Array.isArray(rawKnots) && rawKnots.length >= 2)
@@ -995,6 +1074,7 @@ export function createRock2Generator(type = 'none', overrides = {})
         }
     }
 
+    merged.instanceOverrides = normalizeRock2InstanceOverrides(overrides.instanceOverrides || merged.instanceOverrides);
     return merged;
 }
 
@@ -1563,7 +1643,7 @@ export function buildRock2EulerMatrix3(yawDeg = 0, pitchDeg = 0, rollDeg = 0)
     ];
 }
 
-function mulMat3(A, B)
+export function mulRock2Mat3(A, B)
 {
     return [
         A[0] * B[0] + A[1] * B[3] + A[2] * B[6],
@@ -1579,6 +1659,7 @@ function mulMat3(A, B)
         A[6] * B[2] + A[7] * B[5] + A[8] * B[8]
     ];
 }
+const mulMat3 = mulRock2Mat3;
 
 function invertRigidTransform(R, pivot)
 {
@@ -1790,7 +1871,7 @@ function chooseInstanceRockType(baseType, poolMode, instRng, index)
  * into an ordered array of local rock instance descriptors + `intraBlend`.
  * Every multi-rock generator produces genuinely distinct per-instance shapes, proportions & orientations!
  */
-export function evaluateRock2GeneratorInstances(generator, baseRockParams, baseType = 'big_boulder')
+function evaluateRock2RawGeneratorInstances(generator, baseRockParams, baseType = 'big_boulder')
 {
     const g = generator || { type: 'none' };
     const type = g.type || 'none';
@@ -2498,6 +2579,80 @@ export function evaluateRock2GeneratorInstances(generator, baseRockParams, baseT
             pos: [0, 0, 0], yawDeg: 0, pitchDeg: 0, rollDeg: 0,
             scaleX: 1, scaleY: 1, scaleZ: 1, seedOffset: 0, shapeVariety: 0, rockType: baseType
         }]
+    };
+}
+
+/**
+ * Evaluates a layer's placement generator (`none`, `spline`, `array`, `cloud`, `splatter`, `scatter`)
+ * and applies non-destructive per-instance overrides (`g.instanceOverrides[k]`)!
+ */
+export function evaluateRock2GeneratorInstances(generator, baseRockParams, baseType = 'big_boulder', options = {})
+{
+    const rawRes = evaluateRock2RawGeneratorInstances(generator, baseRockParams, baseType);
+    const rawList = rawRes.instances || [];
+    const g = generator || { type: 'none' };
+    const ovMap = (!options.ignoreOverrides && g.type !== 'none' && g.instanceOverrides && typeof g.instanceOverrides === 'object')
+        ? g.instanceOverrides
+        : null;
+
+    const activeInstances = [];
+    const rawInstances = [];
+
+    for (let i = 0; i < rawList.length; i++)
+    {
+        const r = rawList[i];
+        const rawCopy = {
+            ...r,
+            pos: [r.pos[0], r.pos[1], r.pos[2]],
+            sourceIndex: i
+        };
+        rawInstances.push(rawCopy);
+
+        const ov = ovMap ? ovMap[i] : null;
+        if (!ov)
+        {
+            activeInstances.push({
+                ...rawCopy,
+                rawPos: [r.pos[0], r.pos[1], r.pos[2]],
+                rawEuler: [r.yawDeg, r.pitchDeg, r.rollDeg],
+                hasOverride: false
+            });
+            continue;
+        }
+
+        if (ov.hidden) continue;
+
+        const chosenType = (ov.rockType && ROCK2_NODE_CATALOG.some(n => n.type === ov.rockType))
+            ? ov.rockType
+            : r.rockType;
+
+        activeInstances.push({
+            pos: [
+                r.pos[0] + (ov.offsetX ?? 0.0),
+                r.pos[1] + (ov.offsetY ?? 0.0),
+                r.pos[2] + (ov.offsetZ ?? 0.0)
+            ],
+            rawPos: [r.pos[0], r.pos[1], r.pos[2]],
+            rawEuler: [r.yawDeg, r.pitchDeg, r.rollDeg],
+            yawDeg: r.yawDeg + (ov.yawDelta ?? 0.0),
+            pitchDeg: clamp(r.pitchDeg + (ov.pitchDelta ?? 0.0), -89.0, 89.0),
+            rollDeg: clamp(r.rollDeg + (ov.rollDelta ?? 0.0), -89.0, 89.0),
+            scaleX: Math.max(0.08, r.scaleX * (ov.scaleX ?? 1.0)),
+            scaleY: Math.max(0.08, r.scaleY * (ov.scaleY ?? 1.0)),
+            scaleZ: Math.max(0.08, r.scaleZ * (ov.scaleZ ?? 1.0)),
+            seedOffset: (r.seedOffset || 0) + (ov.seedDelta || 0),
+            shapeVariety: r.shapeVariety,
+            rockType: chosenType,
+            sourceIndex: i,
+            hasOverride: hasActiveRock2InstanceOverride(ov)
+        });
+    }
+
+    return {
+        intraBlend: rawRes.intraBlend,
+        instances: activeInstances,
+        rawInstances,
+        rawCount: rawInstances.length
     };
 }
 
@@ -4048,7 +4203,7 @@ export function compileRock2Stack(doc)
         const layerR = buildRock2EulerMatrix3(p.yawDeg ?? 0, p.pitchDeg ?? 0, p.rollDeg ?? 0);
         const layerPivot = [p.posX ?? 0.0, p.posY ?? 0.0, p.posZ ?? 0.0];
 
-        const { intraBlend, instances } = evaluateRock2GeneratorInstances(lyr.generator, p, spec.type);
+        const { intraBlend, instances, rawCount } = evaluateRock2GeneratorInstances(lyr.generator, p, spec.type);
         const room = Math.max(0, MAX_STACK_PRIMITIVES - allPrimitives.length);
         if (room <= 0) break;
 
@@ -4066,10 +4221,12 @@ export function compileRock2Stack(doc)
             };
 
         const layerPrims = [];
+        const instanceBounds = {};
         let builtInstances = 0;
         for (let k = 0; k < instances.length && layerPrims.length < room; k++)
         {
             const inst = instances[k];
+            const srcIdx = inst.sourceIndex ?? k;
             const localInstR = buildRock2EulerMatrix3(inst.yawDeg, inst.pitchDeg, inst.rollDeg);
             const worldR = mulMat3(layerR, localInstR);
             const worldPivot = forwardRock2Point(
@@ -4086,23 +4243,44 @@ export function compileRock2Stack(doc)
             const built = buildAtomicBaseRockPrimitive(instRockType, instParams, worldR, worldPivot);
             if (!built) continue;
 
-            if (Array.isArray(built))
+            const parts = Array.isArray(built) ? built.filter(Boolean) : [built];
+            if (parts.length === 0 || layerPrims.length + parts.length > MAX_STACK_PRIMITIVES) break;
+
+            parts[0].primOp = -1.0;
+            let iMinX = Infinity, iMinY = Infinity, iMinZ = Infinity;
+            let iMaxX = -Infinity, iMaxY = -Infinity, iMaxZ = -Infinity;
+            for (let pi = 0; pi < parts.length; pi++)
             {
-                const validParts = built.filter(Boolean);
-                if (validParts.length === 0 || layerPrims.length + validParts.length > MAX_STACK_PRIMITIVES) break;
-                validParts[0].primOp = -1.0;
-                for (let pi = 0; pi < validParts.length; pi++)
+                const pr = parts[pi];
+                pr.instanceIndex = srcIdx;
+                layerPrims.push(pr);
+                if (pr.primOp > -1.5)
                 {
-                    layerPrims.push(validParts[pi]);
+                    if (pr.minX < iMinX) iMinX = pr.minX;
+                    if (pr.maxX > iMaxX) iMaxX = pr.maxX;
+                    if (pr.minY < iMinY) iMinY = pr.minY;
+                    if (pr.maxY > iMaxY) iMaxY = pr.maxY;
+                    if (pr.minZ < iMinZ) iMinZ = pr.minZ;
+                    if (pr.maxZ > iMaxZ) iMaxZ = pr.maxZ;
                 }
-                builtInstances++;
             }
-            else
+
+            if (Number.isFinite(iMinX))
             {
-                built.primOp = -1.0;
-                layerPrims.push(built);
-                builtInstances++;
+                instanceBounds[srcIdx] = {
+                    minX: iMinX, minY: iMinY, minZ: iMinZ,
+                    maxX: iMaxX, maxY: iMaxY, maxZ: iMaxZ,
+                    cx: (iMinX + iMaxX) * 0.5,
+                    cy: (iMinY + iMaxY) * 0.5,
+                    cz: (iMinZ + iMaxZ) * 0.5,
+                    worldR,
+                    worldPivot,
+                    rawPos: inst.rawPos || [inst.pos[0], inst.pos[1], inst.pos[2]],
+                    rawEuler: inst.rawEuler || [inst.yawDeg, inst.pitchDeg, inst.rollDeg],
+                    rockType: instRockType
+                };
             }
+            builtInstances++;
         }
 
         if (layerPrims.length === 0) continue;
@@ -4158,11 +4336,13 @@ export function compileRock2Stack(doc)
             type: spec.type,
             generatorType: lyr.generator?.type || 'none',
             instanceCount: builtInstances,
+            rawInstanceCount: rawCount ?? builtInstances,
             combineOp: ROCK2_COMBINE_OP_CODE[lyr.combineMode] ?? 0,
             blendRadius: clamp(lyr.blendRadius ?? 0.35, 0.0, 4.0),
             intraBlend: clamp(intraBlend ?? 0.0, 0.0, 3.0),
             color: tone.rgb,
             bounds: lBounds,
+            instanceBounds,
             blockStart,
             blockCount: layerPrims.length
         });
@@ -4552,9 +4732,57 @@ export function pickRock2LayerAtRay(compiledStack, ro, rd)
         }
     }
 
+    // Identify the exact individual rock instance (`sourceIndex`) hit within the winning layer!
+    const winLayer = compiledStack.compiledLayers[bestIdx];
+    const primitives = compiledStack.primitives;
+    let bestInstIdx = 0;
+    let bestInstScore = 1e9;
+    let curInstIdx = 0;
+    let curInstD = 1e9;
+    let hasCur = false;
+
+    const flushCurInst = () =>
+    {
+        if (!hasCur) return;
+        const sc = Math.abs(curInstD);
+        if (sc < bestInstScore)
+        {
+            bestInstScore = sc;
+            bestInstIdx = curInstIdx;
+        }
+    };
+
+    for (let k = 0; k < winLayer.blockCount; k++)
+    {
+        const prim = primitives[winLayer.blockStart + k];
+        const pOp = prim.primOp ?? -1.0;
+        if (pOp > -1.5 && pOp < -0.5)
+        {
+            flushCurInst();
+            hasCur = true;
+            curInstIdx = prim.instanceIndex ?? 0;
+            curInstD = evalRock2PrimitiveSdf(prim, hx, hy, hz);
+        }
+        else if (pOp >= 0.0)
+        {
+            const dP = evalRock2PrimitiveSdf(prim, hx, hy, hz);
+            curInstD = curInstD > 1e8 ? dP : (pOp > 1e-4 ? sminPoly(curInstD, dP, pOp) : Math.min(curInstD, dP));
+            hasCur = true;
+        }
+        else if (hasCur)
+        {
+            const cutB = Math.max(0.0, -pOp - 2.0);
+            const dP = evalRock2PrimitiveSdf(prim, hx, hy, hz);
+            curInstD = smaxPoly(curInstD, -dP, cutB);
+        }
+    }
+    flushCurInst();
+
     return {
-        layerId: compiledStack.compiledLayers[bestIdx].id,
+        layerId: winLayer.id,
         layerIndex: bestIdx,
+        instanceIndex: bestInstIdx,
+        rawInstanceCount: winLayer.rawInstanceCount ?? winLayer.instanceCount ?? 1,
         hitPoint: [hx, hy, hz],
         distance: t
     };

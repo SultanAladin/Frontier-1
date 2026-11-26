@@ -882,6 +882,24 @@ body.ws-rock2 .quick-lib-scroll {
     color: #9ca3af;
     font-size: 10px;
 }
+.rock2-gizmo-tool-btn.scope-inst {
+    background: rgba(56, 189, 248, 0.20);
+    border-color: rgba(125, 211, 252, 0.72);
+    color: #7dd3fc;
+}
+.rock2-gen-tab.has-override {
+    border-color: rgba(56, 189, 248, 0.58);
+    color: #bae6fd;
+}
+.rock2-gen-tab.has-override.active {
+    background: rgba(56, 189, 248, 0.24);
+    border-color: #7dd3fc;
+    color: #e0f2fe;
+}
+.rock2-gen-tab.is-hidden-inst {
+    opacity: 0.55;
+    text-decoration: line-through;
+}
 .rock2-gizmo-rail-sep {
     height: 1px;
     margin: 2px 4px;

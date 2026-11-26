@@ -14,10 +14,12 @@ import {
     pickRock2LayerAtRay,
     packRock2StackGpuBuffers,
     buildRock2EulerMatrix3,
+    mulRock2Mat3,
     forwardRock2Point,
     inverseRock2Vector,
     buildRock2SplineArcTable,
     evaluateRock2GeneratorInstances,
+    getOrCreateRock2InstanceOverride,
     normalizeSplineKnots
 } from './RockFormationStackEngine.js';
 
@@ -563,6 +565,8 @@ export class RockFormation2Viewport
         this.activeLayer = null;
         this.showGizmos = true;
         this.gizmoToolMode = 'path'; // 'path' | 'translate' | 'rotate' | 'scale'
+        this.selectedInstanceIndex = -1; // -1 = Whole Layer; >= 0 = Individual Rock #k inside multi-rock layer
+        this.instancePickLock = false;
         this.selectedKnotIndex = 0;
         this._screenHandles = [];
         this._screenSplineSegs = [];
@@ -1138,6 +1142,12 @@ export class RockFormation2Viewport
                 if (hit)
                 {
                     clickCandidate = false;
+                    if (hit.kind === 'select_instance')
+                    {
+                        this.selectedInstanceIndex = hit.instanceIndex;
+                        this.callbacks.onSelectInstance?.(this.activeLayer.id, hit.instanceIndex);
+                        return;
+                    }
                     if (hit.knotIndex !== undefined)
                     {
                         this.selectedKnotIndex = hit.knotIndex;
@@ -1145,6 +1155,15 @@ export class RockFormation2Viewport
                     const { R, pivot, upW } = this._getLayerTransform(this.activeLayer);
                     const anchorW = hit.anchorWorld;
                     const p = this.activeLayer.params || {};
+                    const g = this.activeLayer.generator;
+                    const instIndex = (g && g.type !== 'none' && this.selectedInstanceIndex >= 0)
+                        ? this.selectedInstanceIndex
+                        : -1;
+                    const compLayer = this.compiledStack?.compiledLayers?.find(c => c.id === this.activeLayer.id);
+                    const instEntry = instIndex >= 0 ? compLayer?.instanceBounds?.[instIndex] : null;
+                    const startOv = (instIndex >= 0 && g)
+                        ? JSON.parse(JSON.stringify(getOrCreateRock2InstanceOverride(g, instIndex)))
+                        : null;
 
                     let startAxisS = 0.0;
                     if (hit.axisVec)
@@ -1167,42 +1186,108 @@ export class RockFormation2Viewport
                         const cssH = Math.max(1, rect.height);
                         const cW = hit.centerWorld || pivot;
                         const cScr = this._projectWorldPoint(cW[0], cW[1], cW[2], cam, cssW, cssH) || { sx, sy };
-                        const localCenter = inverseRock2Vector(R, cW[0] - pivot[0], cW[1] - pivot[1], cW[2] - pivot[2]);
-                        const localGrab = inverseRock2Vector(R, anchorW[0] - cW[0], anchorW[1] - cW[1], anchorW[2] - cW[2]);
 
-                        const testParams = {
-                            yawDeg: p.yawDeg ?? 0,
-                            pitchDeg: p.pitchDeg ?? 0,
-                            rollDeg: p.rollDeg ?? 0
-                        };
-                        testParams[hit.rotKey] += 1.0;
-                        const R1 = buildRock2EulerMatrix3(testParams.yawDeg, testParams.pitchDeg, testParams.rollDeg);
-                        const p1W = forwardRock2Point(R1, cW, localGrab[0], localGrab[1], localGrab[2]);
-                        const s0 = this._projectWorldPoint(anchorW[0], anchorW[1], anchorW[2], cam, cssW, cssH) || { sx, sy };
-                        const s1 = this._projectWorldPoint(p1W[0], p1W[1], p1W[2], cam, cssW, cssH) || { sx: sx + 1, sy };
+                        if (instIndex >= 0 && instEntry && startOv)
+                        {
+                            const rawEuler = instEntry.rawEuler || [0, 0, 0];
+                            const curWRot = instEntry.worldR || R;
+                            const curWPivot = instEntry.worldPivot || cW;
+                            const localInstCenter = inverseRock2Vector(
+                                curWRot,
+                                cW[0] - curWPivot[0],
+                                cW[1] - curWPivot[1],
+                                cW[2] - curWPivot[2]
+                            );
+                            const localGrab = inverseRock2Vector(
+                                curWRot,
+                                anchorW[0] - cW[0],
+                                anchorW[1] - cW[1],
+                                anchorW[2] - cW[2]
+                            );
 
-                        const vx = s1.sx - s0.sx, vy = s1.sy - s0.sy;
-                        const vl = Math.hypot(vx, vy) || 1;
-                        const crossVal = (s0.sx - cScr.sx) * vy - (s0.sy - cScr.sy) * vx;
-                        const startAng = Math.atan2(sy - cScr.sy, sx - cScr.sx);
+                            const deltaMap = { yawDeg: 'yawDelta', pitchDeg: 'pitchDelta', rollDeg: 'rollDelta' };
+                            const dKey = deltaMap[hit.rotKey] || 'yawDelta';
+                            const testDelta = {
+                                yawDelta: startOv.yawDelta ?? 0,
+                                pitchDelta: startOv.pitchDelta ?? 0,
+                                rollDelta: startOv.rollDelta ?? 0
+                            };
+                            testDelta[dKey] += 1.0;
 
-                        rotMeta = {
-                            centerW: cW,
-                            centerScr: cScr,
-                            localCenter,
-                            startSx: sx,
-                            startSy: sy,
-                            prevAng: startAng,
-                            accumRad: 0.0,
-                            crossVal,
-                            crossSign: crossVal >= 0 ? 1.0 : -1.0,
-                            tangentPx: [vx / vl, vy / vl]
-                        };
+                            const testInstR = buildRock2EulerMatrix3(
+                                rawEuler[0] + testDelta.yawDelta,
+                                clamp(rawEuler[1] + testDelta.pitchDelta, -89, 89),
+                                clamp(rawEuler[2] + testDelta.rollDelta, -89, 89)
+                            );
+                            const R1 = mulRock2Mat3(R, testInstR);
+                            const p1W = forwardRock2Point(R1, cW, localGrab[0], localGrab[1], localGrab[2]);
+                            const s0 = this._projectWorldPoint(anchorW[0], anchorW[1], anchorW[2], cam, cssW, cssH) || { sx, sy };
+                            const s1 = this._projectWorldPoint(p1W[0], p1W[1], p1W[2], cam, cssW, cssH) || { sx: sx + 1, sy };
+
+                            const vx = s1.sx - s0.sx, vy = s1.sy - s0.sy;
+                            const vl = Math.hypot(vx, vy) || 1;
+                            const crossVal = (s0.sx - cScr.sx) * vy - (s0.sy - cScr.sy) * vx;
+                            const startAng = Math.atan2(sy - cScr.sy, sx - cScr.sx);
+
+                            rotMeta = {
+                                isInstance: true,
+                                dKey,
+                                rawEuler: [rawEuler[0], rawEuler[1], rawEuler[2]],
+                                startWorldPivot: [curWPivot[0], curWPivot[1], curWPivot[2]],
+                                localCenter: localInstCenter,
+                                centerW: cW,
+                                centerScr: cScr,
+                                startSx: sx,
+                                startSy: sy,
+                                prevAng: startAng,
+                                accumRad: 0.0,
+                                crossVal,
+                                crossSign: crossVal >= 0 ? 1.0 : -1.0,
+                                tangentPx: [vx / vl, vy / vl]
+                            };
+                        }
+                        else
+                        {
+                            const localCenter = inverseRock2Vector(R, cW[0] - pivot[0], cW[1] - pivot[1], cW[2] - pivot[2]);
+                            const localGrab = inverseRock2Vector(R, anchorW[0] - cW[0], anchorW[1] - cW[1], anchorW[2] - cW[2]);
+
+                            const testParams = {
+                                yawDeg: p.yawDeg ?? 0,
+                                pitchDeg: p.pitchDeg ?? 0,
+                                rollDeg: p.rollDeg ?? 0
+                            };
+                            testParams[hit.rotKey] += 1.0;
+                            const R1 = buildRock2EulerMatrix3(testParams.yawDeg, testParams.pitchDeg, testParams.rollDeg);
+                            const p1W = forwardRock2Point(R1, cW, localGrab[0], localGrab[1], localGrab[2]);
+                            const s0 = this._projectWorldPoint(anchorW[0], anchorW[1], anchorW[2], cam, cssW, cssH) || { sx, sy };
+                            const s1 = this._projectWorldPoint(p1W[0], p1W[1], p1W[2], cam, cssW, cssH) || { sx: sx + 1, sy };
+
+                            const vx = s1.sx - s0.sx, vy = s1.sy - s0.sy;
+                            const vl = Math.hypot(vx, vy) || 1;
+                            const crossVal = (s0.sx - cScr.sx) * vy - (s0.sy - cScr.sy) * vx;
+                            const startAng = Math.atan2(sy - cScr.sy, sx - cScr.sx);
+
+                            rotMeta = {
+                                isInstance: false,
+                                centerW: cW,
+                                centerScr: cScr,
+                                localCenter,
+                                startSx: sx,
+                                startSy: sy,
+                                prevAng: startAng,
+                                accumRad: 0.0,
+                                crossVal,
+                                crossSign: crossVal >= 0 ? 1.0 : -1.0,
+                                tangentPx: [vx / vl, vy / vl]
+                            };
+                        }
                     }
 
                     this._gizmoDrag = {
                         handle: hit,
                         layer: this.activeLayer,
+                        instIndex,
+                        startOv,
                         R, pivot, upW,
                         anchorW,
                         startHitW,
@@ -1253,14 +1338,30 @@ export class RockFormation2Viewport
                 const sx = e.clientX - rect.left;
                 const sy = e.clientY - rect.top;
 
-                // --- WHOLE-LAYER TRS TRANSFORM GIZMO HANDLERS ---
+                // --- WHOLE-LAYER OR PER-INSTANCE TRS TRANSFORM GIZMO HANDLERS ---
+                const isInstEdit = dg.instIndex >= 0 && g && g.type !== 'none' && dg.startOv;
+                const lSx = clamp(sp.scaleX ?? 1.0, 0.12, 8.0);
+                const lSy = clamp(sp.scaleY ?? 1.0, 0.12, 8.0);
+                const lSz = clamp(sp.scaleZ ?? 1.0, 0.12, 8.0);
+
                 if (h.kind === 'trs_move_axis')
                 {
                     const curS = this._projectRayOntoWorldAxis(e.clientX, e.clientY, h.centerWorld || dg.anchorW, h.axisVec);
                     const ds = curS - dg.startAxisS;
-                    p.posX = Number(clamp((sp.posX ?? 0) + h.axisVec[0] * ds, -24.0, 24.0).toFixed(3));
-                    p.posY = Number(clamp((sp.posY ?? 0) + h.axisVec[1] * ds, -12.0, 24.0).toFixed(3));
-                    p.posZ = Number(clamp((sp.posZ ?? 0) + h.axisVec[2] * ds, -24.0, 24.0).toFixed(3));
+                    if (isInstEdit)
+                    {
+                        const ov = getOrCreateRock2InstanceOverride(g, dg.instIndex);
+                        const dLoc = inverseRock2Vector(dg.R, h.axisVec[0] * ds, h.axisVec[1] * ds, h.axisVec[2] * ds);
+                        ov.offsetX = Number(clamp((dg.startOv.offsetX ?? 0) + dLoc[0] / lSx, -28.0, 28.0).toFixed(3));
+                        ov.offsetY = Number(clamp((dg.startOv.offsetY ?? 0) + dLoc[1] / lSy, -20.0, 28.0).toFixed(3));
+                        ov.offsetZ = Number(clamp((dg.startOv.offsetZ ?? 0) + dLoc[2] / lSz, -28.0, 28.0).toFixed(3));
+                    }
+                    else
+                    {
+                        p.posX = Number(clamp((sp.posX ?? 0) + h.axisVec[0] * ds, -24.0, 24.0).toFixed(3));
+                        p.posY = Number(clamp((sp.posY ?? 0) + h.axisVec[1] * ds, -12.0, 24.0).toFixed(3));
+                        p.posZ = Number(clamp((sp.posZ ?? 0) + h.axisVec[2] * ds, -24.0, 24.0).toFixed(3));
+                    }
                     this.callbacks.onLiveGizmoEdit?.();
                     return;
                 }
@@ -1269,8 +1370,19 @@ export class RockFormation2Viewport
                     const hitW = this._intersectHorizontalPlane(e.clientX, e.clientY, dg.anchorW, [0, 1, 0]);
                     const dx = hitW[0] - dg.startHitW[0];
                     const dz = hitW[2] - dg.startHitW[2];
-                    p.posX = Number(clamp((sp.posX ?? 0) + dx, -24.0, 24.0).toFixed(3));
-                    p.posZ = Number(clamp((sp.posZ ?? 0) + dz, -24.0, 24.0).toFixed(3));
+                    if (isInstEdit)
+                    {
+                        const ov = getOrCreateRock2InstanceOverride(g, dg.instIndex);
+                        const dLoc = inverseRock2Vector(dg.R, dx, 0.0, dz);
+                        ov.offsetX = Number(clamp((dg.startOv.offsetX ?? 0) + dLoc[0] / lSx, -28.0, 28.0).toFixed(3));
+                        ov.offsetY = Number(clamp((dg.startOv.offsetY ?? 0) + dLoc[1] / lSy, -20.0, 28.0).toFixed(3));
+                        ov.offsetZ = Number(clamp((dg.startOv.offsetZ ?? 0) + dLoc[2] / lSz, -28.0, 28.0).toFixed(3));
+                    }
+                    else
+                    {
+                        p.posX = Number(clamp((sp.posX ?? 0) + dx, -24.0, 24.0).toFixed(3));
+                        p.posZ = Number(clamp((sp.posZ ?? 0) + dz, -24.0, 24.0).toFixed(3));
+                    }
                     this.callbacks.onLiveGizmoEdit?.();
                     return;
                 }
@@ -1292,24 +1404,64 @@ export class RockFormation2Viewport
                         deltaDeg = dpx * 0.75;
                     }
 
-                    let nextVal = (sp[h.rotKey] ?? 0) + deltaDeg;
-                    if (h.rotKey === 'yawDeg')
+                    if (rm.isInstance && isInstEdit)
                     {
-                        while (nextVal > 180) nextVal -= 360;
-                        while (nextVal < -180) nextVal += 360;
+                        const ov = getOrCreateRock2InstanceOverride(g, dg.instIndex);
+                        const dKey = rm.dKey;
+                        let nextVal = (dg.startOv[dKey] ?? 0) + deltaDeg;
+                        if (dKey === 'yawDelta')
+                        {
+                            while (nextVal > 180) nextVal -= 360;
+                            while (nextVal < -180) nextVal += 360;
+                        }
+                        else
+                        {
+                            nextVal = clamp(nextVal, -89.0, 89.0);
+                        }
+                        ov[dKey] = Number(nextVal.toFixed(1));
+
+                        // Keep individual rock #k anchored around its own 3D gizmo center!
+                        const totYaw = rm.rawEuler[0] + (ov.yawDelta ?? 0);
+                        const totPitch = clamp(rm.rawEuler[1] + (ov.pitchDelta ?? 0), -89, 89);
+                        const totRoll = clamp(rm.rawEuler[2] + (ov.rollDelta ?? 0), -89, 89);
+                        const newWorldR = mulRock2Mat3(dg.R, buildRock2EulerMatrix3(totYaw, totPitch, totRoll));
+                        const rotOff = forwardRock2Point(newWorldR, [0, 0, 0], rm.localCenter[0], rm.localCenter[1], rm.localCenter[2]);
+                        const targetWPivot = [
+                            rm.centerW[0] - rotOff[0],
+                            rm.centerW[1] - rotOff[1],
+                            rm.centerW[2] - rotOff[2]
+                        ];
+                        const dPW = [
+                            targetWPivot[0] - rm.startWorldPivot[0],
+                            targetWPivot[1] - rm.startWorldPivot[1],
+                            targetWPivot[2] - rm.startWorldPivot[2]
+                        ];
+                        const dLoc = inverseRock2Vector(dg.R, dPW[0], dPW[1], dPW[2]);
+                        ov.offsetX = Number(clamp((dg.startOv.offsetX ?? 0) + dLoc[0] / lSx, -28.0, 28.0).toFixed(3));
+                        ov.offsetY = Number(clamp((dg.startOv.offsetY ?? 0) + dLoc[1] / lSy, -20.0, 28.0).toFixed(3));
+                        ov.offsetZ = Number(clamp((dg.startOv.offsetZ ?? 0) + dLoc[2] / lSz, -28.0, 28.0).toFixed(3));
                     }
                     else
                     {
-                        nextVal = clamp(nextVal, -89.0, 89.0);
-                    }
-                    p[h.rotKey] = Number(nextVal.toFixed(1));
+                        let nextVal = (sp[h.rotKey] ?? 0) + deltaDeg;
+                        if (h.rotKey === 'yawDeg')
+                        {
+                            while (nextVal > 180) nextVal -= 360;
+                            while (nextVal < -180) nextVal += 360;
+                        }
+                        else
+                        {
+                            nextVal = clamp(nextVal, -89.0, 89.0);
+                        }
+                        p[h.rotKey] = Number(nextVal.toFixed(1));
 
-                    // Keep rotation anchored cleanly around the 3D gizmo center
-                    const newR = buildRock2EulerMatrix3(p.yawDeg ?? 0, p.pitchDeg ?? 0, p.rollDeg ?? 0);
-                    const rotOff = forwardRock2Point(newR, [0, 0, 0], rm.localCenter[0], rm.localCenter[1], rm.localCenter[2]);
-                    p.posX = Number(clamp(rm.centerW[0] - rotOff[0], -24.0, 24.0).toFixed(3));
-                    p.posY = Number(clamp(rm.centerW[1] - rotOff[1], -12.0, 24.0).toFixed(3));
-                    p.posZ = Number(clamp(rm.centerW[2] - rotOff[2], -24.0, 24.0).toFixed(3));
+                        // Keep rotation anchored cleanly around the 3D gizmo center
+                        const newR = buildRock2EulerMatrix3(p.yawDeg ?? 0, p.pitchDeg ?? 0, p.rollDeg ?? 0);
+                        const rotOff = forwardRock2Point(newR, [0, 0, 0], rm.localCenter[0], rm.localCenter[1], rm.localCenter[2]);
+                        p.posX = Number(clamp(rm.centerW[0] - rotOff[0], -24.0, 24.0).toFixed(3));
+                        p.posY = Number(clamp(rm.centerW[1] - rotOff[1], -12.0, 24.0).toFixed(3));
+                        p.posZ = Number(clamp(rm.centerW[2] - rotOff[2], -24.0, 24.0).toFixed(3));
+                    }
                     this.callbacks.onLiveGizmoEdit?.();
                     return;
                 }
@@ -1319,8 +1471,17 @@ export class RockFormation2Viewport
                     const ds = curS - dg.startAxisS;
                     const refLen = Math.max(0.5, h.gizmoLen ?? 1.5);
                     const factor = Math.max(0.12, 1.0 + ds / refLen);
-                    const baseS = sp[h.scaleKey] ?? 1.0;
-                    p[h.scaleKey] = Number(clamp(baseS * factor, 0.15, 6.0).toFixed(3));
+                    if (isInstEdit)
+                    {
+                        const ov = getOrCreateRock2InstanceOverride(g, dg.instIndex);
+                        const baseS = dg.startOv[h.scaleKey] ?? 1.0;
+                        ov[h.scaleKey] = Number(clamp(baseS * factor, 0.15, 6.0).toFixed(3));
+                    }
+                    else
+                    {
+                        const baseS = sp[h.scaleKey] ?? 1.0;
+                        p[h.scaleKey] = Number(clamp(baseS * factor, 0.15, 6.0).toFixed(3));
+                    }
                     this.callbacks.onLiveGizmoEdit?.();
                     return;
                 }
@@ -1328,9 +1489,19 @@ export class RockFormation2Viewport
                 {
                     const deltaPx = (sx - dg.startSx) - (sy - dg.startSy);
                     const factor = Math.exp(deltaPx * 0.0075);
-                    p.scaleX = Number(clamp((sp.scaleX ?? 1.0) * factor, 0.15, 6.0).toFixed(3));
-                    p.scaleY = Number(clamp((sp.scaleY ?? 1.0) * factor, 0.15, 6.0).toFixed(3));
-                    p.scaleZ = Number(clamp((sp.scaleZ ?? 1.0) * factor, 0.15, 6.0).toFixed(3));
+                    if (isInstEdit)
+                    {
+                        const ov = getOrCreateRock2InstanceOverride(g, dg.instIndex);
+                        ov.scaleX = Number(clamp((dg.startOv.scaleX ?? 1.0) * factor, 0.15, 6.0).toFixed(3));
+                        ov.scaleY = Number(clamp((dg.startOv.scaleY ?? 1.0) * factor, 0.15, 6.0).toFixed(3));
+                        ov.scaleZ = Number(clamp((dg.startOv.scaleZ ?? 1.0) * factor, 0.15, 6.0).toFixed(3));
+                    }
+                    else
+                    {
+                        p.scaleX = Number(clamp((sp.scaleX ?? 1.0) * factor, 0.15, 6.0).toFixed(3));
+                        p.scaleY = Number(clamp((sp.scaleY ?? 1.0) * factor, 0.15, 6.0).toFixed(3));
+                        p.scaleZ = Number(clamp((sp.scaleZ ?? 1.0) * factor, 0.15, 6.0).toFixed(3));
+                    }
                     this.callbacks.onLiveGizmoEdit?.();
                     return;
                 }
@@ -1515,12 +1686,33 @@ export class RockFormation2Viewport
             }
             else if (clickCandidate && e && e.type === 'pointerup' && Math.hypot(e.clientX - downClientX, e.clientY - downClientY) <= 4.5)
             {
-                // Click-on-rock in 3D Viewport -> Sphere-trace Pure-SDF stack & select hit layer!
+                // Click-on-rock in 3D Viewport -> Sphere-trace Pure-SDF stack!
+                // First click on another layer selects that Layer; clicking a rock inside an already-selected
+                // multi-rock layer (or with Instance Lock ON) drills directly into that individual rock #k!
                 const { ro, rd } = this._screenRay(e.clientX, e.clientY);
                 const picked = pickRock2LayerAtRay(this.compiledStack, ro, rd);
                 if (picked && picked.layerId)
                 {
-                    this.callbacks.onSelectLayer?.(picked.layerId, picked.hitPoint);
+                    const isSameLayer = (picked.layerId === this.activeLayer?.id);
+                    const isMulti = (picked.rawInstanceCount ?? 1) > 1;
+                    const nextInst = (isMulti && (this.instancePickLock || isSameLayer))
+                        ? (picked.instanceIndex ?? 0)
+                        : -1;
+                    this.selectedInstanceIndex = nextInst;
+                    if (nextInst >= 0 && this.callbacks.onSelectInstance)
+                    {
+                        this.callbacks.onSelectInstance(picked.layerId, nextInst, picked.hitPoint);
+                    }
+                    else
+                    {
+                        this.callbacks.onSelectLayer?.(picked.layerId, picked.hitPoint);
+                    }
+                }
+                else if (this.selectedInstanceIndex >= 0 && this.activeLayer)
+                {
+                    // Clicking empty floor/sky exits sub-rock mode back to Whole Layer
+                    this.selectedInstanceIndex = -1;
+                    this.callbacks.onSelectInstance?.(this.activeLayer.id, -1);
                 }
             }
             clickCandidate = false;
@@ -1724,7 +1916,7 @@ export class RockFormation2Viewport
         });
     }
 
-    _drawSelectionBounds(ctx, cam, cssW, cssH, bounds, labelText)
+    _drawSelectionBounds(ctx, cam, cssW, cssH, bounds, labelText, strokeColor = 'rgba(239, 244, 207, 0.44)', pillAccent = '#eff4cf')
     {
         if (!bounds) return;
         const { minX, minY, minZ, maxX, maxY, maxZ } = bounds;
@@ -1739,19 +1931,18 @@ export class RockFormation2Viewport
         ];
 
         ctx.save();
-        ctx.strokeStyle = 'rgba(239, 244, 207, 0.44)';
-        ctx.lineWidth = 1.35;
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = 1.45;
         for (let i = 0; i < edges.length; i++)
         {
             const [ia, ib] = edges[i];
             const a = corners[ia], b = corners[ib];
-            // Draw crisp 22% corner ticks at both ends of each AABB edge
             for (const [p0, p1] of [[a, b], [b, a]])
             {
                 const q = [
-                    p0[0] + (p1[0] - p0[0]) * 0.20,
-                    p0[1] + (p1[1] - p0[1]) * 0.20,
-                    p0[2] + (p1[2] - p0[2]) * 0.20
+                    p0[0] + (p1[0] - p0[0]) * 0.22,
+                    p0[1] + (p1[1] - p0[1]) * 0.22,
+                    p0[2] + (p1[2] - p0[2]) * 0.22
                 ];
                 const s0 = this._projectWorldPoint(p0[0], p0[1], p0[2], cam, cssW, cssH);
                 const s1 = this._projectWorldPoint(q[0], q[1], q[2], cam, cssW, cssH);
@@ -1772,14 +1963,14 @@ export class RockFormation2Viewport
             {
                 ctx.font = '600 10px ui-sans-serif, system-ui, sans-serif';
                 const tw = ctx.measureText(labelText).width + 14;
-                ctx.fillStyle = 'rgba(13, 16, 21, 0.84)';
-                ctx.strokeStyle = 'rgba(239, 244, 207, 0.36)';
-                ctx.lineWidth = 1;
+                ctx.fillStyle = 'rgba(13, 16, 21, 0.88)';
+                ctx.strokeStyle = pillAccent;
+                ctx.lineWidth = 1.1;
                 ctx.beginPath();
                 ctx.roundRect(topP.sx - tw * 0.5, topP.sy - 20, tw, 18, 9);
                 ctx.fill();
                 ctx.stroke();
-                ctx.fillStyle = '#eff4cf';
+                ctx.fillStyle = pillAccent;
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
                 ctx.fillText(labelText, topP.sx, topP.sy - 11);
@@ -1921,8 +2112,12 @@ export class RockFormation2Viewport
 
             if (this._gizmoDrag && (this._gizmoDrag.handle.kind === 'trs_move_axis' || this._gizmoDrag.handle.kind === 'trs_move_xz'))
             {
-                const txt = `Move  X ${(p.posX ?? 0).toFixed(2)}m · Y ${(p.posY ?? 0).toFixed(2)}m · Z ${(p.posZ ?? 0).toFixed(2)}m`;
-                this._drawGizmoReadoutPill(ctx, pCenter.sx, pCenter.sy + 26, txt, '#eff4cf');
+                const kIdx = this._gizmoDrag.instIndex ?? -1;
+                const ov = kIdx >= 0 ? layer.generator?.instanceOverrides?.[kIdx] : null;
+                const txt = ov
+                    ? `Rock #${kIdx + 1} ΔMove  X ${(ov.offsetX ?? 0).toFixed(2)}m · Y ${(ov.offsetY ?? 0).toFixed(2)}m · Z ${(ov.offsetZ ?? 0).toFixed(2)}m`
+                    : `Move  X ${(p.posX ?? 0).toFixed(2)}m · Y ${(p.posY ?? 0).toFixed(2)}m · Z ${(p.posZ ?? 0).toFixed(2)}m`;
+                this._drawGizmoReadoutPill(ctx, pCenter.sx, pCenter.sy + 26, txt, ov ? '#7dd3fc' : '#eff4cf');
             }
             return;
         }
@@ -2041,8 +2236,12 @@ export class RockFormation2Viewport
 
             if (this._gizmoDrag && this._gizmoDrag.handle.kind === 'trs_rotate')
             {
-                const txt = `Yaw ${(p.yawDeg ?? 0).toFixed(0)}° · Pitch ${(p.pitchDeg ?? 0).toFixed(0)}° · Roll ${(p.rollDeg ?? 0).toFixed(0)}°`;
-                this._drawGizmoReadoutPill(ctx, pCenter.sx, pCenter.sy + 28, txt, '#eff4cf');
+                const kIdx = this._gizmoDrag.instIndex ?? -1;
+                const ov = kIdx >= 0 ? layer.generator?.instanceOverrides?.[kIdx] : null;
+                const txt = ov
+                    ? `Rock #${kIdx + 1} ΔYaw ${(ov.yawDelta ?? 0).toFixed(0)}° · ΔPitch ${(ov.pitchDelta ?? 0).toFixed(0)}° · ΔRoll ${(ov.rollDelta ?? 0).toFixed(0)}°`
+                    : `Yaw ${(p.yawDeg ?? 0).toFixed(0)}° · Pitch ${(p.pitchDeg ?? 0).toFixed(0)}° · Roll ${(p.rollDeg ?? 0).toFixed(0)}°`;
+                this._drawGizmoReadoutPill(ctx, pCenter.sx, pCenter.sy + 28, txt, ov ? '#7dd3fc' : '#eff4cf');
             }
             return;
         }
@@ -2145,8 +2344,12 @@ export class RockFormation2Viewport
 
             if (this._gizmoDrag && (this._gizmoDrag.handle.kind === 'trs_scale_axis' || this._gizmoDrag.handle.kind === 'trs_scale_uniform'))
             {
-                const txt = `Scale  X ${(p.scaleX ?? 1).toFixed(2)}× · Y ${(p.scaleY ?? 1).toFixed(2)}× · Z ${(p.scaleZ ?? 1).toFixed(2)}×`;
-                this._drawGizmoReadoutPill(ctx, pCenter.sx, pCenter.sy + 26, txt, '#eff4cf');
+                const kIdx = this._gizmoDrag.instIndex ?? -1;
+                const ov = kIdx >= 0 ? layer.generator?.instanceOverrides?.[kIdx] : null;
+                const txt = ov
+                    ? `Rock #${kIdx + 1} Scale  X ${(ov.scaleX ?? 1).toFixed(2)}× · Y ${(ov.scaleY ?? 1).toFixed(2)}× · Z ${(ov.scaleZ ?? 1).toFixed(2)}×`
+                    : `Scale  X ${(p.scaleX ?? 1).toFixed(2)}× · Y ${(p.scaleY ?? 1).toFixed(2)}× · Z ${(p.scaleZ ?? 1).toFixed(2)}×`;
+                this._drawGizmoReadoutPill(ctx, pCenter.sx, pCenter.sy + 26, txt, ov ? '#7dd3fc' : '#eff4cf');
             }
         }
     }
@@ -2204,9 +2407,71 @@ export class RockFormation2Viewport
 
         const compLayer = this.compiledStack?.compiledLayers?.find(c => c.id === layer.id);
         const lBounds = compLayer?.bounds || null;
+        const g = layer.generator || { type: 'none' };
+
+        // Clamp / validate per-instance selection against current generator count
+        const totalGenCount = compLayer?.rawInstanceCount ?? 1;
+        if (g.type === 'none' || totalGenCount <= 1 || this.selectedInstanceIndex >= totalGenCount)
+        {
+            this.selectedInstanceIndex = -1;
+        }
+        const selInstIdx = this.selectedInstanceIndex;
+        const selInstEntry = (selInstIdx >= 0 && compLayer?.instanceBounds) ? compLayer.instanceBounds[selInstIdx] : null;
+
+        // PER-INSTANCE SUB-ROCK EDIT MODE (Move / Rotate / Scale individual rock #k inside Array / Spline / Arch / Cloud / Scatter)
+        if (selInstIdx >= 0)
+        {
+            this._drawSelectionBounds(ctx, cam, cssW, cssH, lBounds, null, 'rgba(239, 244, 207, 0.16)');
+
+            // Draw sibling rock quick-pick markers so user can hop between individual rocks in 1 click
+            if (compLayer?.instanceBounds)
+            {
+                ctx.save();
+                for (const [kStr, ib] of Object.entries(compLayer.instanceBounds))
+                {
+                    const kNum = Number(kStr);
+                    if (kNum === selInstIdx || !ib) continue;
+                    const pSib = this._projectWorldPoint(ib.cx, ib.cy, ib.cz, cam, cssW, cssH);
+                    if (!pSib) continue;
+                    const hasOv = !!(g.instanceOverrides && g.instanceOverrides[kNum]);
+                    const isHovSib = this._hoveredHandle?.id === `sel_inst_${kNum}`;
+                    ctx.fillStyle = isHovSib ? '#7dd3fc' : (hasOv ? 'rgba(56, 189, 248, 0.88)' : 'rgba(239, 244, 207, 0.55)');
+                    ctx.strokeStyle = 'rgba(10, 12, 16, 0.85)';
+                    ctx.lineWidth = 1.5;
+                    ctx.beginPath();
+                    ctx.arc(pSib.sx, pSib.sy, isHovSib ? 6.5 : 4.5, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
+
+                    this._screenHandles.push({
+                        id: `sel_inst_${kNum}`,
+                        kind: 'select_instance',
+                        instanceIndex: kNum,
+                        anchorWorld: [ib.cx, ib.cy, ib.cz],
+                        sx: pSib.sx,
+                        sy: pSib.sy,
+                        hitRadius: 10
+                    });
+                }
+                ctx.restore();
+            }
+
+            if (selInstEntry)
+            {
+                const instLabel = `Rock #${selInstIdx + 1} / ${totalGenCount} · Esc → Layer`;
+                this._drawSelectionBounds(ctx, cam, cssW, cssH, selInstEntry, instLabel, 'rgba(56, 189, 248, 0.88)', '#7dd3fc');
+                const instTool = this.gizmoToolMode === 'path' ? 'translate' : this.gizmoToolMode;
+                this._renderTrsGizmo(
+                    ctx, cam, cssW, cssH, layer, instTool,
+                    [selInstEntry.cx, selInstEntry.cy, selInstEntry.cz],
+                    selInstEntry.worldR || R
+                );
+            }
+            return;
+        }
+
         this._drawSelectionBounds(ctx, cam, cssW, cssH, lBounds, layer.name);
 
-        const g = layer.generator || { type: 'none' };
         const effectiveTool = (this.gizmoToolMode === 'path' && g.type === 'none')
             ? 'translate'
             : this.gizmoToolMode;
@@ -2226,7 +2491,7 @@ export class RockFormation2Viewport
             return this._projectWorldPoint(w[0], w[1], w[2], cam, cssW, cssH);
         };
 
-        // Draw generated rock instance markers + orientation ticks so placement & random angles are immediately legible
+        // Draw generated rock instance markers + orientation ticks (customized rocks get a cyan ring!)
         const evalRes = evaluateRock2GeneratorInstances(g, layer.params, layer.type);
         const floatHover = layer.type === 'floating_rock' ? Math.max(0.0, layer.params?.hoverHeight ?? 2.4) : 0.0;
         ctx.save();
@@ -2236,6 +2501,16 @@ export class RockFormation2Viewport
             const iy = inst.pos[1] + floatHover;
             const p0 = projLocal(inst.pos[0], iy, inst.pos[2]);
             if (!p0) continue;
+            if (inst.hasOverride)
+            {
+                ctx.save();
+                ctx.strokeStyle = '#38bdf8';
+                ctx.lineWidth = 1.6;
+                ctx.beginPath();
+                ctx.arc(p0.sx, p0.sy, 6.2, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.restore();
+            }
             if (floatHover > 0.1)
             {
                 const pGround = projLocal(inst.pos[0], inst.pos[1], inst.pos[2]);

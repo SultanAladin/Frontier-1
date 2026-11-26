@@ -75,6 +75,8 @@ import {
     cloneRock2Layer,
     createDefaultRock2Document,
     evaluateRock2GeneratorInstances,
+    getOrCreateRock2InstanceOverride,
+    hasActiveRock2InstanceOverride,
     compileRock2Stack,
     bakeRock2StackQefMesh,
     serializeRock2Document,
@@ -128,6 +130,7 @@ class TerrainWorldStudioApp
         this.rock2 = {
             stack: InitRock2Stack,
             selectedLayerId: InitRock2Stack.layers[0]?.id || null,
+            selectedInstanceIndex: -1,
             compiled: null,
             qefMesh: null,
             qefStats: null,
@@ -359,11 +362,32 @@ class TerrainWorldStudioApp
                     {
                         if (!LayerId || !this.rock2?.stack?.layers?.some(L => L.id === LayerId)) return;
                         this.rock2.selectedLayerId = LayerId;
+                        this.rock2.selectedInstanceIndex = -1;
                         if (this.rock2View)
                         {
                             this.rock2View.activeLayer = this._getSelectedRock2Layer();
+                            this.rock2View.selectedInstanceIndex = -1;
                             this.rock2View.selectedKnotIndex = 0;
                         }
+                        this._syncRock2ToolbarButtons();
+                        this.refreshChrome();
+                        this.rebuildInspector();
+                    },
+                    onSelectInstance: (LayerId, InstIdx) =>
+                    {
+                        if (!LayerId || !this.rock2?.stack?.layers?.some(L => L.id === LayerId)) return;
+                        this.rock2.selectedLayerId = LayerId;
+                        this.rock2.selectedInstanceIndex = (InstIdx >= 0) ? (InstIdx | 0) : -1;
+                        if (this.rock2View)
+                        {
+                            this.rock2View.activeLayer = this._getSelectedRock2Layer();
+                            this.rock2View.selectedInstanceIndex = this.rock2.selectedInstanceIndex;
+                            if (this.rock2.selectedInstanceIndex >= 0 && this.rock2View.gizmoToolMode === 'path')
+                            {
+                                this.rock2View.setGizmoToolMode('translate');
+                            }
+                        }
+                        this._syncRock2ToolbarButtons();
                         this.refreshChrome();
                         this.rebuildInspector();
                     }
@@ -1486,8 +1510,24 @@ class TerrainWorldStudioApp
                 E.preventDefault();
                 document.getElementById('maximize-btn')?.click();
             }
-            else if (this.workspaceMode === 'rock2' && !E.ctrlKey && !E.metaKey && !E.altKey && (K === 'q' || K === 'w' || K === 'e' || K === 'r' || K === 'g'))
+            else if (this.workspaceMode === 'rock2' && !E.ctrlKey && !E.metaKey && !E.altKey && (K === 'q' || K === 'w' || K === 'e' || K === 'r' || K === 'g' || K === 'i' || E.key === 'Escape'))
             {
+                if (E.key === 'Escape')
+                {
+                    if ((this.rock2.selectedInstanceIndex ?? -1) >= 0)
+                    {
+                        this.rock2.selectedInstanceIndex = -1;
+                        if (this.rock2View) this.rock2View.selectedInstanceIndex = -1;
+                        this._syncRock2ToolbarButtons();
+                        this.rebuildInspector();
+                    }
+                    return;
+                }
+                if (K === 'i')
+                {
+                    this._toggleRock2InstanceScope();
+                    return;
+                }
                 if (K === 'g')
                 {
                     if (this.rock2View) this.rock2View.showGizmos = !this.rock2View.showGizmos;
@@ -1495,6 +1535,12 @@ class TerrainWorldStudioApp
                 else
                 {
                     const Map = { q: 'path', w: 'translate', e: 'rotate', r: 'scale' };
+                    if (K === 'q' && (this.rock2.selectedInstanceIndex ?? -1) >= 0)
+                    {
+                        // Pressing Q (Path) exits sub-rock mode back to Whole-Layer Generator Path handles!
+                        this.rock2.selectedInstanceIndex = -1;
+                        if (this.rock2View) this.rock2View.selectedInstanceIndex = -1;
+                    }
                     if (this.rock2View)
                     {
                         this.rock2View.showGizmos = true;
@@ -1502,6 +1548,7 @@ class TerrainWorldStudioApp
                     }
                 }
                 this._syncRock2ToolbarButtons();
+                this.rebuildInspector();
                 return;
             }
             else if (K === 'g' && this.workspaceMode !== 'rock2') this.select3DTool('spline');
@@ -1519,6 +1566,19 @@ class TerrainWorldStudioApp
             {
                 if (this.workspaceMode === 'rock2')
                 {
+                    const Lyr = this._getSelectedRock2Layer();
+                    const SelInst = this.rock2.selectedInstanceIndex ?? -1;
+                    if (Lyr && Lyr.generator && Lyr.generator.type !== 'none' && SelInst >= 0)
+                    {
+                        this._pushRock2UndoSnapshot();
+                        const Ov = getOrCreateRock2InstanceOverride(Lyr.generator, SelInst);
+                        Ov.hidden = Ov.hidden ? 0 : 1;
+                        this._rebuildRock2StackNow(false);
+                        this._syncRock2ToolbarButtons();
+                        this.refreshChrome();
+                        this.rebuildInspector();
+                        return;
+                    }
                     if (this.rock2?.stack?.layers?.length > 1 && this.rock2.selectedLayerId)
                     {
                         this._deleteRock2Layer(this.rock2.selectedLayerId);
@@ -3756,6 +3816,11 @@ class TerrainWorldStudioApp
             if (this.rock2View) this.rock2View.lens = Number(E.target.value) | 0;
         });
 
+        document.getElementById('rock2-tool-scope')?.addEventListener('click', () =>
+        {
+            this._toggleRock2InstanceScope();
+        });
+
         for (const [BtnId, Mode] of [
             ['rock2-tool-path', 'path'],
             ['rock2-tool-move', 'translate'],
@@ -3766,9 +3831,15 @@ class TerrainWorldStudioApp
             document.getElementById(BtnId)?.addEventListener('click', () =>
             {
                 if (!this.rock2View) return;
+                if (Mode === 'path' && (this.rock2.selectedInstanceIndex ?? -1) >= 0)
+                {
+                    this.rock2.selectedInstanceIndex = -1;
+                    this.rock2View.selectedInstanceIndex = -1;
+                }
                 this.rock2View.showGizmos = true;
                 this.rock2View.setGizmoToolMode(Mode);
                 this._syncRock2ToolbarButtons();
+                this.rebuildInspector();
             });
         }
 
@@ -3776,16 +3847,74 @@ class TerrainWorldStudioApp
         {
             const Lyr = this._getSelectedRock2Layer();
             if (!Lyr || !Lyr.params) return;
+            const SelInst = this.rock2.selectedInstanceIndex ?? -1;
             this._pushRock2UndoSnapshot();
-            Lyr.params.posX = 0; Lyr.params.posY = 0; Lyr.params.posZ = 0;
-            Lyr.params.yawDeg = 0; Lyr.params.pitchDeg = 0; Lyr.params.rollDeg = 0;
-            Lyr.params.scaleX = 1.0; Lyr.params.scaleY = 1.0; Lyr.params.scaleZ = 1.0;
+            if (SelInst >= 0 && Lyr.generator?.instanceOverrides && Lyr.generator.instanceOverrides[SelInst])
+            {
+                delete Lyr.generator.instanceOverrides[SelInst];
+            }
+            else if (SelInst < 0)
+            {
+                Lyr.params.posX = 0; Lyr.params.posY = 0; Lyr.params.posZ = 0;
+                Lyr.params.yawDeg = 0; Lyr.params.pitchDeg = 0; Lyr.params.rollDeg = 0;
+                Lyr.params.scaleX = 1.0; Lyr.params.scaleY = 1.0; Lyr.params.scaleZ = 1.0;
+            }
             this._rebuildRock2StackNow(false);
+            this._syncRock2ToolbarButtons();
             this.refreshChrome();
             this.rebuildInspector();
         });
 
         this._syncRock2ToolbarButtons();
+    }
+
+    _toggleRock2InstanceScope()
+    {
+        const Lyr = this._getSelectedRock2Layer();
+        const CompLyr = this.rock2.compiled?.compiledLayers?.find(C => C.id === Lyr?.id);
+        const RawN = CompLyr?.rawInstanceCount ?? 1;
+        const HasMulti = !!(Lyr && Lyr.generator && Lyr.generator.type !== 'none' && RawN > 1);
+        if (!HasMulti)
+        {
+            this.rock2.selectedInstanceIndex = -1;
+            if (this.rock2View)
+            {
+                this.rock2View.selectedInstanceIndex = -1;
+                this.rock2View.instancePickLock = false;
+            }
+            this._syncRock2ToolbarButtons();
+            return;
+        }
+
+        if ((this.rock2.selectedInstanceIndex ?? -1) >= 0)
+        {
+            // Exit back to Whole Layer
+            this.rock2.selectedInstanceIndex = -1;
+            if (this.rock2View)
+            {
+                this.rock2View.selectedInstanceIndex = -1;
+                this.rock2View.instancePickLock = false;
+            }
+        }
+        else
+        {
+            // Enter Rock #1 (and enable 1-click instance picking while in sub-rock mode)
+            let FirstVis = 0;
+            for (let k = 0; k < RawN; k++)
+            {
+                if (!Lyr.generator.instanceOverrides?.[k]?.hidden) { FirstVis = k; break; }
+            }
+            this.rock2.selectedInstanceIndex = FirstVis;
+            if (this.rock2View)
+            {
+                this.rock2View.showGizmos = true;
+                this.rock2View.selectedInstanceIndex = FirstVis;
+                this.rock2View.instancePickLock = true;
+                if (this.rock2View.gizmoToolMode === 'path') this.rock2View.setGizmoToolMode('translate');
+            }
+        }
+        this._syncRock2ToolbarButtons();
+        this.rebuildInspector();
     }
 
     _syncRock2ToolbarButtons()
@@ -3802,11 +3931,30 @@ class TerrainWorldStudioApp
             WireBtn.classList.toggle('active', !!(IsQef && this.rock2View?.showWireframe));
         }
 
+        const Lyr = this._getSelectedRock2Layer();
+        const CompLyr = this.rock2?.compiled?.compiledLayers?.find(C => C.id === Lyr?.id);
+        const RawN = CompLyr?.rawInstanceCount ?? 1;
+        const HasMulti = !!(Lyr && Lyr.generator && Lyr.generator.type !== 'none' && RawN > 1);
+        const SelInst = HasMulti ? (this.rock2?.selectedInstanceIndex ?? -1) : -1;
+
+        const ScopeBtn = document.getElementById('rock2-tool-scope');
+        const ScopeLbl = document.getElementById('rock2-tool-scope-label');
+        if (ScopeBtn)
+        {
+            ScopeBtn.style.display = HasMulti ? '' : 'none';
+            ScopeBtn.classList.toggle('scope-inst', SelInst >= 0);
+        }
+        if (ScopeLbl)
+        {
+            ScopeLbl.textContent = SelInst >= 0 ? `Rock #${SelInst + 1}` : 'Layer';
+        }
+
         const CurTool = this.rock2View?.gizmoToolMode || 'path';
-        document.getElementById('rock2-tool-path')?.classList.toggle('active', ShowGiz && CurTool === 'path');
-        document.getElementById('rock2-tool-move')?.classList.toggle('active', ShowGiz && CurTool === 'translate');
-        document.getElementById('rock2-tool-rotate')?.classList.toggle('active', ShowGiz && CurTool === 'rotate');
-        document.getElementById('rock2-tool-scale')?.classList.toggle('active', ShowGiz && CurTool === 'scale');
+        const EffTool = (SelInst >= 0 && CurTool === 'path') ? 'translate' : CurTool;
+        document.getElementById('rock2-tool-path')?.classList.toggle('active', ShowGiz && SelInst < 0 && EffTool === 'path');
+        document.getElementById('rock2-tool-move')?.classList.toggle('active', ShowGiz && EffTool === 'translate');
+        document.getElementById('rock2-tool-rotate')?.classList.toggle('active', ShowGiz && EffTool === 'rotate');
+        document.getElementById('rock2-tool-scale')?.classList.toggle('active', ShowGiz && EffTool === 'scale');
     }
 
     _pushRock2UndoSnapshot()
@@ -3824,8 +3972,11 @@ class TerrainWorldStudioApp
         if (!Restored.layers.some(L => L.id === this.rock2.selectedLayerId))
         {
             this.rock2.selectedLayerId = Restored.layers[0]?.id || null;
+            this.rock2.selectedInstanceIndex = -1;
         }
+        if (this.rock2View) this.rock2View.selectedInstanceIndex = this.rock2.selectedInstanceIndex ?? -1;
         this._rebuildRock2StackNow(false);
+        this._syncRock2ToolbarButtons();
         this._buildPresetStrip();
         this.refreshChrome();
         this.rebuildInspector();
@@ -3843,7 +3994,10 @@ class TerrainWorldStudioApp
         const Next = createDefaultRock2Document(StarterId);
         this.rock2.stack = Next;
         this.rock2.selectedLayerId = Next.layers[0]?.id || null;
+        this.rock2.selectedInstanceIndex = -1;
+        if (this.rock2View) this.rock2View.selectedInstanceIndex = -1;
         this._rebuildRock2StackNow(true);
+        this._syncRock2ToolbarButtons();
         this._buildPresetStrip();
         this.refreshChrome();
         this.rebuildInspector();
@@ -4090,7 +4244,13 @@ class TerrainWorldStudioApp
             Card.addEventListener('click', () =>
             {
                 this.rock2.selectedLayerId = Lyr.id;
-                this.rock2View?.setActiveLayer(Lyr);
+                this.rock2.selectedInstanceIndex = -1;
+                if (this.rock2View)
+                {
+                    this.rock2View.selectedInstanceIndex = -1;
+                    this.rock2View.setActiveLayer(Lyr);
+                }
+                this._syncRock2ToolbarButtons();
                 this.refreshChrome();
                 this.rebuildInspector();
             });
@@ -4400,7 +4560,10 @@ class TerrainWorldStudioApp
                 if (GenType === TabId) return;
                 this._pushRock2UndoSnapshot();
                 Layer.generator = createRock2Generator(TabId, { seed: G.seed ?? 701 });
+                this.rock2.selectedInstanceIndex = -1;
+                if (this.rock2View) this.rock2View.selectedInstanceIndex = -1;
                 this._rebuildRock2StackNow(false);
+                this._syncRock2ToolbarButtons();
                 this.refreshChrome();
                 this.rebuildInspector();
             });
@@ -4845,6 +5008,189 @@ class TerrainWorldStudioApp
         }
 
         Content.appendChild(GenGroup.Group);
+
+        // 2B. Per-Rock Instance Tweaker (ONLY shown on Multi-Rock Generators — zero dead controls on Single layers!)
+        const RawGenCount = CompLayerInfo?.rawInstanceCount ?? evaluateRock2GeneratorInstances(G, P).rawCount ?? GenCount;
+        if (GenType !== 'none' && RawGenCount > 1)
+        {
+            if ((this.rock2.selectedInstanceIndex ?? -1) >= RawGenCount)
+            {
+                this.rock2.selectedInstanceIndex = -1;
+                if (this.rock2View) this.rock2View.selectedInstanceIndex = -1;
+            }
+            const SelInst = this.rock2.selectedInstanceIndex ?? -1;
+            const OvMap = G.instanceOverrides && typeof G.instanceOverrides === 'object' ? G.instanceOverrides : {};
+            const ActiveOvCount = Object.values(OvMap).filter(V => hasActiveRock2InstanceOverride(V)).length;
+
+            const InstTitle = 'Per-Rock Instance Tweaker';
+            const InstBadge = SelInst >= 0
+                ? `ROCK #${SelInst + 1} / ${RawGenCount}`
+                : (ActiveOvCount > 0 ? `${ActiveOvCount} CUSTOMIZED` : `${RawGenCount} ROCKS`);
+            const InstGroup = MakePropertyGroup(
+                InstTitle,
+                'Boxes',
+                InstBadge,
+                SavedOpen(InstTitle, true),
+                'Click any individual rock in the 3D viewport (or pick #1–#N below) to Move (W), Rotate (E), Scale (R), mutate, swap archetype, or hide just that stone non-destructively.'
+            );
+
+            // Pill selector bar: [Whole Layer] [#1] [#2] ... [#N]
+            const PillGrid = MakeEl('div', 'rock2-gen-tabs');
+            const LayerScopePill = MakeEl('button', 'rock2-gen-tab' + (SelInst < 0 ? ' active' : ''), 'Whole Layer');
+            LayerScopePill.type = 'button';
+            LayerScopePill.addEventListener('click', () =>
+            {
+                this.rock2.selectedInstanceIndex = -1;
+                if (this.rock2View) this.rock2View.selectedInstanceIndex = -1;
+                this._syncRock2ToolbarButtons();
+                this.rebuildInspector();
+            });
+            PillGrid.appendChild(LayerScopePill);
+
+            for (let k = 0; k < RawGenCount; k++)
+            {
+                const kOv = OvMap[k];
+                const isCust = hasActiveRock2InstanceOverride(kOv);
+                const isHid = !!(kOv && kOv.hidden);
+                const cls = 'rock2-gen-tab'
+                    + (SelInst === k ? ' active' : '')
+                    + (isCust ? ' has-override' : '')
+                    + (isHid ? ' is-hidden-inst' : '');
+                const RockBtn = MakeEl('button', cls, isCust && !isHid ? `#${k + 1}✦` : `#${k + 1}`);
+                RockBtn.type = 'button';
+                RockBtn.title = isHid
+                    ? `Rock #${k + 1} (Hidden — click to select & restore)`
+                    : (isCust ? `Rock #${k + 1} (Customized override active)` : `Select Rock #${k + 1} for 3D gizmo & shape tweaking`);
+                RockBtn.addEventListener('click', () =>
+                {
+                    this.rock2.selectedInstanceIndex = k;
+                    if (this.rock2View)
+                    {
+                        this.rock2View.showGizmos = true;
+                        this.rock2View.selectedInstanceIndex = k;
+                        if (this.rock2View.gizmoToolMode === 'path') this.rock2View.setGizmoToolMode('translate');
+                    }
+                    this._syncRock2ToolbarButtons();
+                    this.rebuildInspector();
+                });
+                PillGrid.appendChild(RockBtn);
+            }
+            InstGroup.Body.appendChild(PillGrid);
+
+            if (SelInst < 0)
+            {
+                // Whole-Layer Scope: show concise action buttons only (zero dead per-rock sliders!)
+                const ScopeRow = MakeEl('div', 'studio-btn-row');
+                const PickFirstBtn = MakeEl('button', 'button', 'Select Rock #1 (I)');
+                PickFirstBtn.type = 'button';
+                PickFirstBtn.addEventListener('click', () => this._toggleRock2InstanceScope());
+                ScopeRow.appendChild(PickFirstBtn);
+
+                if (ActiveOvCount > 0)
+                {
+                    const ClearAllBtn = MakeEl('button', 'button', `Reset All (${ActiveOvCount}) Tweaks`);
+                    ClearAllBtn.type = 'button';
+                    ClearAllBtn.addEventListener('click', () =>
+                    {
+                        this._pushRock2UndoSnapshot();
+                        G.instanceOverrides = {};
+                        this._rebuildRock2StackNow(false);
+                        this._syncRock2ToolbarButtons();
+                        this.refreshChrome();
+                        this.rebuildInspector();
+                    });
+                    ScopeRow.appendChild(ClearAllBtn);
+                }
+                InstGroup.Body.appendChild(ScopeRow);
+            }
+            else
+            {
+                // Individual Rock #k Scope: live non-destructive controls synced with 3D Move / Rotate / Scale gizmo!
+                const EnsureOv = () => getOrCreateRock2InstanceOverride(G, SelInst);
+                const CurOv = OvMap[SelInst] || {};
+                const IsHidden = !!CurOv.hidden;
+
+                const ActRow = MakeEl('div', 'studio-btn-row');
+                const HideBtn = MakeEl('button', 'button', IsHidden ? `Restore Rock #${SelInst + 1}` : `Hide Rock #${SelInst + 1}`);
+                HideBtn.type = 'button';
+                HideBtn.addEventListener('click', () =>
+                {
+                    this._pushRock2UndoSnapshot();
+                    const Ov = EnsureOv();
+                    Ov.hidden = Ov.hidden ? 0 : 1;
+                    this._rebuildRock2StackNow(false);
+                    this._syncRock2ToolbarButtons();
+                    this.refreshChrome();
+                    this.rebuildInspector();
+                });
+
+                const MutInstBtn = MakeEl('button', 'button', `🎲 Mutate #${SelInst + 1}`);
+                MutInstBtn.type = 'button';
+                MutInstBtn.addEventListener('click', () =>
+                {
+                    this._pushRock2UndoSnapshot();
+                    const Ov = EnsureOv();
+                    Ov.seedDelta = (((Ov.seedDelta || 17) * 1664525 + 1013904223) >>> 0) % 8999 + 1;
+                    this._rebuildRock2StackNow(false);
+                    this.refreshChrome();
+                    this.rebuildInspector();
+                });
+
+                const ResetInstBtn = MakeEl('button', 'button', `Reset #${SelInst + 1}`);
+                ResetInstBtn.type = 'button';
+                ResetInstBtn.disabled = !hasActiveRock2InstanceOverride(CurOv);
+                ResetInstBtn.addEventListener('click', () =>
+                {
+                    if (!G.instanceOverrides?.[SelInst]) return;
+                    this._pushRock2UndoSnapshot();
+                    delete G.instanceOverrides[SelInst];
+                    this._rebuildRock2StackNow(false);
+                    this._syncRock2ToolbarButtons();
+                    this.refreshChrome();
+                    this.rebuildInspector();
+                });
+
+                ActRow.append(HideBtn, MutInstBtn, ResetInstBtn);
+                InstGroup.Body.appendChild(ActRow);
+
+                if (!IsHidden)
+                {
+                    const ArchetypeOpts = [
+                        ['Auto (Generator Variety Pool)', ''],
+                        ...ROCK2_NODE_CATALOG.map(N => [N.name, N.type])
+                    ];
+                    InstGroup.Body.appendChild(MakeSelectRow(
+                        `Rock #${SelInst + 1} Archetype`,
+                        ArchetypeOpts,
+                        CurOv.rockType || '',
+                        Val =>
+                        {
+                            this._pushRock2UndoSnapshot();
+                            const Ov = EnsureOv();
+                            Ov.rockType = Val || '';
+                            this._rebuildRock2StackNow(false);
+                            this.refreshChrome();
+                            this.rebuildInspector();
+                        }
+                    ));
+
+                    InstGroup.Body.appendChild(MakeSliderPillRow('Offset X', -18.0, 18.0, 0.05, CurOv.offsetX ?? 0.0, 2, 'm', V => { EnsureOv().offsetX = V; OnLive(); }, OnCommit));
+                    InstGroup.Body.appendChild(MakeSliderPillRow('Offset Y (Lift)', -12.0, 18.0, 0.05, CurOv.offsetY ?? 0.0, 2, 'm', V => { EnsureOv().offsetY = V; OnLive(); }, OnCommit));
+                    InstGroup.Body.appendChild(MakeSliderPillRow('Offset Z', -18.0, 18.0, 0.05, CurOv.offsetZ ?? 0.0, 2, 'm', V => { EnsureOv().offsetZ = V; OnLive(); }, OnCommit));
+
+                    InstGroup.Body.appendChild(MakeSliderPillRow('Delta Yaw', -180, 180, 1, CurOv.yawDelta ?? 0, 0, '°', V => { EnsureOv().yawDelta = V; OnLive(); }, OnCommit));
+                    InstGroup.Body.appendChild(MakeSliderPillRow('Delta Pitch', -89, 89, 1, CurOv.pitchDelta ?? 0, 0, '°', V => { EnsureOv().pitchDelta = V; OnLive(); }, OnCommit));
+                    InstGroup.Body.appendChild(MakeSliderPillRow('Delta Roll', -89, 89, 1, CurOv.rollDelta ?? 0, 0, '°', V => { EnsureOv().rollDelta = V; OnLive(); }, OnCommit));
+
+                    InstGroup.Body.appendChild(MakeSliderPillRow('Instance Scale X', 0.20, 4.0, 0.02, CurOv.scaleX ?? 1.0, 2, '×', V => { EnsureOv().scaleX = V; OnLive(); }, OnCommit));
+                    InstGroup.Body.appendChild(MakeSliderPillRow('Instance Scale Y', 0.20, 4.0, 0.02, CurOv.scaleY ?? 1.0, 2, '×', V => { EnsureOv().scaleY = V; OnLive(); }, OnCommit));
+                    InstGroup.Body.appendChild(MakeSliderPillRow('Instance Scale Z', 0.20, 4.0, 0.02, CurOv.scaleZ ?? 1.0, 2, '×', V => { EnsureOv().scaleZ = V; OnLive(); }, OnCommit));
+                    InstGroup.Body.appendChild(MakeSliderPillRow('Seed Offset', 0, 9999, 1, CurOv.seedDelta ?? 0, 0, '#', V => { EnsureOv().seedDelta = Math.round(V); OnLive(); }, OnCommit));
+                }
+            }
+
+            Content.appendChild(InstGroup.Group);
+        }
 
         // 3. Base Rock Dimensions & Layer 3D Transform (Move / Rotate / Scale)
         const XfTitle = 'Base Rock Size & Layer Transform';
