@@ -135,42 +135,84 @@ vec2 evalFastCleavage3D(vec3 p, float jitter, int salt) {
     return vec2(wallDist, cellRand);
 }
 
-float evalHierarchical90Crazing3D(float u, float v, float w, float spacing, int salt) {
+vec4 evalOrganic90Crazing3D(float u, float v, float w, float spacing, int salt) {
     float L1 = max(0.08, spacing);
-    float L2 = L1 * 0.92;
-    float warpU = L1 * 0.14 * scalarField3D(vec3(u, v, w) / (L1 * 1.7), salt + 3);
-    float warpV = L2 * 0.13 * scalarField3D(vec3(u, v, w) / (L2 * 1.6), salt + 19);
+    float L2 = L1 * 0.94;
 
-    float uCoord = (u + warpU) / L1;
+    // 1. Rotate joint frame ~22 deg off rigid horizontal/vertical Cartesian axes!
+    float ur0 = u * 0.92718385 - v * 0.37460659;
+    float vr0 = u * 0.37460659 + v * 0.92718385;
+
+    // 2. Strike-anisotropic 3-scale organic warp: meanders & kinks boldly along strike with ZERO bullseye loops!
+    float invMacro = 1.0 / (L1 * 2.15);
+    float invMeso = 1.0 / (L1 * 0.68);
+    float invJag = 1.0 / (L1 * 0.24);
+
+    float macroU = L1 * 0.38 * scalarField3D(vec3(ur0 * 0.35, vr0, w * 0.8) * invMacro, salt + 3);
+    float macroV = L2 * 0.36 * scalarField3D(vec3(ur0 * invMacro + 7.3, vr0 * invMacro * 0.35 - 3.1, w * invMacro * 0.8), salt + 19);
+
+    float mesoU = L1 * 0.14 * scalarField3D(vec3(ur0 * 0.26, vr0, w * 0.8) * invMeso, salt + 29);
+    float mesoV = L2 * 0.13 * scalarField3D(vec3(ur0 * invMeso - 4.7, vr0 * invMeso * 0.26 + 5.9, w * invMeso * 0.8), salt + 37);
+
+    float jagU = L1 * 0.048 * (abs(scalarField3D(vec3(ur0 * 0.20, vr0, w * 0.7) * invJag, salt + 43)) * 2.0 - 1.0);
+    float jagV = L2 * 0.046 * (abs(scalarField3D(vec3(ur0 * invJag + 2.1, vr0 * invJag * 0.20, w * invJag * 0.7), salt + 59)) * 2.0 - 1.0);
+
+    float uCoord = (ur0 + macroU + mesoU + jagU) / L1;
     float k1f = floor(uCoord);
     int k1 = int(k1f);
     float fu = uCoord - k1f;
     float tier1Dist = min(fu, 1.0 - fu) * L1;
 
     float slabPhase = hash31(k1, 17, 53, salt + 41);
-    float slabScale = 0.82 + 0.36 * hash31(k1, 89, 13, salt + 67);
+    float slabScale = 0.68 + 0.64 * hash31(k1, 89, 13, salt + 67);
     float effL2 = L2 * slabScale;
 
-    float vCoord = (v + warpV) / effL2 + slabPhase;
+    float vCoord = (vr0 + macroV + mesoV + jagV) / effL2 + slabPhase;
     float k2f = floor(vCoord);
     int k2 = int(k2f);
     float fv = vCoord - k2f;
     float tier2Dist = min(fv, 1.0 - fv) * effL2;
 
     float tileRand = hash31(k1, k2, 7, salt + 97);
-    if (tileRand > 0.42) {
-        float splitPos = 0.36 + 0.28 * hash31(k1, k2, 31, salt + 131);
-        float tier3Dist = abs(fu - splitPos) * L1 * 1.28;
+    if (tileRand > 0.56) {
+        float splitPos = 0.28 + 0.44 * hash31(k1, k2, 31, salt + 131);
+        float splitTilt = (hash31(k1, k2, 59, salt + 137) - 0.5) * 0.22;
+        float tier3Dist = abs(fu - (splitPos + splitTilt * (fv - 0.5))) * L1 * 1.45;
         tier2Dist = min(tier2Dist, tier3Dist);
     }
-    return min(tier1Dist, tier2Dist * 1.18);
+
+    // 3. True Hierarchical C1 Pinch-and-Swell Aperture (bold Tier-1 master fissures -> finer tapering Tier-2 hairlines!)
+    float vit1 = scalarField3D(vec3(ur0 * (0.48 / L1), vr0 * (0.62 / L1), w * (0.52 / L1)), salt + 151);
+    float vit2 = scalarField3D(vec3(ur0 * (0.68 / L1) + 11.3, vr0 * (0.48 / L1) - 3.8, w * (0.58 / L1)), salt + 173);
+    float lipChip = 0.80 + 0.42 * abs(scalarField3D(vec3(ur0, vr0, w) * (invJag * 1.1), salt + 199));
+
+    float open1 = smoothstep(-0.18, 0.42, vit1);
+    float open2 = smoothstep(-0.10, 0.48, vit2);
+    float mod1 = open1 * open1 * 1.38 * lipChip;
+    float mod2 = open2 * sqrt(max(0.0, open2)) * 0.66 * lipChip;
+
+    if (mod1 > 0.06 && mod2 > 0.04) {
+        float spall = 0.35 * smoothstep(L1 * 0.14, 0.0, max(tier1Dist, tier2Dist));
+        mod1 += spall * open1;
+        mod2 += spall * open2;
+    }
+    return vec4(tier1Dist, tier2Dist, mod1, mod2);
+}
+
+float smaxPoly(float a, float b, float k) {
+    if (k <= 1e-6) return max(a, b);
+    float h = max(k - abs(a - b), 0.0) / k;
+    return max(a, b) + h * h * k * 0.25;
+}
+
+float chamferMax(float a, float b, float r) {
+    float m = max(a, b);
+    if (r <= 1e-6) return m;
+    return max(m, (a + b + r) * 0.70710678);
 }
 
 float chamferSub(float base, float cut, float r) {
-    float b = -cut;
-    float m = max(base, b);
-    if (r <= 1e-6) return m;
-    return max(m, (base + b + r) * 0.70710678);
+    return chamferMax(base, -cut, r);
 }
 
 void main() {
@@ -187,7 +229,7 @@ void main() {
     for (int i = 0; i < 32; i++) {
         if (i >= uNumBlocks) break;
         vec4 sph = texelFetch(uBlockTex, ivec2(0, i), 0);
-        float lowerB = length(p - sph.xyz) - sph.w - uScale * 0.05;
+        float lowerB = length(p - sph.xyz) - sph.w - uScale * 0.085;
         if (lowerB > bestD) continue;
 
         vec4 meta = texelFetch(uBlockTex, ivec2(1, i), 0);
@@ -203,26 +245,43 @@ void main() {
 
         vec3 p0 = vec3(dot(r0.xyz, p) + r0.w, dot(r1.xyz, p) + r1.w, dot(r2.xyz, p) + r2.w);
 
+        float f0 = 0.58 / uScale;
         float f1 = 1.65 / uScale;
+        float f2 = 4.40 / uScale;
+        float macroBend = scalarField3D(vec3(p0.x * f0, p0.y * f0 * 0.75, p0.z * f0), uCrackSalt + 2);
         float w1 = scalarField3D(vec3(p0.x * f1, p0.y * f1 * 0.9, p0.z * f1), uCrackSalt + 5) * 0.67 +
                    scalarField3D(vec3(p0.x * f1, p0.y * f1 * 0.9, p0.z * f1) * 2.05, uCrackSalt + 106) * 0.33;
+        float jagTooth = abs(scalarField3D(p0 * f2, uCrackSalt + 47)) * 2.0 - 1.0;
+
         float rNuc = length(vec3(p0.x, p0.y - uScale * 0.08, p0.z));
-        float plum = sin(rNuc * (26.0 / uScale) + w1 * 3.4) * 0.5 +
-                     scalarField3D(vec3(p0.x * (9.5 / uScale), p0.y * (5.2 / uScale), p0.z * (9.5 / uScale)), uCrackSalt + 71) * 0.5;
-        float jigsawDisp = uScale * 0.020 * uJigsawRoughness * w1 + uScale * 0.0065 * uPlumoseStrength * plum;
+        float plum = sin(rNuc * (22.0 / uScale) + w1 * 4.2) * 0.45 +
+                     scalarField3D(vec3(p0.x * (8.5 / uScale), p0.y * (4.8 / uScale), p0.z * (8.5 / uScale)), uCrackSalt + 71) * 0.55;
+        float jigsawDisp = uScale * uJigsawRoughness * (0.022 * macroBend + 0.017 * w1 + 0.007 * jagTooth) +
+                           uScale * 0.0080 * uPlumoseStrength * plum;
 
-        float crag = uScale * 0.010 * scalarField3D(p0 * (2.4 / uScale), uCrackSalt + 113);
-        float strataAmp = uScale * 0.0052 * m5.y;
-        float bedY = p0.y * (5.4 / uScale) + 0.44 * scalarField3D(vec3(p0.x * (1.8 / uScale), p0.y * (2.6 / uScale), p0.z * (1.8 / uScale)), uCrackSalt + 149);
+        float macroLobe = uScale * 0.024 * scalarField3D(vec3(p0.x, p0.y * 0.85, p0.z) * (0.85 / uScale), uCrackSalt + 109);
+        float angularCrag = uScale * 0.015 * (abs(scalarField3D(p0 * (2.15 / uScale), uCrackSalt + 113)) * 2.0 - 1.0);
+        float fineGrain = uScale * 0.0050 * scalarField3D(p0 * (5.10 / uScale), uCrackSalt + 127);
+        float strataAmp = uScale * 0.0060 * m5.y;
+        float bedY = p0.y * (5.4 / uScale) + 0.52 * scalarField3D(vec3(p0.x * (1.6 / uScale), p0.y * (2.4 / uScale), p0.z * (1.6 / uScale)), uCrackSalt + 149);
         float strataLedge = strataAmp * (sin(bedY * 6.2831853) * 0.72 + 0.28 * sin(bedY * 12.5663706 + 0.8));
-        float extRelief = crag + strataLedge;
+        float extRelief = macroLobe + angularCrag + fineGrain + strataLedge;
 
-        float d1 = -1e9;
-        float d2 = -1e9;
-        vec3 n1 = vec3(0.0, 1.0, 0.0);
-        vec3 n2 = vec3(0.0, 1.0, 0.0);
-        float dMaxExt = -1e9;
-        float dMaxFrac = -1e9;
+        float wf = 1.25 / uScale;
+        float wa = uScale * 0.024;
+        vec3 extWarp = vec3(
+            wa * scalarField3D(vec3(p0.x * wf, p0.y * wf * 0.9, p0.z * wf), uCrackSalt + 131),
+            wa * 0.75 * scalarField3D(vec3(p0.x * wf + 5.7, p0.y * wf * 0.9 - 3.1, p0.z * wf), uCrackSalt + 137),
+            wa * scalarField3D(vec3(p0.x * wf - 4.3, p0.y * wf * 0.9 + 6.2, p0.z * wf), uCrackSalt + 139)
+        );
+        float kExt = bevel * (1.75 + 1.45 * abs(scalarField3D(p0 * (1.6 / uScale), uCrackSalt + 163)));
+        float invNormSoft = 1.0 / max(0.035, kExt * 0.55);
+
+        float dFloor = -1e9;
+        float dExt = -1e9;
+        float dFrac = -1e9;
+        float bestTopPd = -1e9;
+        vec3 sumN = vec3(0.0);
 
         for (int j = 0; j < 20; j++) {
             if (j >= pCount) break;
@@ -232,29 +291,31 @@ void main() {
 
             if (abs(pType) > 0.5) {
                 pd += pType * jigsawDisp;
-                dMaxFrac = max(dMaxFrac, pd);
+                dFrac = dFrac < -1e8 ? pd : chamferMax(dFrac, pd, bevel * 0.65);
+            } else if (pl.y <= -0.85) {
+                dFloor = max(dFloor, pd);
             } else {
-                if (pl.y > -0.85) pd += extRelief;
-                dMaxExt = max(dMaxExt, pd);
+                pd += extRelief + dot(pl.xyz, extWarp);
+                dExt = dExt < -1e8 ? pd : smaxPoly(dExt, pd, kExt);
             }
 
-            if (pd > d1) {
-                d2 = d1; n2 = n1;
-                d1 = pd; n1 = pl.xyz;
-            } else if (pd > d2) {
-                d2 = pd; n2 = pl.xyz;
+            if (pd > bestTopPd) {
+                float rescale = bestTopPd > -1e8 ? exp(max(-20.0, (bestTopPd - pd) * invNormSoft)) : 0.0;
+                sumN = sumN * rescale + pl.xyz;
+                bestTopPd = pd;
+            } else {
+                float w = exp(max(-20.0, (pd - bestTopPd) * invNormSoft));
+                sumN += pl.xyz * w;
             }
         }
 
-        float dBlk = d1;
-        vec3 bN = n1;
-        if (bevel > 1e-5 && d2 > -bevel * 2.0) {
-            float ch = (d1 + d2 + bevel) * 0.70710678;
-            if (ch > dBlk) {
-                dBlk = ch;
-                bN = normalize(n1 + n2);
-            }
-        }
+        float dMaxExt = dExt;
+        if (dFloor > -1e8) dMaxExt = dMaxExt < -1e8 ? dFloor : max(dMaxExt, dFloor);
+
+        float dBlk = dMaxExt;
+        if (dFrac > -1e8) dBlk = dBlk < -1e8 ? dFrac : chamferMax(dBlk, dFrac, bevel);
+
+        vec3 bN = normalize(length(sumN) > 1e-5 ? sumN : vec3(0.0, 1.0, 0.0));
 
         if (dBlk < bestD) {
             bestD = dBlk;
@@ -263,7 +324,7 @@ void main() {
             noCracks = blkNoCracks;
             bestStrata = m5.y;
             float tr = max(0.015, bevel * 1.35);
-            bestFresh = smoothstep(-tr, tr, dMaxFrac - dMaxExt);
+            bestFresh = smoothstep(-tr, tr, dFrac - dMaxExt);
         }
     }
 
@@ -273,7 +334,7 @@ void main() {
     float thermalStress = uThermalNorm;
 
     float maxFineDepth = max(uSkinDepth * 2.1, uExfoliationStrength > 0.04 ? uScale * 0.12 : 0.10);
-    if (!noCracks && curMacro < uScale * 0.04 && curMacro > -maxFineDepth &&
+    if (!noCracks && curMacro < uScale * 0.05 && curMacro > -maxFineDepth &&
         (uCrazing90Strength > 0.01 || uVoronoiStrength > 0.01 || uExfoliationStrength > 0.04)) {
 
         float ndots = max(1e-4, dot(bestN, uSunDir));
@@ -282,33 +343,24 @@ void main() {
         thermalStress = insol;
         vec3 p0 = bestP0;
 
-        if (uExfoliationStrength > 0.04 && bestN.y > -0.18) {
-            float sheetSpacing = uScale * 0.036;
+        if (uExfoliationStrength > 0.22) {
             float plateThick = uScale * 0.015;
-            float interiorDepth = -curMacro;
-            if (interiorDepth > -sheetSpacing * 0.25 && interiorDepth < sheetSpacing * 3.1) {
-                float warpS = sheetSpacing * 0.14 * scalarField3D(p0 * 0.9, uCrackSalt + 409);
-                float sCoord = (interiorDepth + warpS) / sheetSpacing;
-                float shellFl = floor(sCoord);
-                int shellIdx = int(shellFl);
+            float upGate = smoothstep(-0.20, 0.32, bestN.y);
+            if (upGate > 0.005) {
+                float sf = 2.45 / uScale;
+                float spallN1 = scalarField3D(vec3(p0.x * sf, p0.y * sf * 0.8, p0.z * sf), uCrackSalt + 499) +
+                                0.22 * (abs(scalarField3D(p0 * (sf * 2.7), uCrackSalt + 503)) * 2.0 - 1.0);
+                float thresh1 = 0.56 - 0.52 * uExfoliationStrength;
+                float scar1 = smoothstep(thresh1, thresh1 + 0.14, spallN1) * upGate;
 
-                if (uExfoliationStrength > 0.32 && shellIdx == 0 && interiorDepth > 0.0 && interiorDepth < plateThick * 1.15) {
-                    vec2 relClv = evalFastCleavage3D(p0 * 0.62, 0.56, uCrackSalt + 503);
-                    float relWall = relClv.x / 0.62;
-                    if (relClv.y > (1.0 - (uExfoliationStrength - 0.22) * 0.85)) {
-                        float peeled = max(d, -max(interiorDepth - plateThick, 0.045 - relWall));
-                        if (peeled > d) {
-                            d = peeled;
-                            curMacro = peeled;
-                            crackFresh = max(crackFresh, 0.82);
-                        }
-                    }
-                }
-                if (interiorDepth > sheetSpacing * 0.32) {
-                    float fracS = sCoord - shellFl;
-                    float seamDist = min(fracS, 1.0 - fracS) * sheetSpacing;
-                    float seamHalfAp = sheetSpacing * 0.11 * uExfoliationStrength * smoothstep(-0.18, 0.35, bestN.y);
-                    if (seamHalfAp > 0.0015) d = max(d, -(seamDist - seamHalfAp));
+                float spallN2 = scalarField3D(vec3(p0.x * sf * 1.45 + 5.3, p0.y * sf * 1.2, p0.z * sf * 1.45 - 3.7), uCrackSalt + 509);
+                float scar2 = scar1 * smoothstep(thresh1 + 0.24, thresh1 + 0.38, spallN2);
+
+                float peelOffset = plateThick * (scar1 * 0.95 + scar2 * 0.75);
+                if (peelOffset > 1e-4) {
+                    d += peelOffset;
+                    curMacro += peelOffset;
+                    crackFresh = max(crackFresh, clamp(scar1 * 0.42 + scar2 * 0.28, 0.0, 0.68));
                 }
             }
         }
@@ -321,28 +373,50 @@ void main() {
             vec3 uvwT = (an.y >= an.x && an.y >= an.z) ? vec3(p0.x, p0.z, p0.y)
                       : (an.x >= an.z)                ? vec3(p0.z, p0.y, p0.x)
                                                       : vec3(p0.x, p0.y, p0.z);
-            float cDist = evalHierarchical90Crazing3D(uvwT.x, uvwT.y, uvwT.z, uCrazingSpacing, uCrackSalt + 211);
-            float surfHalfAp90 = uCrazingSpacing * 0.072 * uCrazing90Strength * insol;
+            vec4 c90 = evalOrganic90Crazing3D(uvwT.x, uvwT.y, uvwT.z, uCrazingSpacing, uCrackSalt + 211);
+            float surfHalfAp90 = uCrazingSpacing * 0.068 * uCrazing90Strength * insol;
             if (surfHalfAp90 > 0.0015) {
-                float halfAp90 = surfHalfAp90 * vTaper;
-                float cut90 = max(cDist - halfAp90, (-curMacro) - tipDepth);
-                float prevD = d;
-                d = chamferSub(d, cut90, halfAp90 * 0.45);
-                if (d > prevD + 1e-4 && vTaper > 0.0) crackFresh = max(crackFresh, smoothstep(surfHalfAp90 * 1.8, 0.0, cDist));
+                float ap1 = surfHalfAp90 * c90.z * vTaper;
+                float ap2 = surfHalfAp90 * c90.w * vTaper;
+                float cutOrganic90 = min(c90.x - ap1, c90.y * 1.12 - ap2);
+                float effAp = max(ap1, ap2);
+                float cut90 = max(cutOrganic90, (-curMacro) - tipDepth);
+                d = chamferSub(d, cut90, effAp * 0.35);
             }
         }
 
         if (uVoronoiStrength > 0.01 && curMacro > -(tipDepth + uScale * 0.06)) {
-            float vorScale = 1.55 / uScale * 4.2;
-            vec2 clv = evalFastCleavage3D(vec3(p0.x * vorScale, p0.y * vorScale * 0.85, p0.z * vorScale), 0.56, uCrackSalt + 307);
+            float vorScale = (1.35 / uScale) * 4.2;
+            vec3 vp = vec3(p0.x * vorScale, p0.y * vorScale * 0.86, p0.z * vorScale);
+            vec3 w0 = vec3(
+                0.38 * scalarField3D(vp * 0.55, uCrackSalt + 311) + 0.12 * (abs(scalarField3D(vp * 2.15, uCrackSalt + 317)) * 2.0 - 1.0),
+                0.36 * scalarField3D(vp * 0.55 + vec3(5.2, -2.8, 0.0), uCrackSalt + 331) + 0.12 * (abs(scalarField3D(vp * 2.15 + vec3(-3.4, 0.0, 0.0), uCrackSalt + 337)) * 2.0 - 1.0),
+                0.38 * scalarField3D(vp * 0.55 + vec3(-4.1, 6.3, 0.0), uCrackSalt + 347) + 0.12 * (abs(scalarField3D(vp * 2.15 + vec3(0.0, 4.1, 0.0), uCrackSalt + 353)) * 2.0 - 1.0)
+            );
+            vec2 clv = evalFastCleavage3D(vp + w0, 0.62, uCrackSalt + 307);
             float worldWall = clv.x / vorScale;
-            float surfHalfApVor = (0.009 + 0.024 * uVoronoiStrength) * (0.45 + 0.55 * insol) * (uScale / 7.0);
-            if (surfHalfApVor > 0.0015) {
+
+            float vorVit = scalarField3D(vp * 0.48 + vec3(-7.1, 3.9, 0.0), uCrackSalt + 367);
+            float openVor = smoothstep(-0.12, 0.46, vorVit);
+            float vorBridge = openVor * sqrt(max(0.0, openVor)) * (0.82 + 0.46 * abs(scalarField3D(vp * 2.7, uCrackSalt + 379)));
+
+            float surfHalfApVor = (0.010 + 0.030 * uVoronoiStrength) * (0.45 + 0.55 * insol) * (uScale / 7.0) * vorBridge;
+            if (surfHalfApVor > 0.0012) {
                 float halfApVor = surfHalfApVor * vTaper;
                 float cutVor = max(worldWall - halfApVor, (-curMacro) - tipDepth);
-                float prevD = d;
-                d = chamferSub(d, cutVor, halfApVor * 0.40);
-                if (d > prevD + 1e-4 && vTaper > 0.0) crackFresh = max(crackFresh, smoothstep(surfHalfApVor * 1.8, 0.0, worldWall));
+                d = chamferSub(d, cutVor, halfApVor * 0.36);
+            }
+
+            float nearPrimary = smoothstep(0.42, 0.02, clv.x) * smoothstep(0.12, 0.60, vorBridge);
+            if (nearPrimary > 0.04 && vTaper > 0.0) {
+                float subScale = 2.45;
+                vec2 subClv = evalFastCleavage3D((vp + w0 * 1.3) * subScale, 0.62, uCrackSalt + 389);
+                float subWallWorld = subClv.x / (vorScale * subScale);
+                float subHalfAp = (0.0045 + 0.012 * uVoronoiStrength) * nearPrimary * vTaper * (uScale / 7.0);
+                if (subHalfAp > 0.0010) {
+                    float cutSub = max(subWallWorld - subHalfAp, (-curMacro) - tipDepth * 0.55);
+                    d = chamferSub(d, cutSub, subHalfAp * 0.32);
+                }
             }
         }
     }
@@ -785,7 +859,7 @@ function mat4Mul(a, b)
     return out;
 }
 
-const SDF_VOL_RES = 112; // 112^3 RGBA16F single 3D texture (~6.5 cm voxels, < 2 ms GPU bake)
+const SDF_VOL_RES = 128; // 128^3 RGBA16F single 3D texture (~5.5 cm voxels, < 3 ms GPU bake)
 
 export class FractureLabViewport
 {

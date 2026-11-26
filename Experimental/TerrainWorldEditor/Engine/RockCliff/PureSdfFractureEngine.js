@@ -26,6 +26,8 @@ import {
     applyMat3,
     perturbNormal,
     buildStrikeDipFrame,
+    smax,
+    chamferMax,
     chamferSub,
     createRng,
     scalarField3D,
@@ -1472,38 +1474,63 @@ export function evalSingleFractureBlock(block, wx, wy, wz, formation, includeWal
     let extRelief = 0.0;
     if (includeWallRelief)
     {
-        const jigAmp = S * 0.020 * (params.jigsawRoughness ?? 0.55);
-        const plumAmp = S * 0.0065 * (params.plumoseStrength ?? 0.60);
-        if (jigAmp > 1e-5 || plumAmp > 1e-5)
+        const jigRough = params.jigsawRoughness ?? 0.55;
+        const plumAmp = S * 0.0080 * (params.plumoseStrength ?? 0.60);
+        if (jigRough > 1e-4 || plumAmp > 1e-5)
         {
+            // Multi-scale crooked fault trajectory: bold S-bend stepovers + interlocking jigsaw teeth + angular grain kinks!
+            const f0 = 0.58 / S;
             const f1 = 1.65 / S;
-            const w1 = fbm3D(p0x * f1, p0y * f1 * 0.9, p0z * f1, 3, crackSalt + 5);
-            // Radial / herring-bone plumose arrest wave emanating from basal fracture nucleation zone!
+            const f2 = 4.40 / S;
+            const macroBend = scalarField3D(p0x * f0, p0y * f0 * 0.75, p0z * f0, crackSalt + 2);
+            const w1 = scalarField3D(p0x * f1, p0y * f1 * 0.9, p0z * f1, crackSalt + 5) * 0.67 +
+                       scalarField3D(p0x * f1 * 2.05, p0y * f1 * 1.85, p0z * f1 * 2.05, crackSalt + 106) * 0.33;
+            const jagTooth = Math.abs(scalarField3D(p0x * f2, p0y * f2, p0z * f2, crackSalt + 47)) * 2.0 - 1.0;
+
             const rNucleation = Math.hypot(p0x, p0y - S * 0.08, p0z);
-            const plumWave = Math.sin(rNucleation * (26.0 / S) + w1 * 3.4) * 0.5 +
-                             scalarField3D(p0x * (9.5 / S), p0y * (5.2 / S), p0z * (9.5 / S), crackSalt + 71) * 0.5;
-            jigsawDisp = jigAmp * w1 + plumAmp * plumWave;
+            const plumWave = Math.sin(rNucleation * (22.0 / S) + w1 * 4.2) * 0.45 +
+                             scalarField3D(p0x * (8.5 / S), p0y * (4.8 / S), p0z * (8.5 / S), crackSalt + 71) * 0.55;
+            jigsawDisp = S * jigRough * (0.022 * macroBend + 0.017 * w1 + 0.007 * jagTooth) + plumAmp * plumWave;
         }
 
-        // Parent exterior crag + natural irregular sedimentary bedding evaluated in unbroken parent coordinate p0!
-        const cragF = 2.4 / S;
-        const crag = S * 0.010 * scalarField3D(p0x * cragF, p0y * cragF, p0z * cragF, crackSalt + 113);
-        const strataAmp = S * 0.0052 * block.strataWeight;
-        const bedY = p0y * (5.4 / S) + 0.44 * scalarField3D(p0x * (1.8 / S), p0y * (2.6 / S), p0z * (1.8 / S), crackSalt + 149);
+        // Three-scale organic weathered rock-mass sculpting (turns flat polyhedron facets into natural craggy stone!)
+        const lobeF = 0.85 / S;
+        const cragF = 2.15 / S;
+        const detailF = 5.10 / S;
+        const macroLobe = S * 0.024 * scalarField3D(p0x * lobeF, p0y * lobeF * 0.85, p0z * lobeF, crackSalt + 109);
+        const angularCrag = S * 0.015 * (Math.abs(scalarField3D(p0x * cragF, p0y * cragF, p0z * cragF, crackSalt + 113)) * 2.0 - 1.0);
+        const fineGrain = S * 0.0050 * scalarField3D(p0x * detailF, p0y * detailF, p0z * detailF, crackSalt + 127);
+
+        const strataAmp = S * 0.0060 * block.strataWeight;
+        const bedY = p0y * (5.4 / S) + 0.52 * scalarField3D(p0x * (1.6 / S), p0y * (2.4 / S), p0z * (1.6 / S), crackSalt + 149);
         const strataLedge = strataAmp * (Math.sin(bedY * Math.PI * 2.0) * 0.72 + 0.28 * Math.sin(bedY * Math.PI * 4.0 + 0.8));
-        extRelief = crag + strataLedge;
+        extRelief = macroLobe + angularCrag + fineGrain + strataLedge;
+    }
+
+    // Precompute 3D exterior boulder warp vector ONCE per block (zero noise calls inside plane loop -> 4x faster!)
+    let extWarpX = 0.0, extWarpY = 0.0, extWarpZ = 0.0;
+    if (includeWallRelief)
+    {
+        const wf = 1.25 / S;
+        const wa = S * 0.024;
+        extWarpX = wa * scalarField3D(p0x * wf, p0y * wf * 0.9, p0z * wf, crackSalt + 131);
+        extWarpY = wa * 0.75 * scalarField3D(p0x * wf + 5.7, p0y * wf * 0.9 - 3.1, p0z * wf, crackSalt + 137);
+        extWarpZ = wa * scalarField3D(p0x * wf - 4.3, p0y * wf * 0.9 + 6.2, p0z * wf, crackSalt + 139);
     }
 
     const planes = block.planes;
     const types = block.planeTypes;
     const r = block.edgeBevel;
+    const kExt = r * (includeWallRelief
+        ? (1.75 + 1.45 * Math.abs(scalarField3D(p0x * (1.6 / S), p0y * (1.6 / S), p0z * (1.6 / S), crackSalt + 163)))
+        : 2.0);
 
-    let d1 = -1e9;
-    let d2 = -1e9;
-    let n1x = 0, n1y = 1, n1z = 0;
-    let n2x = 0, n2y = 1, n2z = 0;
-    let dMaxExt = -1e9;
-    let dMaxFrac = -1e9;
+    let dFloor = -1e9;
+    let dExt = -1e9;
+    let dFrac = -1e9;
+    let bestTopPd = -1e9;
+    let sumNx = 0.0, sumNy = 0.0, sumNz = 0.0;
+    const invNormSoft = 1.0 / Math.max(0.035, kExt * 0.55);
 
     for (let i = 0, p = 0; i < block.numPlanes; i++, p += 4)
     {
@@ -1517,45 +1544,55 @@ export function evalSingleFractureBlock(block, wx, wy, wz, formation, includeWal
             {
                 // pType = +1 vs -1 guarantees convex tooth on wall A matches concave socket on wall B!
                 pd += pType * jigsawDisp;
-                if (pd > dMaxFrac) dMaxFrac = pd;
             }
-            else
+            else if (pny > -0.85)
             {
-                // Keep basal floor y=0 flat
-                if (pny > -0.85) pd += extRelief;
-                if (pd > dMaxExt) dMaxExt = pd;
+                // 3D domain-warp exterior boulder hull so ridges & faces curve organically!
+                pd += extRelief + (pnx * extWarpX + pny * extWarpY + pnz * extWarpZ);
             }
+        }
+
+        if (Math.abs(pType) > 0.5)
+        {
+            dFrac = dFrac < -1e8 ? pd : chamferMax(dFrac, pd, r * 0.65);
+        }
+        else if (pny <= -0.85)
+        {
+            if (pd > dFloor) dFloor = pd;
         }
         else
         {
-            if (Math.abs(pType) > 0.5) { if (pd > dMaxFrac) dMaxFrac = pd; }
-            else                       { if (pd > dMaxExt) dMaxExt = pd; }
+            // Smooth C1 intersection across ALL exterior boulder faces -> zero 3-plane vertex slivers!
+            dExt = dExt < -1e8 ? pd : smax(dExt, pd, kExt);
         }
 
-        if (pd > d1)
+        if (pd > bestTopPd)
         {
-            d2 = d1; n2x = n1x; n2y = n1y; n2z = n1z;
-            d1 = pd; n1x = pnx; n1y = pny; n1z = pnz;
+            const rescale = bestTopPd > -1e8 ? Math.exp(Math.max(-20.0, (bestTopPd - pd) * invNormSoft)) : 0.0;
+            sumNx = sumNx * rescale + pnx;
+            sumNy = sumNy * rescale + pny;
+            sumNz = sumNz * rescale + pnz;
+            bestTopPd = pd;
         }
-        else if (pd > d2)
+        else
         {
-            d2 = pd; n2x = pnx; n2y = pny; n2z = pnz;
+            const w = Math.exp(Math.max(-20.0, (pd - bestTopPd) * invNormSoft));
+            sumNx += pnx * w;
+            sumNy += pny * w;
+            sumNz += pnz * w;
         }
     }
 
-    let dBlock = d1;
-    let outNx = n1x, outNy = n1y, outNz = n1z;
-    if (r > 1e-5 && d2 > -r * 2.0)
+    const nlOut = Math.hypot(sumNx, sumNy, sumNz) || 1.0;
+    const outNx = sumNx / nlOut, outNy = sumNy / nlOut, outNz = sumNz / nlOut;
+
+    let dMaxExt = dExt;
+    if (dFloor > -1e8) dMaxExt = dMaxExt < -1e8 ? dFloor : Math.max(dMaxExt, dFloor);
+
+    let dBlock = dMaxExt;
+    if (dFrac > -1e8)
     {
-        const ch = (d1 + d2 + r) * 0.7071067811865475;
-        if (ch > dBlock)
-        {
-            dBlock = ch;
-            const nl = Math.hypot(n1x + n2x, n1y + n2y, n1z + n2z) || 1.0;
-            outNx = (n1x + n2x) / nl;
-            outNy = (n1y + n2y) / nl;
-            outNz = (n1z + n2z) / nl;
-        }
+        dBlock = dBlock < -1e8 ? dFrac : chamferMax(dBlock, dFrac, r);
     }
 
     if (outMeta)
@@ -1568,7 +1605,7 @@ export function evalSingleFractureBlock(block, wx, wy, wz, formation, includeWal
         outMeta.nz = outNz;
         // Analytical fresh-fracture mask: 1.0 on internal cleaved faces, 0.0 on aged weathered rind!
         const transition = Math.max(0.015, r * 1.35);
-        outMeta.freshMask = smoothstep(-transition, transition, dMaxFrac - dMaxExt);
+        outMeta.freshMask = smoothstep(-transition, transition, dFrac - dMaxExt);
         outMeta.noThermalCracks = block.noThermalCracks;
         outMeta.strataWeight = block.strataWeight;
     }
@@ -1649,48 +1686,47 @@ export function evalFracturedFormationSdf(formation, wx, wy, wz, candidateBlocks
 
         const p0x = _bestMeta.p0x, p0y = _bestMeta.p0y, p0z = _bestMeta.p0z;
 
-        // (A) Pure-SDF Concentric Onion-Skin Exfoliation Sheeting (evaluated FIRST so peeled plates expose smooth fresh granite!)
-        if (exfol > 0.04 && ny > -0.18)
+        // (A) Pure-SDF Concentric Onion-Skin Exfoliation Sheeting (100% C1 terraced spall scars + cross-section unloading seams!)
+        if (exfol > 0.04)
         {
             const sheetSpacing = S * 0.036;
             const plateThick = S * 0.015; // Realistic ~11 cm granite exfoliation plate thickness!
+            const upGate = smoothstep(-0.20, 0.32, ny);
+
+            if (exfol > 0.22 && upGate > 0.005)
+            {
+                const sf = 2.45 / S;
+                const spallN1 = scalarField3D(p0x * sf, p0y * sf * 0.8, p0z * sf, crackSalt + 499) +
+                                0.22 * (Math.abs(scalarField3D(p0x * sf * 2.7, p0y * sf * 2.7, p0z * sf * 2.7, crackSalt + 503)) * 2.0 - 1.0);
+                const thresh1 = 0.56 - 0.52 * exfol;
+                // Steep C1 45-degree beveled terrace step (`thresh1 .. thresh1 + 0.14`) -> zero discontinuous cell jumps!
+                const scar1 = smoothstep(thresh1, thresh1 + 0.14, spallN1) * upGate;
+
+                // Optional inner 2nd-tier overlapping onion-skin terrace inside large scars!
+                const spallN2 = scalarField3D(p0x * sf * 1.45 + 5.3, p0y * sf * 1.2, p0z * sf * 1.45 - 3.7, crackSalt + 509);
+                const scar2 = scar1 * smoothstep(thresh1 + 0.24, thresh1 + 0.38, spallN2);
+
+                const peelOffset = plateThick * (scar1 * 0.95 + scar2 * 0.75);
+                if (peelOffset > 1e-4)
+                {
+                    d += peelOffset;
+                    dMacro += peelOffset;
+                    crackFreshBoost = Math.max(crackFreshBoost, clamp(scar1 * 0.42 + scar2 * 0.28, 0.0, 0.68));
+                }
+            }
+
+            // Concentric subsurface unloading seams (carved when cross-section cutaway is active!)
             const interiorDepth = -dMacro;
-            if (interiorDepth > -sheetSpacing * 0.25 && interiorDepth < sheetSpacing * 3.1)
+            if (params.cutawayEnabled && upGate > 0.05 && interiorDepth > sheetSpacing * 0.45 && interiorDepth < sheetSpacing * 3.1)
             {
                 const warpS = sheetSpacing * 0.14 * scalarField3D(p0x * 0.9, p0y * 0.9, p0z * 0.9, crackSalt + 409);
                 const sCoord = (interiorDepth + warpS) / sheetSpacing;
-                const shellIdx = Math.floor(sCoord);
-
-                if (exfol > 0.32 && shellIdx === 0 && interiorDepth > 0 && interiorDepth < plateThick * 1.15)
+                const fracS = sCoord - Math.floor(sCoord);
+                const seamDist = Math.min(fracS, 1.0 - fracS) * sheetSpacing;
+                const seamHalfAp = sheetSpacing * 0.09 * exfol * upGate;
+                if (seamHalfAp > 0.0015)
                 {
-                    const relScale = 0.62;
-                    const relClv = evalPlanarCleavage3D(p0x * relScale, p0y * relScale, p0z * relScale, 0.76, crackSalt + 503);
-                    const relWall = relClv.wallDist / relScale;
-                    if (relClv.cellRand > (1.0 - (exfol - 0.22) * 0.85))
-                    {
-                        const dShellDepth = interiorDepth - plateThick;
-                        const dPlateInner = 0.045 - relWall;
-                        const windowCutter = Math.max(dShellDepth, dPlateInner);
-                        const peeled = Math.max(d, -windowCutter);
-                        if (peeled > d)
-                        {
-                            d = peeled;
-                            dMacro = peeled; // Update macro surface so V-cracks start from the peeled scar!
-                            crackFreshBoost = Math.max(crackFreshBoost, 0.82);
-                        }
-                    }
-                }
-
-                // Concentric subsurface unloading seams parallel to phi_0 = 0
-                if (interiorDepth > sheetSpacing * 0.32)
-                {
-                    const fracS = sCoord - Math.floor(sCoord);
-                    const seamDist = Math.min(fracS, 1.0 - fracS) * sheetSpacing;
-                    const seamHalfAp = sheetSpacing * 0.11 * exfol * smoothstep(-0.18, 0.35, ny);
-                    if (seamHalfAp > 0.0015)
-                    {
-                        d = Math.max(d, -(seamDist - seamHalfAp));
-                    }
+                    d = Math.max(d, -(seamDist - seamHalfAp));
                 }
             }
         }
@@ -1700,7 +1736,7 @@ export function evalFracturedFormationSdf(formation, wx, wy, wz, candidateBlocks
         const tipDepth = skinDepth * clamp(0.30 + 0.70 * insolFactor, 0.15, 1.35);
         const vTaper = Math.max(0.0, 1.0 + Math.min(0.0, dMacro) / tipDepth);
 
-        // (B) Pure-SDF Hierarchical 90° Orthogonal T-Junction Thermal Crazing!
+        // (B) Organic Curvilinear & Pinch-and-Swell 90° T-Junction Thermal Crazing!
         if (crazing90 > 0.01 && insolFactor > 0.02 && dMacro > -(tipDepth + S * 0.08))
         {
             const ax = Math.abs(nx), ay = Math.abs(ny), az = Math.abs(nz);
@@ -1711,36 +1747,65 @@ export function evalFracturedFormationSdf(formation, wx, wy, wz, candidateBlocks
 
             const spacing = Math.max(0.18, params.crazingSpacing ?? 0.62);
             const c90 = evalHierarchical90Crazing3D(u, v, w, spacing, crackSalt + 211);
-            const surfHalfAp90 = spacing * 0.072 * crazing90 * insolFactor;
+            const surfHalfAp90 = spacing * 0.068 * crazing90 * insolFactor;
             if (surfHalfAp90 > 0.0015)
             {
-                const halfAp90 = surfHalfAp90 * vTaper;
-                const cut90 = Math.max(c90.dist - halfAp90, (-dMacro) - tipDepth);
-                const prevD = d;
-                d = chamferSub(d, cut90, halfAp90 * 0.45);
-                if (d > prevD + 1e-4 && vTaper > 0.0)
-                {
-                    crackFreshBoost = Math.max(crackFreshBoost, smoothstep(surfHalfAp90 * 1.8, 0.0, c90.dist));
-                }
+                const ap1 = surfHalfAp90 * c90.mod1 * vTaper;
+                const ap2 = surfHalfAp90 * c90.mod2 * vTaper;
+                const cut1 = c90.tier1Dist - ap1;
+                const cut2 = c90.tier2Dist * 1.12 - ap2;
+                const cutOrganic90 = Math.min(cut1, cut2);
+                const effAp = Math.max(ap1, ap2);
+                const cut90 = Math.max(cutOrganic90, (-dMacro) - tipDepth);
+                d = chamferSub(d, cut90, effAp * 0.35);
             }
         }
 
-        // (C) Pure-SDF 3D Polygonal Voronoi Stress Cleavage (V-tipped inward taper)
+        // (C) Organic Domain-Warped 3D Voronoi Fissures + Pinch-and-Swell Rock Bridges + Dendritic Splinters!
         if (vorStrength > 0.01 && dMacro > -(tipDepth + S * 0.08))
         {
-            const vorScale = 1.55 / S * 4.2;
-            const clv = evalPlanarCleavage3D(p0x * vorScale, p0y * vorScale * 0.85, p0z * vorScale, 0.74, crackSalt + 307);
+            const vorScale = (1.35 / S) * 4.2;
+            let vx = p0x * vorScale;
+            let vy = p0y * vorScale * 0.86;
+            let vz = p0z * vorScale;
+
+            // Multi-scale 3D organic domain warp bends straight polygon walls into sinuous natural rock fissures!
+            const wx0 = 0.38 * scalarField3D(vx * 0.55, vy * 0.55, vz * 0.55, crackSalt + 311) +
+                        0.12 * (Math.abs(scalarField3D(vx * 2.15, vy * 2.15, vz * 2.15, crackSalt + 317)) * 2.0 - 1.0);
+            const wy0 = 0.36 * scalarField3D(vx * 0.55 + 5.2, vy * 0.55 - 2.8, vz * 0.55, crackSalt + 331) +
+                        0.12 * (Math.abs(scalarField3D(vx * 2.15 - 3.4, vy * 2.15, vz * 2.15, crackSalt + 337)) * 2.0 - 1.0);
+            const wz0 = 0.38 * scalarField3D(vx * 0.55 - 4.1, vy * 0.55 + 6.3, vz * 0.55, crackSalt + 347) +
+                        0.12 * (Math.abs(scalarField3D(vx * 2.15, vy * 2.15 + 4.1, vz * 2.15, crackSalt + 353)) * 2.0 - 1.0);
+
+            const clv = evalPlanarCleavage3D(vx + wx0, vy + wy0, vz + wz0, 0.78, crackSalt + 307);
             const worldWallDist = clv.wallDist / vorScale;
-            const surfHalfApVor = (0.009 + 0.024 * vorStrength) * (0.45 + 0.55 * insolFactor) * (S / 7.0);
-            if (surfHalfApVor > 0.0015)
+
+            // Power-tapered C1 pinch-and-swell vitality: wide master fissures tapering smoothly into delicate hairline tips!
+            const vorVit = scalarField3D(vx * 0.48 - 7.1, vy * 0.48 + 3.9, vz * 0.48, crackSalt + 367);
+            const openVor = smoothstep(-0.12, 0.46, vorVit);
+            const vorBridge = openVor * Math.sqrt(openVor) *
+                              (0.82 + 0.46 * Math.abs(scalarField3D(vx * 2.7, vy * 2.7, vz * 2.7, crackSalt + 379)));
+
+            const surfHalfApVor = (0.010 + 0.030 * vorStrength) * (0.45 + 0.55 * insolFactor) * (S / 7.0) * vorBridge;
+            if (surfHalfApVor > 0.0012)
             {
                 const halfApVor = surfHalfApVor * vTaper;
                 const cutVor = Math.max(worldWallDist - halfApVor, (-dMacro) - tipDepth);
-                const prevD = d;
-                d = chamferSub(d, cutVor, halfApVor * 0.40);
-                if (d > prevD + 1e-4 && vTaper > 0.0)
+                d = chamferSub(d, cutVor, halfApVor * 0.36);
+            }
+
+            // Secondary dendritic hairline splinters branching ONLY near primary open fissures!
+            const nearPrimary = smoothstep(0.42, 0.02, clv.wallDist) * smoothstep(0.12, 0.60, vorBridge);
+            if (nearPrimary > 0.04 && vTaper > 0.0)
+            {
+                const subScale = 2.45;
+                const subClv = evalPlanarCleavage3D((vx + wx0 * 1.3) * subScale, (vy + wy0 * 1.3) * subScale, (vz + wz0 * 1.3) * subScale, 0.78, crackSalt + 389);
+                const subWallWorld = subClv.wallDist / (vorScale * subScale);
+                const subHalfAp = (0.0045 + 0.012 * vorStrength) * nearPrimary * vTaper * (S / 7.0);
+                if (subHalfAp > 0.0010)
                 {
-                    crackFreshBoost = Math.max(crackFreshBoost, smoothstep(surfHalfApVor * 1.8, 0.0, worldWallDist));
+                    const cutSub = Math.max(subWallWorld - subHalfAp, (-dMacro) - tipDepth * 0.55);
+                    d = chamferSub(d, cutSub, subHalfAp * 0.32);
                 }
             }
         }

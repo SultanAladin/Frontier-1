@@ -51,13 +51,13 @@ import {
     createDefaultFractureParams,
     buildFracturedFormation,
     bakeFracturedFormationQefMesh
-} from './Engine/RockCliff/PureSdfFractureEngine.js?v=20261126c';
+} from './Engine/RockCliff/PureSdfFractureEngine.js';
 import {
     exportFractureMeshObj,
     exportFractureMeshBinaryStl,
     exportFractureMeshGlb
-} from './Engine/RockCliff/Core/QefDualContour.js?v=20261126c';
-import { FractureLabViewport } from './Engine/RockCliff/FractureLabViewport.js?v=20261126c';
+} from './Engine/RockCliff/Core/QefDualContour.js';
+import { FractureLabViewport } from './Engine/RockCliff/FractureLabViewport.js';
 
 const MASK_PALETTE = ['#58b982', '#5ac8fa', '#a3d977', '#e8c27a', '#f0935b', '#d6a2e8'];
 

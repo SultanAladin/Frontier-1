@@ -516,49 +516,83 @@ export const crazing90Result = {
     dist: 1e6,
     tier1Dist: 1e6,
     tier2Dist: 1e6,
-    tileRand: 0.0
+    tileRand: 0.0,
+    mod1: 1.0,
+    mod2: 0.8
 };
 
 export function evalHierarchical90Crazing3D(u, v, w, spacing, salt = 0)
 {
     const L1 = Math.max(0.08, spacing);
-    const L2 = L1 * 0.92;
+    const L2 = L1 * 0.94;
 
-    // Gentle geological crookedness so cracks are natural brittle rock joints, not ruler lines
-    const warpU = L1 * 0.14 * scalarField3D(u / (L1 * 1.7), v / (L1 * 1.7), w / (L1 * 1.7), salt + 3);
-    const warpV = L2 * 0.13 * scalarField3D(u / (L2 * 1.6), v / (L2 * 1.6), w / (L2 * 1.6), salt + 19);
+    // 1. Rotate ~22 deg off rigid horizontal/vertical axes so cracks follow natural geological strike!
+    const ur0 = u * 0.92718385 - v * 0.37460659;
+    const vr0 = u * 0.37460659 + v * 0.92718385;
 
-    const uCoord = (u + warpU) / L1;
+    // 2. Strike-anisotropic 3-scale organic warp: varies rapidly ALONG each crack's strike and gently (0.24x)
+    //    across its normal -> bold meandering & angular mineral-grain kinks with ZERO bullseye contour loops!
+    const invMacro = 1.0 / (L1 * 2.15);
+    const invMeso = 1.0 / (L1 * 0.68);
+    const invJag = 1.0 / (L1 * 0.24);
+
+    const macroU = L1 * 0.38 * scalarField3D(ur0 * invMacro * 0.35, vr0 * invMacro, w * invMacro * 0.8, salt + 3);
+    const macroV = L2 * 0.36 * scalarField3D(ur0 * invMacro + 7.3, vr0 * invMacro * 0.35 - 3.1, w * invMacro * 0.8, salt + 19);
+
+    const mesoU = L1 * 0.14 * scalarField3D(ur0 * invMeso * 0.26, vr0 * invMeso, w * invMeso * 0.8, salt + 29);
+    const mesoV = L2 * 0.13 * scalarField3D(ur0 * invMeso - 4.7, vr0 * invMeso * 0.26 + 5.9, w * invMeso * 0.8, salt + 37);
+
+    // Ridged `abs(noise)` deflection along strike produces authentic angular mineral-grain kinks!
+    const jagU = L1 * 0.048 * (Math.abs(scalarField3D(ur0 * invJag * 0.20, vr0 * invJag, w * invJag * 0.7, salt + 43)) * 2.0 - 1.0);
+    const jagV = L2 * 0.046 * (Math.abs(scalarField3D(ur0 * invJag + 2.1, vr0 * invJag * 0.20, w * invJag * 0.7, salt + 59)) * 2.0 - 1.0);
+
+    const uCoord = (ur0 + macroU + mesoU + jagU) / L1;
     const k1 = Math.floor(uCoord);
-    const fu = uCoord - k1; // [0, 1) inside Tier-1 slab k1
+    const fu = uCoord - k1;
     const tier1Dist = Math.min(fu, 1.0 - fu) * L1;
 
-    // Independent phase per Tier-1 slab k1 -> guarantees 90-degree T-junction arrest at fu = 0 and fu = 1!
+    // Independent phase & irregular slab width per Tier-1 slab k1 -> 90-degree T-junction arrest!
     const slabPhase = hash31(k1, 17, 53, salt + 41);
-    const slabScale = 0.82 + 0.36 * hash31(k1, 89, 13, salt + 67);
+    const slabScale = 0.68 + 0.64 * hash31(k1, 89, 13, salt + 67);
     const effL2 = L2 * slabScale;
 
-    const vCoord = (v + warpV) / effL2 + slabPhase;
+    const vCoord = (vr0 + macroV + mesoV + jagV) / effL2 + slabPhase;
     const k2 = Math.floor(vCoord);
-    const fv = vCoord - k2; // [0, 1) inside Tier-2 rectangle (k1, k2)
+    const fv = vCoord - k2;
     let tier2Dist = Math.min(fv, 1.0 - fv) * effL2;
 
-    // Optional Tier-3 90-degree sub-tile T-junction bisector inside ~58% of tiles (narrower aperture weight)
     const tileRand = hash31(k1, k2, 7, salt + 97);
-    if (tileRand > 0.42)
+    if (tileRand > 0.56)
     {
-        const splitPos = 0.36 + 0.28 * hash31(k1, k2, 31, salt + 131);
-        // Sub-crack runs parallel to Tier-1 (along v) inside this single (k1, k2) rectangle -> arrests at Tier-2 walls!
-        const tier3Dist = Math.abs(fu - splitPos) * L1 * 1.28;
+        const splitPos = 0.28 + 0.44 * hash31(k1, k2, 31, salt + 131);
+        const splitTilt = (hash31(k1, k2, 59, salt + 137) - 0.5) * 0.22;
+        const tier3Dist = Math.abs(fu - (splitPos + splitTilt * (fv - 0.5))) * L1 * 1.45;
         if (tier3Dist < tier2Dist) tier2Dist = tier3Dist;
     }
 
-    // Weight Tier-2 slightly above Tier-1 so Tier-2 is slightly finer than master Tier-1 cracks
-    const combined = Math.min(tier1Dist, tier2Dist * 1.18);
+    // 3. True Hierarchical C1 Pinch-and-Swell Aperture (bold Tier-1 master fissures -> finer tapering Tier-2 hairlines!)
+    const vit1 = scalarField3D(ur0 * (0.48 / L1), vr0 * (0.62 / L1), w * (0.52 / L1), salt + 151);
+    const vit2 = scalarField3D(ur0 * (0.68 / L1) + 11.3, vr0 * (0.48 / L1) - 3.8, w * (0.58 / L1), salt + 173);
+    const lipChip = 0.80 + 0.42 * Math.abs(scalarField3D(ur0 * invJag * 1.1, vr0 * invJag * 1.1, w * invJag * 1.1, salt + 199));
 
-    crazing90Result.dist = combined;
+    const open1 = smoothstep(-0.18, 0.42, vit1);
+    const open2 = smoothstep(-0.10, 0.48, vit2);
+    let mod1 = open1 * open1 * 1.38 * lipChip;
+    let mod2 = open2 * Math.sqrt(open2) * 0.66 * lipChip;
+
+    // Subtle T-junction corner spall chip where active Tier-2 cross-joint meets an open Tier-1 joint!
+    if (mod1 > 0.06 && mod2 > 0.04)
+    {
+        const spall = 0.35 * smoothstep(L1 * 0.14, 0.0, Math.max(tier1Dist, tier2Dist));
+        mod1 += spall * open1;
+        mod2 += spall * open2;
+    }
+
+    crazing90Result.dist = Math.min(tier1Dist, tier2Dist * 1.22);
     crazing90Result.tier1Dist = tier1Dist;
     crazing90Result.tier2Dist = tier2Dist;
     crazing90Result.tileRand = tileRand;
+    crazing90Result.mod1 = mod1;
+    crazing90Result.mod2 = mod2;
     return crazing90Result;
 }
