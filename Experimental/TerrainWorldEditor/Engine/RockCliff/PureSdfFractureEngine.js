@@ -26,6 +26,7 @@ import {
     applyMat3,
     perturbNormal,
     buildStrikeDipFrame,
+    smin,
     smax,
     chamferMax,
     chamferSub,
@@ -631,32 +632,32 @@ export const FRACTURE_PRESETS = [
         id: 'exfoliation-dome',
         name: '04 · Granite Exfoliation Dome',
         badge: 'ONION-SKIN SDF',
-        subtitle: 'Unloading concentric phi_0 surface-parallel granite sheets peeling off an intact batholith core',
+        subtitle: '4 concentric spheroidal granite onion shells with undercut parting shadows peeling off a pale batholith corestone',
         lithology: 'sierraGranite',
         defaults: {
             presetId: 'exfoliation-dome',
             seed: 9104,
             scale: 7.4,
-            chasmAperture: 0.32,
-            hingeTiltDeg: 1.9,
-            faultHeave: 0.16,
-            jigsawRoughness: 0.36,
+            chasmAperture: 0.20,
+            hingeTiltDeg: 1.6,
+            faultHeave: 0.12,
+            jigsawRoughness: 0.34,
             plumoseStrength: 0.35,
-            edgeChamfer: 0.42,
-            thermalDeltaT: 48,
-            sunAzimuthDeg: 46,
-            sunElevationDeg: 45,
-            directionalBias: 0.45,
+            edgeChamfer: 0.72,
+            thermalDeltaT: 52,
+            sunAzimuthDeg: 42,
+            sunElevationDeg: 42,
+            directionalBias: 0.42,
             thermalSkinDepth: 0.52,
-            crazing90Strength: 0.24,
-            crazingSpacing: 0.82,
-            voronoiJointStrength: 0.28,
-            exfoliationStrength: 0.94,
-            spallCalving: 0.65,
+            crazing90Strength: 0.22,
+            crazingSpacing: 0.80,
+            voronoiJointStrength: 0.38,
+            exfoliationStrength: 0.95,
+            spallCalving: 0.72,
             cutawayEnabled: false,
             cutawayAxis: 0,
             cutawayOffset: 0.15,
-            meshResolution: 84
+            meshResolution: 88
         }
     },
     {
@@ -745,10 +746,10 @@ export const LITHOLOGY_THEMES = {
         lichen: [0.20, 0.15, 0.09]
     },
     sierraGranite: {
-        rind: [0.17, 0.16, 0.15],      // Weathered Yosemite granodiorite rind
-        fresh: [0.52, 0.50, 0.46],     // Crisp pale exfoliated granodiorite scar!
-        iron: [0.32, 0.19, 0.10],
-        lichen: [0.16, 0.21, 0.11]
+        rind: [0.092, 0.080, 0.070],    // Dark desert-varnished Sierra granodiorite crust
+        fresh: [0.34, 0.31, 0.275],     // Warm salt-and-pepper batholith corestone (zero white blowout!)
+        iron: [0.33, 0.155, 0.065],     // Warm rust-ochre Liesegang spheroidal-weathering stain
+        lichen: [0.14, 0.19, 0.095]
     },
     basalt: {
         rind: [0.045, 0.047, 0.053],   // Authentic dark charcoal volcanic basalt!
@@ -1192,37 +1193,37 @@ function buildExfoliationDomeBlocks(params, rng, crackSalt)
 {
     const S = params.scale;
     const blocks = [];
-    const aperture = params.chasmAperture ?? 0.32;
-    const tiltRad = (params.hingeTiltDeg ?? 1.9) * DEG2RAD;
-    const bevel = S * (0.0040 + 0.0110 * (params.edgeChamfer ?? 0.42));
+    const aperture = params.chasmAperture ?? 0.20;
+    const tiltRad = (params.hingeTiltDeg ?? 1.6) * DEG2RAD;
+    const bevel = S * (0.0055 + 0.0135 * (params.edgeChamfer ?? 0.72));
 
-    const bf = buildStrikeDipFrame(0.2, 0.10);
+    const bf = buildStrikeDipFrame(0.18, 0.08);
     const toWorld = (x, y, z) => [x * S, y * S, z * S];
 
     const domePoly = sculptGeologicalParentPoly(
-        [0, S * 0.36, 0],
-        [S * 0.46, S * 0.42, S * 0.42],
+        [0, S * 0.37, 0],
+        [S * 0.49, S * 0.43, S * 0.45],
         bf,
         rng,
-        { jointDispersion: 0.14, cornerBlunt: 0.90, flatBaseY: 0, extraBevelCuts: 8 }
+        { jointDispersion: 0.12, cornerBlunt: 0.96, flatBaseY: 0, extraBevelCuts: 12 }
     );
 
-    const gap = (0.006 + 0.022 * aperture) * S;
-    const jNorm = vnorm([0.88, 0.08, -0.46]);
-    const [dA, dB] = splitPolyByPlane(domePoly, jNorm, S * 0.06, gap);
+    const gap = (0.004 + 0.018 * aperture) * S;
+    const jNorm = vnorm([0.86, 0.06, -0.50]);
+    const [dA, dB] = splitPolyByPlane(domePoly, jNorm, S * 0.14, gap);
     if (dA)
     {
-        const bA = compileFractureBlock(dA, { edgeBevel: bevel, strataWeight: 0.08, seedSalt: crackSalt + 13 });
+        const bA = compileFractureBlock(dA, { edgeBevel: bevel, strataWeight: 0.05, seedSalt: crackSalt + 13 });
         if (bA) blocks.push(bA);
     }
     if (dB)
     {
-        const mB = transformPoly(dB, [jNorm[0] * gap * 0.4, -S * 0.015 * (params.faultHeave ?? 0.16), jNorm[2] * gap * 0.4], [0.46, 0, 0.88], -tiltRad * 0.6, [S * 0.18, 0, -S * 0.08]);
-        const bB = compileFractureBlock(mB, { edgeBevel: bevel, strataWeight: 0.08, seedSalt: crackSalt + 27 });
+        const mB = transformPoly(dB, [jNorm[0] * gap * 0.4, -S * 0.012 * (params.faultHeave ?? 0.12), jNorm[2] * gap * 0.4], [0.50, 0, 0.86], -tiltRad * 0.55, [S * 0.22, 0, -S * 0.10]);
+        const bB = compileFractureBlock(mB, { edgeBevel: bevel, strataWeight: 0.05, seedSalt: crackSalt + 27 });
         if (bB) blocks.push(bB);
     }
 
-    addPedestalSpalls(blocks, toWorld, bf, rng, S, bevel * 0.7, params.spallCalving ?? 0.65, 0.08, crackSalt);
+    addPedestalSpalls(blocks, toWorld, bf, rng, S, bevel * 0.75, params.spallCalving ?? 0.72, 0.06, crackSalt);
     return blocks;
 }
 
@@ -1521,16 +1522,19 @@ export function evalSingleFractureBlock(block, wx, wy, wz, formation, includeWal
     const planes = block.planes;
     const types = block.planeTypes;
     const r = block.edgeBevel;
-    const kExt = r * (includeWallRelief
-        ? (1.75 + 1.45 * Math.abs(scalarField3D(p0x * (1.6 / S), p0y * (1.6 / S), p0z * (1.6 / S), crackSalt + 163)))
-        : 2.0);
+    const exfRound = S * 0.088 * smoothstep(0.18, 0.95, params.exfoliationStrength ?? 0.0);
+    const kLse = Math.max(0.012, (r * (includeWallRelief
+        ? (0.95 + 0.85 * Math.abs(scalarField3D(p0x * (1.6 / S), p0y * (1.6 / S), p0z * (1.6 / S), crackSalt + 163)))
+        : 1.15) + exfRound) * 0.42);
+    const invKLse = 1.0 / kLse;
 
     let dFloor = -1e9;
-    let dExt = -1e9;
+    let bestExtPd = -1e9;
+    let sumExtExp = 0.0;
     let dFrac = -1e9;
     let bestTopPd = -1e9;
     let sumNx = 0.0, sumNy = 0.0, sumNz = 0.0;
-    const invNormSoft = 1.0 / Math.max(0.035, kExt * 0.55);
+    const invNormSoft = 1.0 / Math.max(0.035, kLse * 1.35);
 
     for (let i = 0, p = 0; i < block.numPlanes; i++, p += 4)
     {
@@ -1562,8 +1566,16 @@ export function evalSingleFractureBlock(block, wx, wy, wz, formation, includeWal
         }
         else
         {
-            // Smooth C1 intersection across ALL exterior boulder faces -> zero 3-plane vertex slivers!
-            dExt = dExt < -1e8 ? pd : smax(dExt, pd, kExt);
+            // Order-independent C-infinity Log-Sum-Exp smooth-max across ALL exterior dome faces (zero polygon facets!)
+            if (pd > bestExtPd)
+            {
+                sumExtExp = bestExtPd > -1e8 ? sumExtExp * Math.exp(Math.max(-24.0, (bestExtPd - pd) * invKLse)) + 1.0 : 1.0;
+                bestExtPd = pd;
+            }
+            else
+            {
+                sumExtExp += Math.exp(Math.max(-24.0, (pd - bestExtPd) * invKLse));
+            }
         }
 
         if (pd > bestTopPd)
@@ -1583,6 +1595,7 @@ export function evalSingleFractureBlock(block, wx, wy, wz, formation, includeWal
         }
     }
 
+    const dExt = bestExtPd > -1e8 ? (bestExtPd + kLse * Math.log(Math.max(1.0, sumExtExp))) : -1e9;
     const nlOut = Math.hypot(sumNx, sumNy, sumNz) || 1.0;
     const outNx = sumNx / nlOut, outNy = sumNy / nlOut, outNz = sumNz / nlOut;
 
@@ -1603,6 +1616,9 @@ export function evalSingleFractureBlock(block, wx, wy, wz, formation, includeWal
         outMeta.nx = outNx;
         outMeta.ny = outNy;
         outMeta.nz = outNz;
+        outMeta.dExt = dMaxExt;
+        outMeta.dFrac = dFrac;
+        outMeta.bevel = r;
         // Analytical fresh-fracture mask: 1.0 on internal cleaved faces, 0.0 on aged weathered rind!
         const transition = Math.max(0.015, r * 1.35);
         outMeta.freshMask = smoothstep(-transition, transition, dFrac - dMaxExt);
@@ -1613,16 +1629,14 @@ export function evalSingleFractureBlock(block, wx, wy, wz, formation, includeWal
     return dBlock;
 }
 
-const _tmpMeta = { p0x: 0, p0y: 0, p0z: 0, nx: 0, ny: 1, nz: 0, freshMask: 0, noThermalCracks: false, strataWeight: 0 };
-const _bestMeta = { p0x: 0, p0y: 0, p0z: 0, nx: 0, ny: 1, nz: 0, freshMask: 0, noThermalCracks: false, strataWeight: 0 };
+const _tmpMeta = { p0x: 0, p0y: 0, p0z: 0, nx: 0, ny: 1, nz: 0, dExt: 1e9, dFrac: -1e9, bevel: 0.04, freshMask: 0, noThermalCracks: false, strataWeight: 0 };
+const _bestMeta = { p0x: 0, p0y: 0, p0z: 0, nx: 0, ny: 1, nz: 0, dExt: 1e9, dFrac: -1e9, bevel: 0.04, freshMask: 0, noThermalCracks: false, strataWeight: 0 };
 
 /**
  * Evaluates the FULL Pure-SDF Fractured Formation at world point `(wx, wy, wz)`:
  * 1. Union of kinematically cleaved polyhedral jigsaw blocks (with parent-space interlocking wall warps & 45° chamfers)
- * 2. Thermal skin-depth V-tipped surface cracks (`a(p) = a_surf * exp(phi_0 / delta_T)`) gated by solar ΔT insolation:
- *    - Hierarchical 90° T-Junction Thermal Crazing (`evalHierarchical90Crazing3D`)
- *    - 3D Voronoi Polygonal Stress Cleavage (`evalPlanarCleavage3D`)
- * 3. Concentric Onion-Skin Exfoliation Sheeting (`abs((-phi_0) mod s - s/2)`) with spalled outer shell windows
+ * 2. 4-Tier Concentric Spheroidal Onion-Skin Exfoliation (`exfol > 0.14`) with overhanging undercut parting slots
+ * 3. Thermal skin-depth V-tipped surface cracks gated by solar ΔT insolation & shell exposure age
  * 4. Optional Cross-Section Cutaway Slice (`max(phi, p_axis - sliceOffset)`)
  */
 export function evalFracturedFormationSdf(formation, wx, wy, wz, candidateBlocks = null, outInfo = null)
@@ -1633,6 +1647,7 @@ export function evalFracturedFormationSdf(formation, wx, wy, wz, candidateBlocks
     let dMacro = 1e9;
     _bestMeta.freshMask = 0;
     _bestMeta.p0x = wx; _bestMeta.p0y = wy; _bestMeta.p0z = wz;
+    _bestMeta.dExt = 1e9; _bestMeta.dFrac = -1e9; _bestMeta.bevel = 0.04;
     _bestMeta.noThermalCracks = false;
     _bestMeta.strataWeight = 0.25;
 
@@ -1640,7 +1655,7 @@ export function evalFracturedFormationSdf(formation, wx, wy, wz, candidateBlocks
     {
         const b = list[i];
         const dx = wx - b.cx, dy = wy - b.cy, dz = wz - b.cz;
-        const sphereLowerBound = Math.hypot(dx, dy, dz) - b.radius - params.scale * 0.04;
+        const sphereLowerBound = Math.hypot(dx, dy, dz) - b.radius - params.scale * 0.06;
         if (sphereLowerBound > dMacro) continue;
 
         const dB = evalSingleFractureBlock(b, wx, wy, wz, formation, true, _tmpMeta);
@@ -1653,6 +1668,9 @@ export function evalFracturedFormationSdf(formation, wx, wy, wz, candidateBlocks
             _bestMeta.nx = _tmpMeta.nx;
             _bestMeta.ny = _tmpMeta.ny;
             _bestMeta.nz = _tmpMeta.nz;
+            _bestMeta.dExt = _tmpMeta.dExt;
+            _bestMeta.dFrac = _tmpMeta.dFrac;
+            _bestMeta.bevel = _tmpMeta.bevel;
             _bestMeta.freshMask = _tmpMeta.freshMask;
             _bestMeta.noThermalCracks = _tmpMeta.noThermalCracks;
             _bestMeta.strataWeight = _tmpMeta.strataWeight;
@@ -1669,13 +1687,13 @@ export function evalFracturedFormationSdf(formation, wx, wy, wz, candidateBlocks
 
     let crackFreshBoost = 0.0;
     let thermalStressAtPt = thermalNorm;
+    let shellAgeFactor = 1.0;
 
-    // Evaluate fine thermal V-tipped cracks & exfoliation ONLY inside the active surface/skin-depth band!
-    const maxFineDepth = Math.max(skinDepth * 2.2, exfol > 0.02 ? S * 0.14 : 0.12);
+    // Evaluate fine thermal V-tipped cracks & 4-shell concentric onion-skin exfoliation inside the active shell/skin band!
+    const maxFineDepth = Math.max(skinDepth * 2.2, exfol > 0.14 ? S * 0.13 : 0.12);
     if (!_bestMeta.noThermalCracks && dMacro < S * 0.04 && dMacro > -maxFineDepth &&
-        (crazing90 > 0.01 || vorStrength > 0.01 || exfol > 0.01))
+        (crazing90 > 0.01 || vorStrength > 0.01 || exfol > 0.14))
     {
-        // Exact analytical macro block normal (zero finite-difference overhead!)
         const nx = _bestMeta.nx, ny = _bestMeta.ny, nz = _bestMeta.nz;
 
         // Directional Solar Insolation ΔT Stress Factor!
@@ -1686,55 +1704,132 @@ export function evalFracturedFormationSdf(formation, wx, wy, wz, candidateBlocks
 
         const p0x = _bestMeta.p0x, p0y = _bestMeta.p0y, p0z = _bestMeta.p0z;
 
-        // (A) Pure-SDF Concentric Onion-Skin Exfoliation Sheeting (100% C1 terraced spall scars + cross-section unloading seams!)
-        if (exfol > 0.04)
+        // (A) 4-Tier Concentric Spheroidal Onion-Skin Exfoliation + Shell-Confined Plate Cracks + Deep Undercut Parting Slots!
+        if (exfol > 0.14)
         {
-            const sheetSpacing = S * 0.036;
-            const plateThick = S * 0.015; // Realistic ~11 cm granite exfoliation plate thickness!
-            const upGate = smoothstep(-0.20, 0.32, ny);
+            const exfAct = smoothstep(0.14, 0.92, exfol);
+            const hShell = S * (0.0130 + 0.0070 * exfAct); // ~14.8 cm chunky granite onion sheets!
+            const dExt0 = _bestMeta.dExt;
 
-            if (exfol > 0.22 && upGate > 0.005)
+            if (dExt0 > -(4.8 * hShell) && dExt0 < S * 0.04)
             {
-                const sf = 2.45 / S;
-                const spallN1 = scalarField3D(p0x * sf, p0y * sf * 0.8, p0z * sf, crackSalt + 499) +
-                                0.22 * (Math.abs(scalarField3D(p0x * sf * 2.7, p0y * sf * 2.7, p0z * sf * 2.7, crackSalt + 503)) * 2.0 - 1.0);
-                const thresh1 = 0.56 - 0.52 * exfol;
-                // Steep C1 45-degree beveled terrace step (`thresh1 .. thresh1 + 0.14`) -> zero discontinuous cell jumps!
-                const scar1 = smoothstep(thresh1, thresh1 + 0.14, spallN1) * upGate;
+                // Summit-crowned spall geometry: primary focus `f1` sits ABOVE the `0.80*S` summit on the upper-front-right
+                // (`y = 0.94*S`) so sheets spall off the crown & slide down — cradling the gleaming corestone crown in 4
+                // sweeping diagonal stone onion husks (ZERO closed bullseye target holes or hanging top arches!)
+                const r1 = Math.hypot((p0x - S * 0.30) * 0.88, (p0y - S * 0.94) * 0.96, (p0z - S * 0.32) * 0.90);
+                // Secondary flank spall notch on the opposite rear-left shoulder for 360-degree visual interest!
+                const r2 = Math.hypot((p0x + S * 0.48) * 0.92, (p0y - S * 0.68) * 1.02, (p0z + S * 0.44) * 0.92) + S * 0.16;
+                const rBase = smin(r1, r2, S * 0.14);
 
-                // Optional inner 2nd-tier overlapping onion-skin terrace inside large scars!
-                const spallN2 = scalarField3D(p0x * sf * 1.45 + 5.3, p0y * sf * 1.2, p0z * sf * 1.45 - 3.7, crackSalt + 509);
-                const scar2 = scar1 * smoothstep(thresh1 + 0.24, thresh1 + 0.38, spallN2);
+                // Bold multi-scale angular brittle rock-ledge deflection (royal-arches stepped granite scarps!)
+                const wf1 = 1.0 / (S * 0.30);
+                const wf2 = 1.0 / (S * 0.105);
+                const wShared = S * (
+                    0.085 * scalarField3D(p0x * wf1, p0y * wf1, p0z * wf1, crackSalt + 491) +
+                    0.032 * (Math.abs(scalarField3D(p0x * wf2, p0y * wf2, p0z * wf2, crackSalt + 499)) * 2.0 - 1.0)
+                );
+                // Keep basal apron cradled in intact outer onion shells near y=0 like a broken stone calyx!
+                const basalHold = Math.max(0.0, S * 0.14 - p0y) * 1.65;
+                const rSpall = rBase + wShared + basalHold;
 
-                const peelOffset = plateThick * (scar1 * 0.95 + scar2 * 0.75);
-                if (peelOffset > 1e-4)
+                // Asymmetric Fanned Terrace Widths: shells bunch into tight stacked multi-layer ledges on one flank
+                // and fan wide apart into broad cracked granite sheet aprons on the other (ZERO uniform parallel rings!)
+                const fanF = 1.0 / (S * 0.42);
+                const kf = 1.0 / (S * 0.15);
+                const fan3 = S * 0.095 * scalarField3D(p0x * fanF, p0y * fanF, p0z * fanF, crackSalt + 503);
+                const fan2 = S * (0.045 + 0.145 * (0.5 + 0.5 * scalarField3D(p0x * fanF + 4.2, p0y * fanF, p0z * fanF - 2.9, crackSalt + 509)));
+                const fan1 = S * (0.045 + 0.140 * (0.5 + 0.5 * scalarField3D(p0x * fanF - 3.6, p0y * fanF + 5.1, p0z * fanF, crackSalt + 517)));
+                const fan0 = S * (0.045 + 0.135 * (0.5 + 0.5 * scalarField3D(p0x * fanF + 1.9, p0y * fanF - 4.4, p0z * fanF + 3.3, crackSalt + 521)));
+
+                const kink3 = S * 0.028 * (Math.abs(scalarField3D(p0x * kf, p0y * kf, p0z * kf, crackSalt + 511)) * 2.0 - 1.0);
+                const kink2 = S * 0.028 * (Math.abs(scalarField3D(p0x * kf + 3.7, p0y * kf, p0z * kf, crackSalt + 523)) * 2.0 - 1.0);
+                const kink1 = S * 0.026 * (Math.abs(scalarField3D(p0x * kf - 4.3, p0y * kf, p0z * kf, crackSalt + 541)) * 2.0 - 1.0);
+                const kink0 = S * 0.024 * (Math.abs(scalarField3D(p0x * kf + 7.1, p0y * kf, p0z * kf, crackSalt + 557)) * 2.0 - 1.0);
+
+                const maxR = S * 0.78 * exfAct;
+                const dw3 = (maxR + fan3) - (rSpall + kink3);
+                const dw2 = Math.min(dw3 - S * 0.024, (maxR + fan3 - fan2 * exfAct) - (rSpall + kink2));
+                const dw1 = Math.min(dw2 - S * 0.024, (maxR + fan3 - (fan2 + fan1) * exfAct) - (rSpall + kink1));
+                const dw0 = Math.min(dw1 - S * 0.024, (maxR + fan3 - (fan2 + fan1 + fan0) * exfAct) - (rSpall + kink0));
+
+                // Pre-evaluate shell-confined polygonal plate joints ONCE so each onion shell breaks into individual curved slabs!
+                const pScale = (0.95 / S) * 3.6;
+                const pwx = 0.36 * scalarField3D(p0x * pScale * 0.5, p0y * pScale * 0.5, p0z * pScale * 0.5, crackSalt + 563);
+                const pwz = 0.36 * scalarField3D(p0x * pScale * 0.5 + 4.8, p0y * pScale * 0.5, p0z * pScale * 0.5 - 3.1, crackSalt + 569);
+                const plateClv = evalPlanarCleavage3D(p0x * pScale + pwx, p0y * pScale * 0.9, p0z * pScale + pwz, 0.80, crackSalt + 577);
+                const plateWallWorld = plateClv.wallDist / pScale;
+                const plateOpen = smoothstep(-0.18, 0.34, scalarField3D(p0x * pScale * 0.45, p0y * pScale * 0.45, p0z * pScale * 0.45, crackSalt + 587));
+
+                // Start from smooth warm salt-and-pepper Batholith Corestone (4 shells deep)!
+                let dOnionExt = dExt0 + 4.0 * hShell;
+                let onionFresh = 0.96 * exfAct;
+                let onionAge = 0.04;
+
+                const wSlot = hShell * 2.25; // ~33 cm deep dark undercut parting slot under every overhanging shell lip!
+                const dws = [dw0, dw1, dw2, dw3];
+                const freshTiers = [0.64, 0.36, 0.14, 0.00];
+                const ageTiers = [0.15, 0.38, 0.72, 1.00];
+
+                for (let k = 0; k < 4; k++)
                 {
-                    d += peelOffset;
-                    dMacro += peelOffset;
-                    crackFreshBoost = Math.max(crackFreshBoost, clamp(scar1 * 0.42 + scar2 * 0.28, 0.0, 0.68));
+                    const surfOff = (3 - k) * hShell;
+                    const dSurf = dExt0 + surfOff;
+                    const dw = dws[k];
+                    let dSlab = chamferMax(dSurf, dw, hShell * 0.13);
+
+                    // 1. Shell-Confined Polygonal Plate Joints: cleaves Shell k into chunky curved stone plates,
+                    //    stopping FLAT on top of Shell k-1 (`(-dSurf) - hShell * 0.95`)!
+                    const rimStress = smoothstep(-S * 0.42, 0.0, dw) * plateOpen * (0.58 + 0.15 * k);
+                    const plateAp = hShell * 0.24 * rimStress;
+                    if (plateAp > 0.0012)
+                    {
+                        const cutPlate = Math.max(plateWallWorld - plateAp, (-dSurf) - hShell * 0.95);
+                        dSlab = chamferSub(dSlab, cutPlate, plateAp * 0.42);
+                    }
+
+                    // 2. Overhanging basal unloading undercut slot tucked right under Shell k's broken rim!
+                    const tSlot = clamp(1.0 + dw / wSlot, 0.0, 1.0);
+                    if (tSlot > 0.001)
+                    {
+                        const aSlot = hShell * 0.24 * tSlot;
+                        const dSeamPlane = Math.abs(dSurf + hShell * 0.90);
+                        const cutSlot = Math.max(Math.max(dSeamPlane - aSlot, (-dw) - wSlot), dw - 0.025);
+                        dSlab = Math.max(dSlab, -cutSlot);
+                    }
+
+                    const blend = smoothstep(0.016, -0.016, dSlab - dOnionExt);
+                    if (dSlab < dOnionExt) dOnionExt = dSlab;
+                    onionFresh = mix(onionFresh, freshTiers[k] * exfAct, blend);
+                    onionAge = mix(onionAge, ageTiers[k], blend);
                 }
-            }
 
-            // Concentric subsurface unloading seams (carved when cross-section cutaway is active!)
-            const interiorDepth = -dMacro;
-            if (params.cutawayEnabled && upGate > 0.05 && interiorDepth > sheetSpacing * 0.45 && interiorDepth < sheetSpacing * 3.1)
-            {
-                const warpS = sheetSpacing * 0.14 * scalarField3D(p0x * 0.9, p0y * 0.9, p0z * 0.9, crackSalt + 409);
-                const sCoord = (interiorDepth + warpS) / sheetSpacing;
-                const fracS = sCoord - Math.floor(sCoord);
-                const seamDist = Math.min(fracS, 1.0 - fracS) * sheetSpacing;
-                const seamHalfAp = sheetSpacing * 0.09 * exfol * upGate;
-                if (seamHalfAp > 0.0015)
+                // Re-intersect onion-peeled exterior dome with crisp unshifted brittle fault chasm (`0.000 m` Fit-Test preserved!)
+                const dFrac0 = _bestMeta.dFrac;
+                const bevel0 = _bestMeta.bevel;
+                const dCombined = dFrac0 > -1e8 ? chamferMax(dOnionExt, dFrac0, bevel0) : dOnionExt;
+                d = dCombined;
+                dMacro = dCombined;
+
+                const extWeight = 1.0 - _bestMeta.freshMask;
+                crackFreshBoost = Math.max(crackFreshBoost, onionFresh * extWeight);
+                shellAgeFactor = mix(1.0, onionAge, exfAct * extWeight);
+
+                // Concentric subsurface unloading seams across the dome carapace when Cross-Section Cutaway Slice is active!
+                const rawDepth = -dExt0;
+                if (params.cutawayEnabled && rawDepth > hShell * 0.5 && rawDepth < hShell * 4.5 && dOnionExt < -0.02)
                 {
-                    d = Math.max(d, -(seamDist - seamHalfAp));
+                    const sCoord = rawDepth / hShell;
+                    const fracS = sCoord - Math.floor(sCoord);
+                    const seamDist = Math.min(fracS, 1.0 - fracS) * hShell;
+                    const seamAp = hShell * 0.11 * exfAct;
+                    d = Math.max(d, -(seamDist - seamAp));
                 }
             }
         }
 
-        // Irwin Finite-Depth V-Tipped Crack Wedge Profile:
-        // Cracks penetrate to exact depth `tipDepth = skinDepth * (0.30 + 0.70 * insolFactor)` and pinch linearly to a sharp V-tip!
-        const tipDepth = skinDepth * clamp(0.30 + 0.70 * insolFactor, 0.15, 1.35);
-        const vTaper = Math.max(0.0, 1.0 + Math.min(0.0, dMacro) / tipDepth);
+        // Irwin Finite-Depth V-Tipped Crack Wedge Profile (scaled by `shellAgeFactor` so freshly peeled inner corestone stays smooth!):
+        const tipDepth = skinDepth * clamp(0.30 + 0.70 * insolFactor, 0.15, 1.35) * (0.35 + 0.65 * shellAgeFactor);
+        const vTaper = Math.max(0.0, 1.0 + Math.min(0.0, dMacro) / tipDepth) * shellAgeFactor;
 
         // (B) Organic Curvilinear & Pinch-and-Swell 90° T-Junction Thermal Crazing!
         if (crazing90 > 0.01 && insolFactor > 0.02 && dMacro > -(tipDepth + S * 0.08))
@@ -1909,11 +2004,12 @@ export function evalFracturedFormationMaterial(formation, px, py, pz, nx, ny, nz
     let g = mix(theme.rind[1], theme.fresh[1], fresh) * strataMod;
     let b = mix(theme.rind[2], theme.fresh[2], fresh) * strataMod;
 
-    // Iron-oxide / limonite mineral staining along fracture cavities & water-seep streaks
-    const ironSeep = clamp(cav * 0.72 + fresh * 0.28 * (0.5 + 0.5 * scalarField3D(p0x * 2.1, p0y * 0.8, p0z * 2.1, crackSalt + 643)), 0.0, 1.0);
-    r = mix(r, theme.iron[0], ironSeep * 0.34);
-    g = mix(g, theme.iron[1], ironSeep * 0.34);
-    b = mix(b, theme.iron[2], ironSeep * 0.34);
+    // Iron-oxide / Liesegang spheroidal-weathering mineral staining along intermediate onion shells & fracture cavities!
+    const liesegang = Math.sin(clamp(fresh, 0.0, 1.0) * Math.PI);
+    const ironSeep = clamp(cav * 0.68 + liesegang * 0.52 + fresh * 0.18 * (0.5 + 0.5 * scalarField3D(p0x * 2.1, p0y * 0.8, p0z * 2.1, crackSalt + 643)), 0.0, 1.0);
+    r = mix(r, theme.iron[0], ironSeep * 0.40);
+    g = mix(g, theme.iron[1], ironSeep * 0.40);
+    b = mix(b, theme.iron[2], ironSeep * 0.40);
 
     // Subtle upward-facing alpine lichen / weathered cap tint on unfractured exterior tops
     const upLichen = (1.0 - fresh) * smoothstep(0.55, 0.92, ny) * clamp(0.5 + 0.5 * grain, 0.0, 1.0);
@@ -1942,11 +2038,11 @@ export function bakeFracturedFormationQefMesh(formation, options = {})
     const targetRes = clamp(options.resolution ?? params.meshResolution ?? 84, 36, 148);
     const voxelSize = spanMax / targetRes;
 
-    const posDispBound = Math.max(voxelSize * 2.0, params.scale * 0.032);
+    const posDispBound = Math.max(voxelSize * 2.0, params.scale * 0.065);
     const negDispBound = Math.max(
         voxelSize * 2.5,
-        (params.thermalSkinDepth ?? 0.44) * 1.15,
-        (params.exfoliationStrength ?? 0) > 0.02 ? params.scale * 0.12 : 0.08
+        (params.thermalSkinDepth ?? 0.44) * 1.25,
+        (params.exfoliationStrength ?? 0) > 0.14 ? params.scale * 0.14 : 0.09
     );
 
     const sdf = evaluateSparseSdf(bounds, voxelSize, {

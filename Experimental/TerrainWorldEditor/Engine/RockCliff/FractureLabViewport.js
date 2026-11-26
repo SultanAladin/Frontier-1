@@ -199,6 +199,12 @@ vec4 evalOrganic90Crazing3D(float u, float v, float w, float spacing, int salt) 
     return vec4(tier1Dist, tier2Dist, mod1, mod2);
 }
 
+float sminPoly(float a, float b, float k) {
+    if (k <= 1e-6) return min(a, b);
+    float h = max(k - abs(a - b), 0.0) / k;
+    return min(a, b) - h * h * k * 0.25;
+}
+
 float smaxPoly(float a, float b, float k) {
     if (k <= 1e-6) return max(a, b);
     float h = max(k - abs(a - b), 0.0) / k;
@@ -220,11 +226,16 @@ void main() {
     vec3 p = mix(uVolMin, uVolMax, vec3(uv.x, uv.y, uSliceZNorm));
 
     float bestD = 1e9;
+    float bestDExt = 1e9;
+    float bestDFrac = -1e9;
+    float bestBevel = 0.04;
     vec3 bestP0 = p;
     vec3 bestN = vec3(0.0, 1.0, 0.0);
     float bestFresh = 0.0;
     float bestStrata = 0.25;
     bool noCracks = false;
+
+    float exfRound = uScale * 0.088 * smoothstep(0.18, 0.95, uExfoliationStrength);
 
     for (int i = 0; i < 32; i++) {
         if (i >= uNumBlocks) break;
@@ -274,16 +285,18 @@ void main() {
             wa * 0.75 * scalarField3D(vec3(p0.x * wf + 5.7, p0.y * wf * 0.9 - 3.1, p0.z * wf), uCrackSalt + 137),
             wa * scalarField3D(vec3(p0.x * wf - 4.3, p0.y * wf * 0.9 + 6.2, p0.z * wf), uCrackSalt + 139)
         );
-        float kExt = bevel * (1.75 + 1.45 * abs(scalarField3D(p0 * (1.6 / uScale), uCrackSalt + 163)));
-        float invNormSoft = 1.0 / max(0.035, kExt * 0.55);
+        float kLse = max(0.012, (bevel * (0.95 + 0.85 * abs(scalarField3D(p0 * (1.6 / uScale), uCrackSalt + 163))) + exfRound) * 0.42);
+        float invKLse = 1.0 / kLse;
+        float invNormSoft = 1.0 / max(0.035, kLse * 1.35);
 
         float dFloor = -1e9;
-        float dExt = -1e9;
+        float bestExtPd = -1e9;
+        float sumExtExp = 0.0;
         float dFrac = -1e9;
         float bestTopPd = -1e9;
         vec3 sumN = vec3(0.0);
 
-        for (int j = 0; j < 20; j++) {
+        for (int j = 0; j < 28; j++) {
             if (j >= pCount) break;
             vec4 pl = texelFetch(uPlaneTex, ivec2(0, pStart + j), 0);
             float pType = texelFetch(uPlaneTex, ivec2(1, pStart + j), 0).x;
@@ -296,7 +309,12 @@ void main() {
                 dFloor = max(dFloor, pd);
             } else {
                 pd += extRelief + dot(pl.xyz, extWarp);
-                dExt = dExt < -1e8 ? pd : smaxPoly(dExt, pd, kExt);
+                if (pd > bestExtPd) {
+                    sumExtExp = bestExtPd > -1e8 ? sumExtExp * exp(max(-24.0, (bestExtPd - pd) * invKLse)) + 1.0 : 1.0;
+                    bestExtPd = pd;
+                } else {
+                    sumExtExp += exp(max(-24.0, (pd - bestExtPd) * invKLse));
+                }
             }
 
             if (pd > bestTopPd) {
@@ -309,6 +327,7 @@ void main() {
             }
         }
 
+        float dExt = bestExtPd > -1e8 ? (bestExtPd + kLse * log(max(1.0, sumExtExp))) : -1e9;
         float dMaxExt = dExt;
         if (dFloor > -1e8) dMaxExt = dMaxExt < -1e8 ? dFloor : max(dMaxExt, dFloor);
 
@@ -319,6 +338,9 @@ void main() {
 
         if (dBlk < bestD) {
             bestD = dBlk;
+            bestDExt = dMaxExt;
+            bestDFrac = dFrac;
+            bestBevel = bevel;
             bestP0 = p0;
             bestN = bN;
             noCracks = blkNoCracks;
@@ -332,10 +354,11 @@ void main() {
     float curMacro = bestD;
     float crackFresh = 0.0;
     float thermalStress = uThermalNorm;
+    float shellAgeFactor = 1.0;
 
-    float maxFineDepth = max(uSkinDepth * 2.1, uExfoliationStrength > 0.04 ? uScale * 0.12 : 0.10);
+    float maxFineDepth = max(uSkinDepth * 2.2, uExfoliationStrength > 0.14 ? uScale * 0.13 : 0.12);
     if (!noCracks && curMacro < uScale * 0.05 && curMacro > -maxFineDepth &&
-        (uCrazing90Strength > 0.01 || uVoronoiStrength > 0.01 || uExfoliationStrength > 0.04)) {
+        (uCrazing90Strength > 0.01 || uVoronoiStrength > 0.01 || uExfoliationStrength > 0.14)) {
 
         float ndots = max(1e-4, dot(bestN, uSunDir));
         float sunGate = clamp(pow(ndots, 1.25) + 0.10, 0.0, 1.0);
@@ -343,30 +366,96 @@ void main() {
         thermalStress = insol;
         vec3 p0 = bestP0;
 
-        if (uExfoliationStrength > 0.22) {
-            float plateThick = uScale * 0.015;
-            float upGate = smoothstep(-0.20, 0.32, bestN.y);
-            if (upGate > 0.005) {
-                float sf = 2.45 / uScale;
-                float spallN1 = scalarField3D(vec3(p0.x * sf, p0.y * sf * 0.8, p0.z * sf), uCrackSalt + 499) +
-                                0.22 * (abs(scalarField3D(p0 * (sf * 2.7), uCrackSalt + 503)) * 2.0 - 1.0);
-                float thresh1 = 0.56 - 0.52 * uExfoliationStrength;
-                float scar1 = smoothstep(thresh1, thresh1 + 0.14, spallN1) * upGate;
+        if (uExfoliationStrength > 0.14) {
+            float exfAct = smoothstep(0.14, 0.92, uExfoliationStrength);
+            float hShell = uScale * (0.0130 + 0.0070 * exfAct);
+            if (bestDExt > -(4.8 * hShell) && bestDExt < uScale * 0.04) {
+                float r1 = length(vec3((p0.x - uScale * 0.30) * 0.88, (p0.y - uScale * 0.94) * 0.96, (p0.z - uScale * 0.32) * 0.90));
+                float r2 = length(vec3((p0.x + uScale * 0.48) * 0.92, (p0.y - uScale * 0.68) * 1.02, (p0.z + uScale * 0.44) * 0.92)) + uScale * 0.16;
+                float rBase = sminPoly(r1, r2, uScale * 0.14);
 
-                float spallN2 = scalarField3D(vec3(p0.x * sf * 1.45 + 5.3, p0.y * sf * 1.2, p0.z * sf * 1.45 - 3.7), uCrackSalt + 509);
-                float scar2 = scar1 * smoothstep(thresh1 + 0.24, thresh1 + 0.38, spallN2);
+                float wf1 = 1.0 / (uScale * 0.30);
+                float wf2 = 1.0 / (uScale * 0.105);
+                float wShared = uScale * (
+                    0.085 * scalarField3D(p0 * wf1, uCrackSalt + 491) +
+                    0.032 * (abs(scalarField3D(p0 * wf2, uCrackSalt + 499)) * 2.0 - 1.0)
+                );
+                float basalHold = max(0.0, uScale * 0.14 - p0.y) * 1.65;
+                float rSpall = rBase + wShared + basalHold;
 
-                float peelOffset = plateThick * (scar1 * 0.95 + scar2 * 0.75);
-                if (peelOffset > 1e-4) {
-                    d += peelOffset;
-                    curMacro += peelOffset;
-                    crackFresh = max(crackFresh, clamp(scar1 * 0.42 + scar2 * 0.28, 0.0, 0.68));
+                float fanF = 1.0 / (uScale * 0.42);
+                float kf = 1.0 / (uScale * 0.15);
+                float fan3 = uScale * 0.095 * scalarField3D(p0 * fanF, uCrackSalt + 503);
+                float fan2 = uScale * (0.045 + 0.145 * (0.5 + 0.5 * scalarField3D(p0 * fanF + vec3(4.2, 0.0, -2.9), uCrackSalt + 509)));
+                float fan1 = uScale * (0.045 + 0.140 * (0.5 + 0.5 * scalarField3D(p0 * fanF + vec3(-3.6, 5.1, 0.0), uCrackSalt + 517)));
+                float fan0 = uScale * (0.045 + 0.135 * (0.5 + 0.5 * scalarField3D(p0 * fanF + vec3(1.9, -4.4, 3.3), uCrackSalt + 521)));
+
+                float kink3 = uScale * 0.028 * (abs(scalarField3D(p0 * kf, uCrackSalt + 511)) * 2.0 - 1.0);
+                float kink2 = uScale * 0.028 * (abs(scalarField3D(p0 * kf + vec3(3.7, 0.0, 0.0), uCrackSalt + 523)) * 2.0 - 1.0);
+                float kink1 = uScale * 0.026 * (abs(scalarField3D(p0 * kf + vec3(-4.3, 0.0, 0.0), uCrackSalt + 541)) * 2.0 - 1.0);
+                float kink0 = uScale * 0.024 * (abs(scalarField3D(p0 * kf + vec3(7.1, 0.0, 0.0), uCrackSalt + 557)) * 2.0 - 1.0);
+
+                float maxR = uScale * 0.78 * exfAct;
+                float dw3 = (maxR + fan3) - (rSpall + kink3);
+                float dw2 = min(dw3 - uScale * 0.024, (maxR + fan3 - fan2 * exfAct) - (rSpall + kink2));
+                float dw1 = min(dw2 - uScale * 0.024, (maxR + fan3 - (fan2 + fan1) * exfAct) - (rSpall + kink1));
+                float dw0 = min(dw1 - uScale * 0.024, (maxR + fan3 - (fan2 + fan1 + fan0) * exfAct) - (rSpall + kink0));
+
+                float pScale = (0.95 / uScale) * 3.6;
+                float pwx = 0.36 * scalarField3D(p0 * (pScale * 0.5), uCrackSalt + 563);
+                float pwz = 0.36 * scalarField3D(p0 * (pScale * 0.5) + vec3(4.8, 0.0, -3.1), uCrackSalt + 569);
+                vec2 plateClv = evalFastCleavage3D(vec3(p0.x * pScale + pwx, p0.y * pScale * 0.9, p0.z * pScale + pwz), 0.62, uCrackSalt + 577);
+                float plateWallWorld = plateClv.x / pScale;
+                float plateOpen = smoothstep(-0.18, 0.34, scalarField3D(p0 * (pScale * 0.45), uCrackSalt + 587));
+
+                float dOnionExt = bestDExt + 4.0 * hShell;
+                float onionFresh = 0.96 * exfAct;
+                float onionAge = 0.04;
+                float wSlot = hShell * 2.25;
+
+                float dws[4] = float[4](dw0, dw1, dw2, dw3);
+                float freshTiers[4] = float[4](0.64, 0.36, 0.14, 0.00);
+                float ageTiers[4] = float[4](0.15, 0.38, 0.72, 1.00);
+
+                for (int k = 0; k < 4; k++) {
+                    float surfOff = float(3 - k) * hShell;
+                    float dSurf = bestDExt + surfOff;
+                    float dw = dws[k];
+                    float dSlab = chamferMax(dSurf, dw, hShell * 0.13);
+
+                    float rimStress = smoothstep(-uScale * 0.42, 0.0, dw) * plateOpen * (0.58 + 0.15 * float(k));
+                    float plateAp = hShell * 0.24 * rimStress;
+                    if (plateAp > 0.0012) {
+                        float cutPlate = max(plateWallWorld - plateAp, (-dSurf) - hShell * 0.95);
+                        dSlab = chamferSub(dSlab, cutPlate, plateAp * 0.42);
+                    }
+
+                    float tSlot = clamp(1.0 + dw / wSlot, 0.0, 1.0);
+                    if (tSlot > 0.001) {
+                        float aSlot = hShell * 0.24 * tSlot;
+                        float dSeamPlane = abs(dSurf + hShell * 0.90);
+                        float cutSlot = max(max(dSeamPlane - aSlot, (-dw) - wSlot), dw - 0.025);
+                        dSlab = max(dSlab, -cutSlot);
+                    }
+
+                    float blend = smoothstep(0.016, -0.016, dSlab - dOnionExt);
+                    dOnionExt = min(dOnionExt, dSlab);
+                    onionFresh = mix(onionFresh, freshTiers[k] * exfAct, blend);
+                    onionAge = mix(onionAge, ageTiers[k], blend);
                 }
+
+                float dCombined = bestDFrac > -1e8 ? chamferMax(dOnionExt, bestDFrac, bestBevel) : dOnionExt;
+                d = dCombined;
+                curMacro = dCombined;
+
+                float extWeight = 1.0 - bestFresh;
+                crackFresh = max(crackFresh, onionFresh * extWeight);
+                shellAgeFactor = mix(1.0, onionAge, exfAct * extWeight);
             }
         }
 
-        float tipDepth = max(0.06, uSkinDepth) * clamp(0.30 + 0.70 * insol, 0.15, 1.35);
-        float vTaper = max(0.0, 1.0 + min(0.0, curMacro) / tipDepth);
+        float tipDepth = max(0.06, uSkinDepth) * clamp(0.30 + 0.70 * insol, 0.15, 1.35) * (0.35 + 0.65 * shellAgeFactor);
+        float vTaper = max(0.0, 1.0 + min(0.0, curMacro) / tipDepth) * shellAgeFactor;
 
         if (uCrazing90Strength > 0.01 && insol > 0.02 && curMacro > -(tipDepth + uScale * 0.06)) {
             vec3 an = abs(bestN);
@@ -624,13 +713,16 @@ void main() {
         if (isCutaway) {
             float depth = max(0.0, -dOrig);
             float skinZone = exp(-depth / max(0.06, uSkinDepth));
-            float ring = 0.5 + 0.5 * cos((depth / 0.18) * 6.2831853);
+            float ring = 0.5 + 0.5 * cos((depth / 0.15) * 6.2831853);
             float isoLine = smoothstep(0.90, 0.99, ring);
             albedo = mix(uColFresh * 0.85, uColIron * 1.15, skinZone * 0.58);
             albedo = mix(albedo, vec3(0.96, 0.87, 0.62), isoLine * 0.52);
+            float seamBand = step(depth, 0.62) * smoothstep(0.92, 0.995, ring);
+            albedo = mix(albedo, uColRind * 0.42, seamBand * 0.78);
         } else {
             albedo = mix(uColRind, uColFresh, freshMask) * strataMod;
-            albedo = mix(albedo, uColIron, clamp(cav * 0.7 + freshMask * 0.2, 0.0, 1.0) * 0.34);
+            float liesegang = sin(clamp(freshMask, 0.0, 1.0) * 3.14159265);
+            albedo = mix(albedo, uColIron, clamp(cav * 0.68 + liesegang * 0.58, 0.0, 1.0) * 0.44);
             float upLichen = (1.0 - freshMask) * smoothstep(0.55, 0.92, n.y);
             albedo = mix(albedo, uColLichen, upLichen * 0.28);
             albedo *= (1.0 + edg * 0.18 - cav * 0.18);
