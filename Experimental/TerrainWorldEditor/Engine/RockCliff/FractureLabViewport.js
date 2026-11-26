@@ -45,6 +45,7 @@ uniform vec3 uVolMax;
 uniform float uSliceZNorm;
 
 uniform float uScale;
+uniform vec3 uFormDims;
 uniform vec3 uSunDir;
 uniform float uJigsawRoughness;
 uniform float uPlumoseStrength;
@@ -242,7 +243,7 @@ void main() {
     float exfRound = uScale * 0.088 * smoothstep(0.18, 0.95, uExfoliationStrength);
     float chemRound = uScale * 0.056 * uChemicalDissolution;
 
-    for (int i = 0; i < 32; i++) {
+    for (int i = 0; i < 96; i++) {
         if (i >= uNumBlocks) break;
         vec4 sph = texelFetch(uBlockTex, ivec2(0, i), 0);
         float lowerB = length(p - sph.xyz) - sph.w - uScale * 0.085;
@@ -295,9 +296,10 @@ void main() {
         );
 
         float basalNotch = 0.0;
-        if (uChemicalDissolution > 0.01 && !blkNoCracks && p.y < uScale * 0.32) {
-            float yRel = (p.y - uScale * 0.095) / (uScale * 0.076);
-            float notchBell = exp(-yRel * yRel) * smoothstep(0.0, uScale * 0.028, p.y);
+        float wyNotch = p.y / min(1.15, max(0.30, uFormDims.y));
+        if (uChemicalDissolution > 0.01 && !blkNoCracks && wyNotch < uScale * 0.32) {
+            float yRel = (wyNotch - uScale * 0.095) / (uScale * 0.076);
+            float notchBell = exp(-yRel * yRel) * smoothstep(0.0, uScale * 0.028, wyNotch);
             float bedMod = 0.74 + 0.26 * sin(p0.y * (12.0 / uScale) + 1.1 * scalarField3D(p0 * (1.5 / uScale), uCrackSalt + 701));
             basalNotch = uScale * 0.058 * uChemicalDissolution * notchBell * bedMod;
         }
@@ -313,7 +315,7 @@ void main() {
         float bestTopPd = -1e9;
         vec3 sumN = vec3(0.0);
 
-        for (int j = 0; j < 28; j++) {
+        for (int j = 0; j < 36; j++) {
             if (j >= pCount) break;
             vec4 pl = texelFetch(uPlaneTex, ivec2(0, pStart + j), 0);
             float pType = texelFetch(uPlaneTex, ivec2(1, pStart + j), 0).x;
@@ -388,13 +390,16 @@ void main() {
         float insol = mix(1.0, sunGate, uDirectionalBias) * uThermalNorm;
         thermalStress = insol;
         vec3 p0 = bestP0;
+        vec3 fDims = max(vec3(0.30), uFormDims);
+        float wyNorm = p.y / fDims.y;
 
         if (uExfoliationStrength > 0.14) {
             float exfAct = smoothstep(0.14, 0.92, uExfoliationStrength);
             float hShell = uScale * (0.0130 + 0.0070 * exfAct);
             if (bestDExt > -(4.8 * hShell) && bestDExt < uScale * 0.04) {
-                float r1 = length(vec3((p0.x - uScale * 0.30) * 0.88, (p0.y - uScale * 0.94) * 0.96, (p0.z - uScale * 0.32) * 0.90));
-                float r2 = length(vec3((p0.x + uScale * 0.48) * 0.92, (p0.y - uScale * 0.68) * 1.02, (p0.z + uScale * 0.44) * 0.92)) + uScale * 0.16;
+                vec3 q = p0 / fDims;
+                float r1 = length(vec3((q.x - uScale * 0.30) * 0.88, (q.y - uScale * 0.94) * 0.96, (q.z - uScale * 0.32) * 0.90));
+                float r2 = length(vec3((q.x + uScale * 0.48) * 0.92, (q.y - uScale * 0.68) * 1.02, (q.z + uScale * 0.44) * 0.92)) + uScale * 0.16;
                 float rBase = sminPoly(r1, r2, uScale * 0.14);
 
                 float wf1 = 1.0 / (uScale * 0.30);
@@ -403,7 +408,7 @@ void main() {
                     0.085 * scalarField3D(p0 * wf1, uCrackSalt + 491) +
                     0.032 * (abs(scalarField3D(p0 * wf2, uCrackSalt + 499)) * 2.0 - 1.0)
                 );
-                float basalHold = max(0.0, uScale * 0.14 - p0.y) * 1.65;
+                float basalHold = max(0.0, uScale * 0.14 - q.y) * 1.65;
                 float rSpall = rBase + wShared + basalHold;
 
                 float fanF = 1.0 / (uScale * 0.42);
@@ -538,8 +543,8 @@ void main() {
             }
         }
 
-        if (uChemicalDissolution > 0.01 && p.y < uScale * 0.28) {
-            float yRel = (p.y - uScale * 0.095) / (uScale * 0.082);
+        if (uChemicalDissolution > 0.01 && wyNorm < uScale * 0.28) {
+            float yRel = (wyNorm - uScale * 0.095) / (uScale * 0.082);
             chemStain = max(chemStain, clamp(exp(-yRel * yRel) * uChemicalDissolution * 0.95, 0.0, 1.0));
         }
 
@@ -547,7 +552,7 @@ void main() {
 
         if (uTafoniHoneycomb > 0.01 && extRindGate > 0.02 && curMacro > -uScale * 0.075) {
             float shelterGate = smoothstep(0.62, -0.02, bestN.y);
-            float heightZone = smoothstep(uScale * 0.03, uScale * 0.11, p.y) * smoothstep(uScale * 0.88, uScale * 0.54, p.y + uScale * 0.20 * uKarrenFlutes);
+            float heightZone = smoothstep(uScale * 0.03, uScale * 0.11, wyNorm) * smoothstep(uScale * 0.88, uScale * 0.54, wyNorm + uScale * 0.20 * uKarrenFlutes);
             float patchN = scalarField3D(vec3(p0.x * (1.15 / uScale), p0.y * (1.55 / uScale), p0.z * (1.15 / uScale)), uCrackSalt + 719);
             float colonyGate = smoothstep(-0.20 + (1.0 - uTafoniHoneycomb) * 0.36, 0.32, patchN) * shelterGate * heightZone * extRindGate;
 
@@ -585,7 +590,7 @@ void main() {
         }
 
         if (uKarrenFlutes > 0.01 && extRindGate > 0.02 && curMacro > -uScale * 0.075) {
-            float rainGate = smoothstep(-0.10, 0.36, bestN.y) * smoothstep(uScale * 0.16, uScale * 0.40, p.y) * extRindGate;
+            float rainGate = smoothstep(-0.10, 0.36, bestN.y) * smoothstep(uScale * 0.16, uScale * 0.40, wyNorm) * extRindGate;
             if (rainGate > 0.01) {
                 float kw = uScale * 0.018;
                 float kx = p0.x + kw * scalarField3D(vec3(p0.x * (1.6 / uScale), p0.y * (0.40 / uScale), p0.z * (1.6 / uScale)), uCrackSalt + 769);
@@ -603,7 +608,7 @@ void main() {
                 chemStain = max(chemStain, u1 * rainGate * uKarrenFlutes * 0.48);
             }
 
-            float benchGate = smoothstep(0.75, 0.94, bestN.y) * smoothstep(uScale * 0.28, uScale * 0.48, p.y) * extRindGate;
+            float benchGate = smoothstep(0.75, 0.94, bestN.y) * smoothstep(uScale * 0.28, uScale * 0.48, wyNorm) * extRindGate;
             if (benchGate > 0.01) {
                 float gs = 3.8 / uScale;
                 vec3 gc = evalFastCleavage3D(vec3(p0.x * gs, p0.y * gs * 0.35, p0.z * gs), 0.58, uCrackSalt + 809);
@@ -1213,6 +1218,12 @@ export class FractureLabViewport
         gl.uniform3fv(gl.getUniformLocation(this.bakeProg, 'uVolMax'), this.volMax);
 
         gl.uniform1f(gl.getUniformLocation(this.bakeProg, 'uScale'), params.scale);
+        gl.uniform3f(
+            gl.getUniformLocation(this.bakeProg, 'uFormDims'),
+            clamp(params.formWidth ?? 1.0, 0.35, 2.50),
+            clamp(params.formHeight ?? 1.0, 0.30, 2.20),
+            clamp(params.formLength ?? 1.0, 0.35, 2.50)
+        );
         gl.uniform3fv(gl.getUniformLocation(this.bakeProg, 'uSunDir'), sunDir);
         gl.uniform1f(gl.getUniformLocation(this.bakeProg, 'uJigsawRoughness'), params.jigsawRoughness ?? 0.55);
         gl.uniform1f(gl.getUniformLocation(this.bakeProg, 'uPlumoseStrength'), params.plumoseStrength ?? 0.60);

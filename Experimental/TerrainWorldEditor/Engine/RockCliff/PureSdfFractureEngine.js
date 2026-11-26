@@ -528,8 +528,31 @@ export function compileFractureBlock(poly, options = {})
 }
 
 /*==========================================================================================================================================
-                                     2. CURATED PURE-SDF FRACTURE SHOWCASE PRESETS
+                                     2. CURATED PURE-SDF ROCK FORMATION PRESETS & BASE FORMS
 ==========================================================================================================================================*/
+
+export const BASE_FORM_SHAPES_POLY = [
+    ['Preset Natural Form', 'default'],
+    ['Rounded Dome / Boulder', 'dome'],
+    ['Balanced Pedestal Boulder', 'mushroom'],
+    ['Tall Tapered Spire / Peak', 'tower'],
+    ['Elongated Fin / Cliff Wall', 'ridge'],
+    ['Flat-Topped Blocky Mesa', 'mesa']
+];
+
+export const BASE_FORM_SHAPES_BASALT = [
+    ['Stepped Cliff Escarpment', 'cliff'],
+    ['Volcanic Plug / Tower Mound', 'mound'],
+    ['Long Causeway Dyke / Wall', 'ridge'],
+    ['Curved Cove Amphitheater', 'amphitheater']
+];
+
+export const SPLIT_PATTERN_OPTIONS = [
+    ['Unsplit Solid Monolith (0 Splits)', 'none'],
+    ['Single Laser / Fault Split (Al-Naslaa)', 'single'],
+    ['Twin Parallel Splits (3 Slabs)', 'parallel'],
+    ['Crossed Conjugate Splits', 'cross']
+];
 
 export const FRACTURE_PRESETS = [
     {
@@ -538,10 +561,22 @@ export const FRACTURE_PRESETS = [
         badge: 'JIGSAW + HINGE',
         subtitle: 'Basal-hinged granite buttress split with interlocking jigsaw walls, chockstones & fallen talus',
         lithology: 'granite',
+        isBasaltColonnade: false,
         defaults: {
             presetId: 'cracked-monolith',
             seed: 1337,
             scale: 7.2,
+            baseFormShape: 'default',
+            formWidth: 1.0,
+            formHeight: 1.0,
+            formLength: 1.0,
+            formTaper: 0.0,
+            formAsymmetry: 0.0,
+            columnRadiusScale: 1.0,
+            splitMode: 'single',
+            splitOffset: 0.0,
+            splitAngleDeg: 24,
+            splitDipDeg: 3,
             chasmAperture: 0.62,
             hingeTiltDeg: 5.8,
             faultHeave: 0.52,
@@ -572,12 +607,15 @@ export const FRACTURE_PRESETS = [
                 title: 'Monolith Split & Block Motion',
                 glyph: 'Boxes',
                 badge: 'TECTONIC',
-                hint: 'Controls the master tensile split, basal hinge rotation, and interlocking jigsaw wall teeth.',
+                hint: 'Control split pattern, chasm width, fault position/angle, basal hinge tilt & interlocking jigsaw wall teeth.',
                 controls: [
-                    { key: 'chasmAperture', label: 'Chasm Split Width', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true },
-                    { key: 'hingeTiltDeg', label: 'Basal Hinge Tilt', min: 0.0, max: 14.0, step: 0.1, decimals: 1, unit: '°', structural: true },
-                    { key: 'faultHeave', label: 'Normal-Fault Drop', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true },
-                    { key: 'jigsawRoughness', label: 'Jigsaw Wall Roughness', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false },
+                    { type: 'select', key: 'splitMode', label: 'Split Pattern', options: SPLIT_PATTERN_OPTIONS, structural: true, rebuildInspector: true },
+                    { key: 'chasmAperture', label: 'Chasm Split Width', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true, whenSplit: true },
+                    { key: 'splitOffset', label: 'Split Position', min: -0.42, max: 0.42, step: 0.01, decimals: 2, unit: 'x', structural: true, whenSplit: true },
+                    { key: 'splitAngleDeg', label: 'Split Strike Angle', min: -90, max: 90, step: 1, decimals: 0, unit: '°', structural: true, whenSplit: true },
+                    { key: 'hingeTiltDeg', label: 'Basal Hinge Tilt', min: 0.0, max: 14.0, step: 0.1, decimals: 1, unit: '°', structural: true, whenSplit: true },
+                    { key: 'faultHeave', label: 'Normal-Fault Drop', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true, whenSplit: true },
+                    { key: 'jigsawRoughness', label: 'Jigsaw Wall Roughness', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false, whenSplit: true },
                     { key: 'spallCalving', label: 'Fallen Pedestal Talus', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true }
                 ]
             },
@@ -598,12 +636,24 @@ export const FRACTURE_PRESETS = [
         id: 'al-naslaa-split',
         name: '02 · Al-Naslaa Laser-Split Boulder',
         badge: 'DESERT TAFONI',
-        subtitle: 'Balanced twin sandstone megaliths on undercut pedestals with continuous cross-beds & honeycomb tafoni',
+        subtitle: 'Balanced twin sandstone megaliths on undercut pedestals with controllable laser split, cross-beds & tafoni',
         lithology: 'sandstone',
+        isBasaltColonnade: false,
         defaults: {
             presetId: 'al-naslaa-split',
             seed: 4021,
             scale: 7.0,
+            baseFormShape: 'default',
+            formWidth: 1.0,
+            formHeight: 1.0,
+            formLength: 1.0,
+            formTaper: 0.0,
+            formAsymmetry: 0.0,
+            columnRadiusScale: 1.0,
+            splitMode: 'single',
+            splitOffset: 0.0,
+            splitAngleDeg: 16,
+            splitDipDeg: 1,
             chasmAperture: 0.50,
             hingeTiltDeg: 2.1,
             faultHeave: 0.28,
@@ -631,23 +681,29 @@ export const FRACTURE_PRESETS = [
         },
         controlGroups: [
             {
-                title: 'Twin Megaliths & Cross-Bedding',
+                title: 'Al-Naslaa Split & Pedestal Balance',
                 glyph: 'Boxes',
-                badge: 'SANDSTONE',
-                hint: 'Adjusts the razor tensile split, balanced pedestal cant, and horizontal sedimentary bedding ledges.',
+                badge: 'LASER SPLIT',
+                hint: 'Control split pattern (0, 1, 2 or crossed splits), gap width, split position, angle, dip & pedestal cant.',
                 controls: [
-                    { key: 'chasmAperture', label: 'Laser Joint Gap', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true },
-                    { key: 'hingeTiltDeg', label: 'Pedestal Balance Cant', min: 0.0, max: 10.0, step: 0.1, decimals: 1, unit: '°', structural: true },
-                    { key: 'faultHeave', label: 'Twin Vertical Offset', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true },
-                    { key: 'strataContrast', label: 'Sedimentary Cross-Beds', min: 0.0, max: 1.5, step: 0.02, decimals: 2, unit: 'w', structural: false }
+                    { type: 'select', key: 'splitMode', label: 'Split Pattern', options: SPLIT_PATTERN_OPTIONS, structural: true, rebuildInspector: true },
+                    { key: 'chasmAperture', label: 'Laser Split Width', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true, whenSplit: true },
+                    { key: 'splitOffset', label: 'Split Position', min: -0.42, max: 0.42, step: 0.01, decimals: 2, unit: 'x', structural: true, whenSplit: true },
+                    { key: 'splitAngleDeg', label: 'Split Strike Angle', min: -90, max: 90, step: 1, decimals: 0, unit: '°', structural: true, whenSplit: true },
+                    { key: 'splitDipDeg', label: 'Split Tilt (Dip)', min: -35, max: 35, step: 1, decimals: 0, unit: '°', structural: true, whenSplit: true },
+                    { key: 'hingeTiltDeg', label: 'Pedestal Balance Cant', min: 0.0, max: 12.0, step: 0.1, decimals: 1, unit: '°', structural: true, whenSplit: true },
+                    { key: 'faultHeave', label: 'Twin Vertical Offset', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true, whenSplit: true },
+                    { key: 'jigsawRoughness', label: 'Split Wall Roughness', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false, whenSplit: true }
                 ]
             },
             {
-                title: 'Desert Crazing & Chemical Tafoni',
+                title: 'Cross-Beds, Exfoliation & Tafoni',
                 glyph: 'Activity',
-                badge: 'CHEMICAL',
-                hint: 'Salt-hydration honeycomb tafoni caves, basal pedestal undercutting, and desert thermal crazing.',
+                badge: 'SANDSTONE',
+                hint: 'Horizontal sedimentary cross-bedding, onion-skin rind peeling, desert crazing & honeycomb tafoni caves.',
                 controls: [
+                    { key: 'strataContrast', label: 'Sedimentary Cross-Beds', min: 0.0, max: 1.5, step: 0.02, decimals: 2, unit: 'w', structural: false },
+                    { key: 'exfoliationStrength', label: 'Onion-Skin Rind Peeling', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false },
                     { key: 'tafoniHoneycomb', label: 'Honeycomb Tafoni Caves', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false },
                     { key: 'chemicalDissolution', label: 'Basal Salt Undercut', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false },
                     { key: 'crazing90Strength', label: 'Desert Thermal Crazing', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false }
@@ -659,12 +715,24 @@ export const FRACTURE_PRESETS = [
         id: 'thermal-90-fin',
         name: '03 · 90° Sun-Crazed Desert Fin',
         badge: '90° T-JUNCTIONS',
-        subtitle: 'Navajo red-sandstone fin carved by directional solar ΔT orthogonal T-junction cracks & rain alcoves',
+        subtitle: 'Navajo red-sandstone fin carved by directional solar ΔT orthogonal T-junction cracks & cross-fin splits',
         lithology: 'redSandstone',
+        isBasaltColonnade: false,
         defaults: {
             presetId: 'thermal-90-fin',
             seed: 7719,
             scale: 7.0,
+            baseFormShape: 'default',
+            formWidth: 1.0,
+            formHeight: 1.0,
+            formLength: 1.0,
+            formTaper: 0.0,
+            formAsymmetry: 0.0,
+            columnRadiusScale: 1.0,
+            splitMode: 'parallel',
+            splitOffset: 0.02,
+            splitAngleDeg: 18,
+            splitDipDeg: 0,
             chasmAperture: 0.36,
             hingeTiltDeg: 2.8,
             faultHeave: 0.22,
@@ -704,13 +772,16 @@ export const FRACTURE_PRESETS = [
                 ]
             },
             {
-                title: 'Sandstone Fin & Chemical Erosion',
+                title: 'Fin Splits & Chemical Alcoves',
                 glyph: 'Boxes',
-                badge: 'ALCOVES',
-                hint: 'Master cross-fin joints plus honeycomb tafoni alcoves and rainwater solution runnels.',
+                badge: 'FIN SPLITS',
+                hint: 'Cross-fin vertical splits plus honeycomb tafoni alcoves and rainwater solution runnels.',
                 controls: [
-                    { key: 'chasmAperture', label: 'Cross-Fin Joint Gap', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true },
-                    { key: 'faultHeave', label: 'Tower Step Drop', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true },
+                    { type: 'select', key: 'splitMode', label: 'Fin Split Pattern', options: SPLIT_PATTERN_OPTIONS, structural: true, rebuildInspector: true },
+                    { key: 'chasmAperture', label: 'Cross-Fin Joint Gap', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true, whenSplit: true },
+                    { key: 'splitOffset', label: 'Split Position', min: -0.42, max: 0.42, step: 0.01, decimals: 2, unit: 'x', structural: true, whenSplit: true },
+                    { key: 'splitAngleDeg', label: 'Split Strike Angle', min: -90, max: 90, step: 1, decimals: 0, unit: '°', structural: true, whenSplit: true },
+                    { key: 'faultHeave', label: 'Tower Step Drop', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true, whenSplit: true },
                     { key: 'tafoniHoneycomb', label: 'Alcove Tafoni Pockets', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false },
                     { key: 'karrenFlutes', label: 'Rain Solution Flutes', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false }
                 ]
@@ -721,16 +792,28 @@ export const FRACTURE_PRESETS = [
         id: 'exfoliation-dome',
         name: '04 · Granite Exfoliation Dome',
         badge: 'ONION-SKIN SDF',
-        subtitle: '4 concentric spheroidal granite onion shells with undercut parting shadows peeling off a batholith corestone',
+        subtitle: '4 concentric granite onion-skin shells with full Al-Naslaa boulder split controls & corestone rounding',
         lithology: 'sierraGranite',
+        isBasaltColonnade: false,
         defaults: {
             presetId: 'exfoliation-dome',
             seed: 9104,
             scale: 7.4,
-            chasmAperture: 0.20,
-            hingeTiltDeg: 1.6,
-            faultHeave: 0.12,
-            jigsawRoughness: 0.34,
+            baseFormShape: 'default',
+            formWidth: 1.0,
+            formHeight: 1.0,
+            formLength: 1.0,
+            formTaper: 0.0,
+            formAsymmetry: 0.0,
+            columnRadiusScale: 1.0,
+            splitMode: 'single',
+            splitOffset: 0.08,
+            splitAngleDeg: 30,
+            splitDipDeg: 2,
+            chasmAperture: 0.34,
+            hingeTiltDeg: 2.0,
+            faultHeave: 0.14,
+            jigsawRoughness: 0.18,
             plumoseStrength: 0.35,
             edgeChamfer: 0.72,
             strataContrast: 0.25,
@@ -754,26 +837,33 @@ export const FRACTURE_PRESETS = [
         },
         controlGroups: [
             {
-                title: 'Concentric Onion-Skin Shells',
-                glyph: 'Layers',
-                badge: '4 SHELLS',
-                hint: 'Peels 4 overhanging concentric granite sheets with basal undercut shadows around a smooth corestone.',
+                title: 'Boulder Split Control (Al-Naslaa / Fault)',
+                glyph: 'Boxes',
+                badge: 'SPLIT CONTROL',
+                hint: 'Choose Unsplit Solid, Single Laser Split (like Al-Naslaa), Twin Parallel or Crossed Splits — with full control over width, position, angle, dip & tilt.',
                 controls: [
-                    { key: 'exfoliationStrength', label: 'Onion-Skin Peeling', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false },
-                    { key: 'edgeChamfer', label: 'Corestone Dome Rounding', min: 0.10, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true },
-                    { key: 'chasmAperture', label: 'Center Tectonic Split', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true },
-                    { key: 'spallCalving', label: 'Fallen Shell Slabs', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true }
+                    { type: 'select', key: 'splitMode', label: 'Split Pattern', options: SPLIT_PATTERN_OPTIONS, structural: true, rebuildInspector: true },
+                    { key: 'chasmAperture', label: 'Split Gap Width', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true, whenSplit: true },
+                    { key: 'splitOffset', label: 'Split Position', min: -0.45, max: 0.45, step: 0.01, decimals: 2, unit: 'x', structural: true, whenSplit: true },
+                    { key: 'splitAngleDeg', label: 'Split Strike Angle', min: -90, max: 90, step: 1, decimals: 0, unit: '°', structural: true, whenSplit: true },
+                    { key: 'splitDipDeg', label: 'Split Tilt (Dip)', min: -35, max: 35, step: 1, decimals: 0, unit: '°', structural: true, whenSplit: true },
+                    { key: 'hingeTiltDeg', label: 'Split Block Lean', min: 0.0, max: 14.0, step: 0.1, decimals: 1, unit: '°', structural: true, whenSplit: true },
+                    { key: 'faultHeave', label: 'Split Vertical Drop', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true, whenSplit: true },
+                    { key: 'jigsawRoughness', label: 'Split Wall Roughness', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false, whenSplit: true }
                 ]
             },
             {
-                title: 'Outer Husk Cracks & Chemical Pans',
-                glyph: 'Activity',
-                badge: 'PSEUDOKARST',
-                hint: 'Polygonal crust fractures on older outer shells plus granite gnamma solution flutes & saprolite undercut.',
+                title: 'Concentric Onion-Skin Shells & Weathering',
+                glyph: 'Layers',
+                badge: '4 SHELLS',
+                hint: 'Peels 4 overhanging concentric granite sheets around the corestone, plus outer husk cracks & gnamma pans.',
                 controls: [
+                    { key: 'exfoliationStrength', label: 'Onion-Skin Peeling', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false },
+                    { key: 'edgeChamfer', label: 'Corestone Dome Rounding', min: 0.10, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true },
                     { key: 'voronoiJointStrength', label: 'Outer Husk Cracks', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false },
                     { key: 'karrenFlutes', label: 'Rain Flutes & Gnamma Pans', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false },
-                    { key: 'chemicalDissolution', label: 'Basal Saprolite Notch', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false }
+                    { key: 'chemicalDissolution', label: 'Basal Saprolite Notch', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false },
+                    { key: 'spallCalving', label: 'Fallen Shell Slabs', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true }
                 ]
             }
         ]
@@ -782,12 +872,24 @@ export const FRACTURE_PRESETS = [
         id: 'columnar-basalt',
         name: '05 · Columnar Basalt Cooling Cliff',
         badge: 'HEX COOLING',
-        subtitle: 'Thermal contraction hexagonal basalt columns with stepped chisel cross-joints & toppled drums',
+        subtitle: 'Procedural hexagonal basalt colonnade with custom cliff/plug/causeway forms, column diameter & sea-gorge split',
         lithology: 'basalt',
+        isBasaltColonnade: true,
         defaults: {
             presetId: 'columnar-basalt',
             seed: 5512,
             scale: 7.2,
+            baseFormShape: 'cliff',
+            formWidth: 1.0,
+            formHeight: 1.0,
+            formLength: 1.0,
+            formTaper: 0.0,
+            formAsymmetry: 0.0,
+            columnRadiusScale: 1.0,
+            splitMode: 'cross',
+            splitOffset: 0.0,
+            splitAngleDeg: 14,
+            splitDipDeg: 0,
             chasmAperture: 0.48,
             hingeTiltDeg: 3.4,
             faultHeave: 0.40,
@@ -815,14 +917,29 @@ export const FRACTURE_PRESETS = [
         },
         controlGroups: [
             {
-                title: 'Hexagonal Colonnade Structure',
+                title: 'Hexagonal Colonnade & Gorge Split',
                 glyph: 'Boxes',
                 badge: 'HEXAGONAL',
-                hint: 'Controls cooling joint spacing between 6-sided basalt columns, outward column lean & cross-joint steps.',
+                hint: 'Control column diameter, cooling gaps, cross-joint drum steps, or cleave a central sea-gorge chasm through the basalt.',
                 controls: [
+                    {
+                        type: 'select',
+                        key: 'splitMode',
+                        label: 'Colonnade Jointing',
+                        options: [
+                            ['Chisel Cross-Joint Drums', 'cross'],
+                            ['Central Sea-Gorge Chasm Split', 'single'],
+                            ['Unbroken Monolithic Columns', 'none']
+                        ],
+                        structural: true,
+                        rebuildInspector: true
+                    },
+                    { key: 'columnRadiusScale', label: 'Column Diameter', min: 0.55, max: 1.65, step: 0.02, decimals: 2, unit: '×', structural: true },
                     { key: 'chasmAperture', label: 'Column Cooling Gap', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true },
+                    { key: 'splitOffset', label: 'Gorge Split Position', min: -0.40, max: 0.40, step: 0.01, decimals: 2, unit: 'x', structural: true, showForModes: ['single'] },
+                    { key: 'splitAngleDeg', label: 'Gorge Strike Angle', min: -90, max: 90, step: 1, decimals: 0, unit: '°', structural: true, showForModes: ['single'] },
                     { key: 'hingeTiltDeg', label: 'Outer Column Topple', min: 0.0, max: 12.0, step: 0.1, decimals: 1, unit: '°', structural: true },
-                    { key: 'faultHeave', label: 'Cross-Joint Step Offset', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true },
+                    { key: 'faultHeave', label: 'Cross-Joint Step Offset', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true, whenSplit: true },
                     { key: 'edgeChamfer', label: 'Column Arris Bevel', min: 0.05, max: 0.90, step: 0.01, decimals: 2, unit: 'w', structural: true },
                     { key: 'spallCalving', label: 'Toppled Basal Drums', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true }
                 ]
@@ -846,10 +963,22 @@ export const FRACTURE_PRESETS = [
         badge: 'CONJUGATE 60°',
         subtitle: 'Mohr-Coulomb 60°/120° conjugate alpine shear planes dilated by ice-lens frost wedging & topple',
         lithology: 'alpineGneiss',
+        isBasaltColonnade: false,
         defaults: {
             presetId: 'frost-wedged-arete',
             seed: 3188,
             scale: 7.4,
+            baseFormShape: 'default',
+            formWidth: 1.0,
+            formHeight: 1.0,
+            formLength: 1.0,
+            formTaper: 0.0,
+            formAsymmetry: 0.0,
+            columnRadiusScale: 1.0,
+            splitMode: 'cross',
+            splitOffset: 0.0,
+            splitAngleDeg: 8,
+            splitDipDeg: 28,
             chasmAperture: 0.66,
             hingeTiltDeg: 6.4,
             faultHeave: 0.62,
@@ -880,11 +1009,15 @@ export const FRACTURE_PRESETS = [
                 title: '60°/120° Conjugate Frost Wedging',
                 glyph: 'Boxes',
                 badge: 'CRYO-SHEAR',
-                hint: 'Dilates steep intersecting alpine shear planes via ice-lens wedging, hanging-wall slip & scree calving.',
+                hint: 'Control shear split pattern, ice-lens wedge dilation, position, angle/dip, hanging-wall slip & scree calving.',
                 controls: [
-                    { key: 'chasmAperture', label: 'Ice-Lens Wedge Dilation', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true },
-                    { key: 'faultHeave', label: 'Hanging-Wall Shear Slip', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true },
-                    { key: 'hingeTiltDeg', label: 'Frost-Topple Cant', min: 0.0, max: 14.0, step: 0.1, decimals: 1, unit: '°', structural: true },
+                    { type: 'select', key: 'splitMode', label: 'Shear Split Pattern', options: SPLIT_PATTERN_OPTIONS, structural: true, rebuildInspector: true },
+                    { key: 'chasmAperture', label: 'Ice-Lens Wedge Dilation', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true, whenSplit: true },
+                    { key: 'splitOffset', label: 'Shear Plane Position', min: -0.40, max: 0.40, step: 0.01, decimals: 2, unit: 'x', structural: true, whenSplit: true },
+                    { key: 'splitAngleDeg', label: 'Shear Strike Angle', min: -90, max: 90, step: 1, decimals: 0, unit: '°', structural: true, whenSplit: true },
+                    { key: 'splitDipDeg', label: 'Shear Dip Angle', min: -40, max: 40, step: 1, decimals: 0, unit: '°', structural: true, whenSplit: true },
+                    { key: 'faultHeave', label: 'Hanging-Wall Shear Slip', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true, whenSplit: true },
+                    { key: 'hingeTiltDeg', label: 'Frost-Topple Cant', min: 0.0, max: 14.0, step: 0.1, decimals: 1, unit: '°', structural: true, whenSplit: true },
                     { key: 'jigsawRoughness', label: 'Shear Foliation Teeth', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false },
                     { key: 'spallCalving', label: 'Shattered Scree Apron', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true }
                 ]
@@ -906,12 +1039,24 @@ export const FRACTURE_PRESETS = [
         id: 'karst-tafoni-tower',
         name: '07 · Karst & Tafoni Dissolution Tower',
         badge: 'CHEMICAL KARST',
-        subtitle: 'Acid-dissolved limestone karst pinnacles sculpted by honeycomb tafoni caves, vertical karren flutes & basal notches',
+        subtitle: 'Acid-dissolved limestone karst pinnacles sculpted by honeycomb tafoni caves, vertical karren flutes & grike splits',
         lithology: 'karstLimestone',
+        isBasaltColonnade: false,
         defaults: {
             presetId: 'karst-tafoni-tower',
             seed: 6420,
             scale: 7.4,
+            baseFormShape: 'default',
+            formWidth: 1.0,
+            formHeight: 1.0,
+            formLength: 1.0,
+            formTaper: 0.0,
+            formAsymmetry: 0.0,
+            columnRadiusScale: 1.0,
+            splitMode: 'cross',
+            splitOffset: 0.05,
+            splitAngleDeg: 24,
+            splitDipDeg: 2,
             chasmAperture: 0.42,
             hingeTiltDeg: 2.2,
             faultHeave: 0.28,
@@ -954,10 +1099,13 @@ export const FRACTURE_PRESETS = [
                 title: 'Limestone Grikes & Pinnacle Structure',
                 glyph: 'Boxes',
                 badge: 'PINNACLES',
-                hint: 'Solution-widened grike corridors, karst subsidence lean, and guiding carbonate joint networks.',
+                hint: 'Control solution grike split pattern, corridor width, position, strike angle & karst subsidence tilt.',
                 controls: [
-                    { key: 'chasmAperture', label: 'Solution Grike Corridor', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true },
-                    { key: 'hingeTiltDeg', label: 'Karst Subsidence Tilt', min: 0.0, max: 10.0, step: 0.1, decimals: 1, unit: '°', structural: true },
+                    { type: 'select', key: 'splitMode', label: 'Grike Split Pattern', options: SPLIT_PATTERN_OPTIONS, structural: true, rebuildInspector: true },
+                    { key: 'chasmAperture', label: 'Solution Grike Corridor', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true, whenSplit: true },
+                    { key: 'splitOffset', label: 'Grike Split Position', min: -0.42, max: 0.42, step: 0.01, decimals: 2, unit: 'x', structural: true, whenSplit: true },
+                    { key: 'splitAngleDeg', label: 'Grike Strike Angle', min: -90, max: 90, step: 1, decimals: 0, unit: '°', structural: true, whenSplit: true },
+                    { key: 'hingeTiltDeg', label: 'Karst Subsidence Tilt', min: 0.0, max: 10.0, step: 0.1, decimals: 1, unit: '°', structural: true, whenSplit: true },
                     { key: 'voronoiJointStrength', label: 'Carbonate Joint Network', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false },
                     { key: 'spallCalving', label: 'Collapsed Karst Blocks', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true }
                 ]
@@ -1026,7 +1174,7 @@ export function createDefaultFractureParams(presetId = 'cracked-monolith')
                               3. STRUCTURAL POLYHEDRAL FRACTURE BUILDERS FOR ALL 6 PRESETS
 ==========================================================================================================================================*/
 
-function addPedestalSpalls(blocks, toWorld, baseFrame, rng, S, bevel, spallCalving, strataWeight, crackSalt)
+function addPedestalSpalls(blocks, toWorld, baseFrame, rng, S, bevel, spallCalving, strataWeight, crackSalt, formWidth = 1.0, formLength = 1.0)
 {
     if (spallCalving <= 0.05) return;
     const count = Math.max(2, Math.round(6 * spallCalving));
@@ -1040,17 +1188,16 @@ function addPedestalSpalls(blocks, toWorld, baseFrame, rng, S, bevel, spallCalvi
         const [ac, al, sc] = placements[i];
         const r = S * sc * rng.range(0.45, 0.72) * (0.65 + 0.45 * spallCalving);
         const h = r * rng.range(0.36, 0.62);
-        const pos = toWorld(ac + rng.signed() * 0.02, 0, al + rng.signed() * 0.02);
+        const pos = toWorld((ac * formWidth) + rng.signed() * 0.02, 0, (al * formLength) + rng.signed() * 0.02);
         pos[1] = h * 0.46;
         const sf = buildStrikeDipFrame(rng.float() * Math.PI * 2, rng.range(0.12, 0.55));
-        let poly = sculptGeologicalParentPoly(
+        const poly = sculptGeologicalParentPoly(
             pos,
             [r * rng.range(0.85, 1.25), h, r * rng.range(0.80, 1.18)],
             sf,
             rng,
             { jointDispersion: 0.26, cornerBlunt: 0.74, flatBaseY: 0, extraBevelCuts: 3 }
         );
-        // Tag top face of calved spall as fresh split (`+1`) so fallen slabs show their bright cleaved scar!
         if (poly && poly.faces.length > 0)
         {
             let bestFi = -1, bestNy = 0.35;
@@ -1075,33 +1222,388 @@ function addPedestalSpalls(blocks, toWorld, baseFrame, rng, S, bevel, spallCalvi
     }
 }
 
+/**
+ * Pure-SDF Base Rock Form Generator:
+ * Sculpts the foundational parent boulder / dome / spire / fin / mesa / balanced-pedestal hull with
+ * explicit Width (X), Height (Y), Length (Z), Crown Taper / Overhang Flare, and Asymmetric Prow Skew!
+ */
+export function generateBaseRockHull(center, baseRadii, frame, rng, params, options = {})
+{
+    const S = params.scale ?? 7.0;
+    const fw = clamp(params.formWidth ?? 1.0, 0.35, 2.50);
+    const fh = clamp(params.formHeight ?? 1.0, 0.30, 2.20);
+    const fl = clamp(params.formLength ?? 1.0, 0.35, 2.50);
+    const userTaper = clamp(params.formTaper ?? 0.0, -0.70, 0.95);
+    const asym = clamp(params.formAsymmetry ?? 0.0, -0.75, 0.75);
+    const reqShape = params.baseFormShape || 'default';
+
+    let shapeScaleX = 1.0, shapeScaleY = 1.0, shapeScaleZ = 1.0;
+    let cornerBlunt = options.cornerBlunt ?? 0.80;
+    let extraBevelCuts = options.extraBevelCuts ?? 6;
+    let jointDispersion = options.jointDispersion ?? 0.14;
+    let shapeTaper = 0.0;
+    let usePedestals = !!options.defaultPedestals;
+    let flatCrown = false;
+
+    if (reqShape === 'dome')
+    {
+        shapeScaleX = 1.05; shapeScaleY = 0.96; shapeScaleZ = 1.04;
+        cornerBlunt = 0.96; extraBevelCuts = 12; jointDispersion = 0.12;
+        shapeTaper = 0.08; usePedestals = false;
+    }
+    else if (reqShape === 'mushroom')
+    {
+        shapeScaleX = 1.05; shapeScaleY = 0.88; shapeScaleZ = 0.96;
+        cornerBlunt = 0.84; extraBevelCuts = 7; jointDispersion = 0.13;
+        shapeTaper = -0.22; usePedestals = true;
+    }
+    else if (reqShape === 'tower')
+    {
+        shapeScaleX = 0.80; shapeScaleY = 1.22; shapeScaleZ = 0.80;
+        cornerBlunt = 0.70; extraBevelCuts = 6; jointDispersion = 0.15;
+        shapeTaper = 0.34; usePedestals = false;
+    }
+    else if (reqShape === 'ridge')
+    {
+        shapeScaleX = 1.28; shapeScaleY = 1.02; shapeScaleZ = 0.54;
+        cornerBlunt = 0.78; extraBevelCuts = 5; jointDispersion = 0.12;
+        shapeTaper = 0.10; usePedestals = false;
+    }
+    else if (reqShape === 'mesa')
+    {
+        shapeScaleX = 1.14; shapeScaleY = 0.86; shapeScaleZ = 1.10;
+        cornerBlunt = 0.44; extraBevelCuts = 3; jointDispersion = 0.08;
+        shapeTaper = 0.05; usePedestals = false; flatCrown = true;
+    }
+
+    const rx = baseRadii[0] * fw * shapeScaleX;
+    const ry = baseRadii[1] * fh * shapeScaleY;
+    const rz = baseRadii[2] * fl * shapeScaleZ;
+
+    const baseY = usePedestals
+        ? S * 0.115 * Math.min(1.20, Math.max(0.55, fh))
+        : (options.flatBaseY ?? 0.0);
+    const origBaseY = options.flatBaseY ?? 0.0;
+    const cy = baseY + Math.max(ry * 0.78, (center[1] - origBaseY) * fh * shapeScaleY);
+    const cx = center[0] * fw;
+    const cz = center[2] * fl;
+
+    let poly = sculptGeologicalParentPoly(
+        [cx, cy, cz],
+        [rx, ry, rz],
+        frame,
+        rng,
+        { jointDispersion, cornerBlunt, flatBaseY: baseY, extraBevelCuts }
+    );
+
+    const totTaper = clamp(userTaper + shapeTaper, -0.68, 0.95);
+    if (poly && (Math.abs(totTaper) > 0.015 || Math.abs(asym) > 0.015 || flatCrown))
+    {
+        const m = measurePoly(poly);
+        if (m)
+        {
+            const midY = baseY + (m.maxY - baseY) * 0.48;
+            if (Math.abs(totTaper) > 0.015)
+            {
+                const nyTilt = totTaper * 0.42;
+                const cardDirs = [
+                    [1, 0], [-1, 0], [0, 1], [0, -1],
+                    [0.7071, 0.7071], [-0.7071, 0.7071], [0.7071, -0.7071], [-0.7071, -0.7071]
+                ];
+                for (let k = 0; k < cardDirs.length; k++)
+                {
+                    const [dx, dz] = cardDirs[k];
+                    const n = vnorm([dx, nyTilt, dz]);
+                    const radH = Math.hypot(rx * dx, rz * dz) * (totTaper > 0 ? (0.94 - 0.10 * totTaper) : (0.96 + 0.06 * Math.abs(totTaper)));
+                    const anchor = [
+                        m.centroid[0] + asym * rx * 0.18 * (nyTilt > 0 ? 1 : -1),
+                        midY,
+                        m.centroid[2]
+                    ];
+                    const off = vdot(n, anchor) + radH;
+                    const next = clipPolyByHalfSpace(poly, n, off, 0);
+                    if (next) poly = next;
+                }
+            }
+
+            if (Math.abs(asym) > 0.015 || flatCrown)
+            {
+                const capN = vnorm([-asym * 0.48, 1.0, rng.signed() * 0.04]);
+                const capH = m.minY + (m.maxY - m.minY) * (flatCrown ? 0.88 : 0.94);
+                const capPt = [m.centroid[0] + asym * rx * 0.22, capH, m.centroid[2]];
+                const next = clipPolyByHalfSpace(poly, capN, vdot(capN, capPt), 0);
+                if (next) poly = next;
+            }
+        }
+    }
+
+    return { poly, usePedestals, baseY, rx, ry, rz };
+}
+
+/**
+ * Automatically builds fitted undercut stone pedestals underneath each cleaved boulder block when
+ * `usePedestals` is active (e.g. Al-Naslaa or any rock switched to Balanced Pedestal Boulder!).
+ */
+function appendPedestalSupportsForPieces(blocks, pieces, baseY, S, bf, rng, bevel, strataWeight, crackSalt)
+{
+    if (baseY <= 0.01 || !pieces || pieces.length === 0) return;
+    let pIdx = 0;
+    for (let i = 0; i < pieces.length; i++)
+    {
+        const poly = pieces[i].poly || pieces[i];
+        const m = measurePoly(poly);
+        if (!m) continue;
+        const pedW = clamp(m.spanX * 0.34, S * 0.075, S * 0.24);
+        const pedL = clamp(m.spanZ * 0.42, S * 0.085, S * 0.26);
+        const pedH = baseY * 0.86;
+        const pedCenter = [m.centroid[0], baseY * 0.58, m.centroid[2]];
+        const pedPoly = sculptGeologicalParentPoly(
+            pedCenter,
+            [pedW, pedH, pedL],
+            bf,
+            rng,
+            { jointDispersion: 0.18, cornerBlunt: 0.80, flatBaseY: 0, extraBevelCuts: 4 }
+        );
+        const cp = compileFractureBlock(pedPoly, {
+            edgeBevel: bevel * 1.15,
+            strataWeight: Math.max(0.25, strataWeight * 0.92),
+            seedSalt: crackSalt + 41 + pIdx * 13
+        });
+        if (cp) blocks.push(cp);
+        pIdx++;
+    }
+}
+
+/**
+ * Universal Controllable Pure-SDF Split Engine (`splitMode`: `'none'` | `'single'` | `'parallel'` | `'cross'`):
+ * Gives full live user control over Split Pattern, Gap Width (`0.00` = sealed!), Split Position (`splitOffset`),
+ * Split Strike Angle (`splitAngleDeg`), Split Dip (`splitDipDeg`), Basal Hinge Lean & Vertical Drop — while
+ * preserving exact inverse pullback `T_k^{-1} p` across every cleaved block!
+ */
+export function applyControllableSplits(parentPoly, params, S, opts = {})
+{
+    if (!parentPoly) return [];
+    const mode = params.splitMode ?? 'single';
+    if (mode === 'none')
+    {
+        return [{ poly: parentPoly, side: 0 }];
+    }
+
+    const m0 = measurePoly(parentPoly);
+    if (!m0) return [{ poly: parentPoly, side: 0 }];
+
+    const aperture = clamp(params.chasmAperture ?? 0.40, 0.0, 1.0);
+    const splitOff = clamp(params.splitOffset ?? 0.0, -0.46, 0.46);
+    const az = (params.splitAngleDeg ?? opts.defaultAzDeg ?? 18.0) * DEG2RAD;
+    const dip = (params.splitDipDeg ?? opts.defaultDipDeg ?? 0.0) * DEG2RAD;
+    const tiltRad = (params.hingeTiltDeg ?? 2.4) * DEG2RAD;
+    const heave = params.faultHeave ?? 0.25;
+    const minThick = opts.minThick ?? (S * 0.048);
+    const gapMult = opts.gapMult ?? 1.0;
+
+    // Strictly 0.0m gap when aperture == 0 so "Close Gaps" / Split Width = 0 seals hairline-tight!
+    const gap = aperture <= 0.003 ? 0.0 : (0.008 + 0.068 * aperture) * S * gapMult;
+
+    const strikeT = [Math.sin(az), 0.0, Math.cos(az)];
+    const horizN = [Math.cos(az), 0.0, -Math.sin(az)];
+    const splitN = vnorm([horizN[0] * Math.cos(dip), Math.sin(dip), horizN[2] * Math.cos(dip)]);
+
+    let minProj = 1e9, maxProj = -1e9;
+    for (let i = 0; i < m0.verts.length; i++)
+    {
+        const v = m0.verts[i];
+        const pr = (v[0] - m0.centroid[0]) * horizN[0] + (v[2] - m0.centroid[2]) * horizN[2];
+        if (pr < minProj) minProj = pr;
+        if (pr > maxProj) maxProj = pr;
+    }
+    const spanAcross = Math.max(S * 0.20, maxProj - minProj);
+    const shiftAcross = splitOff * spanAcross * 0.78;
+    const refPt = [
+        m0.centroid[0] + horizN[0] * shiftAcross,
+        m0.centroid[1],
+        m0.centroid[2] + horizN[2] * shiftAcross
+    ];
+    const planeOff = vdot(splitN, refPt);
+    const pivotY = m0.minY + Math.min(S * 0.03, m0.spanY * 0.08);
+
+    if (mode === 'single')
+    {
+        const [negHalf, posHalf] = splitPolyByPlane(parentPoly, splitN, planeOff, gap);
+        const out = [];
+        if (negHalf && isSubstantialBlock(negHalf, minThick))
+        {
+            const mNeg = measurePoly(negHalf);
+            const pivL = [mNeg.centroid[0], pivotY, mNeg.centroid[2]];
+            const movedL = transformPoly(
+                negHalf,
+                [-horizN[0] * gap * 0.30, 0.0, -horizN[2] * gap * 0.30],
+                strikeT,
+                tiltRad * 0.48,
+                pivL
+            );
+            out.push({ poly: movedL, side: -1 });
+        }
+        if (posHalf && isSubstantialBlock(posHalf, minThick))
+        {
+            const mPos = measurePoly(posHalf);
+            const pivR = [mPos.centroid[0], pivotY, mPos.centroid[2]];
+            const movedR = transformPoly(
+                posHalf,
+                [horizN[0] * gap * 0.48, -S * 0.036 * heave, horizN[2] * gap * 0.48],
+                strikeT,
+                -tiltRad * 0.88,
+                pivR
+            );
+            out.push({ poly: movedR, side: 1 });
+        }
+        return out.length > 0 ? out : [{ poly: parentPoly, side: 0 }];
+    }
+
+    if (mode === 'parallel')
+    {
+        const halfBand = spanAcross * 0.175;
+        const off1 = planeOff - halfBand;
+        const off2 = planeOff + halfBand;
+        const [leftSlab, midRight] = splitPolyByPlane(parentPoly, splitN, off1, gap);
+        const out = [];
+        if (leftSlab && isSubstantialBlock(leftSlab, minThick))
+        {
+            const mL = measurePoly(leftSlab);
+            const movedL = transformPoly(
+                leftSlab,
+                [-horizN[0] * gap * 0.42, -S * 0.012 * heave, -horizN[2] * gap * 0.42],
+                strikeT,
+                tiltRad * 0.55,
+                [mL.centroid[0], pivotY, mL.centroid[2]]
+            );
+            out.push({ poly: movedL, side: -1 });
+        }
+        if (midRight)
+        {
+            const [centerSlab, rightSlab] = splitPolyByPlane(midRight, splitN, off2, gap * 0.90);
+            if (centerSlab && isSubstantialBlock(centerSlab, minThick))
+            {
+                out.push({ poly: centerSlab, side: 0 });
+            }
+            if (rightSlab && isSubstantialBlock(rightSlab, minThick))
+            {
+                const mR = measurePoly(rightSlab);
+                const movedR = transformPoly(
+                    rightSlab,
+                    [horizN[0] * gap * 0.52, -S * 0.034 * heave, horizN[2] * gap * 0.52],
+                    strikeT,
+                    -tiltRad * 0.80,
+                    [mR.centroid[0], pivotY, mR.centroid[2]]
+                );
+                out.push({ poly: movedR, side: 1 });
+            }
+        }
+        return out.length > 0 ? out : [{ poly: parentPoly, side: 0 }];
+    }
+
+    const conjDelta = (opts.conjugateAngleDeg ?? 74.0) * DEG2RAD;
+    const az2 = az + conjDelta;
+    const dip2 = opts.opposingDip ? -dip : dip * 0.65;
+    const strikeT2 = [Math.sin(az2), 0.0, Math.cos(az2)];
+    const horizN2 = [Math.cos(az2), 0.0, -Math.sin(az2)];
+    const splitN2 = vnorm([horizN2[0] * Math.cos(dip2), Math.sin(dip2), horizN2[2] * Math.cos(dip2)]);
+    const planeOff2 = vdot(splitN2, [m0.centroid[0] + horizN2[0] * shiftAcross * 0.5, m0.centroid[1], m0.centroid[2] + horizN2[2] * shiftAcross * 0.5]);
+
+    const [halfA, halfB] = splitPolyByPlane(parentPoly, splitN, planeOff, gap);
+    const primary = [];
+    if (halfA && isSubstantialBlock(halfA, minThick))
+    {
+        primary.push({ poly: halfA, side: -1 });
+    }
+    if (halfB && isSubstantialBlock(halfB, minThick))
+    {
+        const mB = measurePoly(halfB);
+        const movedB = transformPoly(
+            halfB,
+            [horizN[0] * gap * 0.45, -S * 0.034 * heave, horizN[2] * gap * 0.45],
+            strikeT,
+            -tiltRad * 0.85,
+            [mB.centroid[0], pivotY, mB.centroid[2]]
+        );
+        primary.push({ poly: movedB, side: 1 });
+    }
+
+    const out = [];
+    for (let i = 0; i < primary.length; i++)
+    {
+        const { poly, side } = primary[i];
+        const [sub1, sub2] = splitPolyByPlane(poly, splitN2, planeOff2 + (i === 1 ? S * 0.04 : -S * 0.03), gap * 0.80);
+        if (sub1 && sub2 && isSubstantialBlock(sub1, minThick) && isSubstantialBlock(sub2, minThick))
+        {
+            const mS2 = measurePoly(sub2);
+            const movedS2 = transformPoly(
+                sub2,
+                [horizN2[0] * gap * 0.36, -S * 0.018 * heave, horizN2[2] * gap * 0.36],
+                strikeT2,
+                tiltRad * (side < 0 ? 0.55 : -0.60),
+                [mS2.centroid[0], pivotY, mS2.centroid[2]]
+            );
+            out.push({ poly: sub1, side }, { poly: movedS2, side });
+        }
+        else
+        {
+            out.push({ poly, side });
+        }
+    }
+    return out.length > 0 ? out : [{ poly: parentPoly, side: 0 }];
+}
+
 function buildCrackedMonolithBlocks(params, rng, crackSalt)
 {
     const S = params.scale;
     const blocks = [];
+    const fw = clamp(params.formWidth ?? 1.0, 0.35, 2.50);
+    const fh = clamp(params.formHeight ?? 1.0, 0.30, 2.20);
+    const fl = clamp(params.formLength ?? 1.0, 0.35, 2.50);
     const aperture = params.chasmAperture ?? 0.62;
     const tiltRad = (params.hingeTiltDeg ?? 5.8) * DEG2RAD;
     const faultSlip = params.faultHeave ?? 0.52;
     const bevel = S * (0.0020 + 0.0085 * (params.edgeChamfer ?? 0.34));
-    const minThick = S * 0.062;
+    const minThick = S * 0.058;
+    const splitMode = params.splitMode ?? 'single';
 
-    const chasmAz = 0.42;
+    const chasmAz = (params.splitAngleDeg ?? 24) * DEG2RAD;
     const masterT = [Math.sin(chasmAz), 0, Math.cos(chasmAz)];
     const masterN = [Math.cos(chasmAz), 0, -Math.sin(chasmAz)];
-
     const toWorld = (across, yFrac, along) => [
         masterN[0] * (across * S) + masterT[0] * (along * S),
         yFrac * S,
         masterN[2] * (across * S) + masterT[2] * (along * S)
     ];
 
-    const baseSep = (0.010 + 0.036 * aperture) * S;
-    const leftTilt = tiltRad * 0.48;
-    const rightTilt = -tiltRad * 1.05;
-    const rightDropY = -(0.018 + 0.052 * faultSlip) * S;
-    const rightSlipAlong = (0.008 + 0.026 * faultSlip) * S;
-    const leftHinge = toWorld(-0.08, 0.02, 0.0);
-    const rightHinge = toWorld(0.10, 0.02, 0.0);
+    if (params.baseFormShape && params.baseFormShape !== 'default')
+    {
+        const bf = buildStrikeDipFrame(0.31, 0.52);
+        const hull = generateBaseRockHull([0, S * 0.46, 0], [S * 0.44, S * 0.52, S * 0.36], bf, rng, params, {
+            jointDispersion: 0.17, cornerBlunt: 0.74, flatBaseY: 0, extraBevelCuts: 6
+        });
+        const pieces = applyControllableSplits(hull.poly, params, S, { minThick, gapMult: 1.05 });
+        for (let i = 0; i < pieces.length; i++)
+        {
+            const b = compileFractureBlock(pieces[i].poly, { edgeBevel: bevel, strataWeight: 0.24, seedSalt: crackSalt + i * 29 + 7 });
+            if (b) blocks.push(b);
+        }
+        if (hull.usePedestals)
+        {
+            appendPedestalSupportsForPieces(blocks, pieces, hull.baseY, S, bf, rng, bevel, 0.24, crackSalt);
+        }
+        addPedestalSpalls(blocks, toWorld, bf, rng, S, bevel, params.spallCalving ?? 0.68, 0.18, crackSalt, fw, fl);
+        return blocks;
+    }
+
+    const baseSep = (splitMode === 'none' || aperture <= 0.003) ? 0.0 : (0.010 + 0.048 * aperture) * S;
+    const splitOffWorld = (params.splitOffset ?? 0.0) * S * 0.36 * fw;
+    const leftTilt = splitMode === 'none' ? 0.0 : tiltRad * 0.48;
+    const rightTilt = splitMode === 'none' ? 0.0 : -tiltRad * 1.05;
+    const rightDropY = splitMode === 'none' ? 0.0 : -(0.018 + 0.052 * faultSlip) * S * aperture;
+    const rightSlipAlong = splitMode === 'none' ? 0.0 : (0.008 + 0.026 * faultSlip) * S * aperture;
+    const leftHinge = toWorld(-0.08 * fw, 0.02, 0.0);
+    const rightHinge = toWorld(0.10 * fw, 0.02, 0.0);
 
     const buttresses = [
         { across:  0.00, y: 0.47, along: -0.01, rx: 0.27, ry: 0.52, rz: 0.24, kink:  0.05, fDip:  0.05, crownFork: true },
@@ -1114,27 +1616,37 @@ function buildCrackedMonolithBlocks(params, rng, crackSalt)
     for (let i = 0; i < buttresses.length; i++)
     {
         const sb = buttresses[i];
-        const center = toWorld(sb.across, sb.y, sb.along);
+        const center = toWorld(sb.across * fw, sb.y, sb.along * fl);
         const bf = buildStrikeDipFrame(0.31 + rng.signed() * 0.08, 0.56 + rng.signed() * 0.06);
 
-        const parentPoly = sculptGeologicalParentPoly(
-            center,
+        const hull = generateBaseRockHull(
+            [center[0] / fw, sb.y * S, center[2] / fl],
             [S * sb.rx, S * sb.ry, S * sb.rz],
             bf,
             rng,
+            params,
             { jointDispersion: 0.17, cornerBlunt: 0.72, flatBaseY: 0, extraBevelCuts: 5 }
         );
+        const parentPoly = hull.poly;
         if (!parentPoly) continue;
 
         let pieces = [];
-        if (Math.abs(sb.across) < 0.08)
+        if (splitMode === 'none')
+        {
+            pieces.push({ poly: parentPoly, side: 0 });
+        }
+        else if (splitMode === 'parallel' || splitMode === 'cross')
+        {
+            pieces = applyControllableSplits(parentPoly, params, S, { minThick, gapMult: 0.90 });
+        }
+        else if (Math.abs(sb.across * fw - (params.splitOffset ?? 0.0) * 0.36 * fw) < 0.20 * fw)
         {
             const fNorm = vnorm([
                 masterN[0] + masterT[0] * sb.kink,
-                sb.fDip,
+                sb.fDip + Math.sin((params.splitDipDeg ?? 0) * DEG2RAD),
                 masterN[2] + masterT[2] * sb.kink
             ]);
-            const fOff = vdot(fNorm, toWorld(sb.kink * 0.08, 0.32, sb.along));
+            const fOff = vdot(fNorm, toWorld(sb.kink * 0.08, 0.32 * fh, sb.along * fl)) + splitOffWorld;
             const [leftHalf, rightHalf] = splitPolyByPlane(parentPoly, fNorm, fOff, baseSep);
 
             if (leftHalf && isSubstantialBlock(leftHalf, minThick))
@@ -1163,10 +1675,11 @@ function buildCrackedMonolithBlocks(params, rng, crackSalt)
                 );
                 pieces.push({ poly: movedR, side: 1 });
             }
+            if (pieces.length === 0) pieces.push({ poly: parentPoly, side: sb.across < 0 ? -1 : 1 });
         }
         else
         {
-            const side = sb.across < 0 ? -1 : 1;
+            const side = (sb.across * S * fw) < splitOffWorld ? -1 : 1;
             const moved = side < 0
                 ? transformPoly(parentPoly, [-masterN[0] * baseSep * 0.35, 0, -masterN[2] * baseSep * 0.35], masterT, leftTilt, leftHinge)
                 : transformPoly(
@@ -1183,7 +1696,6 @@ function buildCrackedMonolithBlocks(params, rng, crackSalt)
             pieces.push({ poly: moved, side });
         }
 
-        // Secondary Y-fork summit splits & dipping sheet step
         const finalPolys = [];
         for (let p = 0; p < pieces.length; p++)
         {
@@ -1191,7 +1703,7 @@ function buildCrackedMonolithBlocks(params, rng, crackSalt)
             const m = measurePoly(poly);
             if (!m) continue;
 
-            if (sb.crownFork && m.maxY > S * 0.50 && m.spanX > minThick * 2.1)
+            if (splitMode !== 'none' && aperture > 0.04 && sb.crownFork && m.maxY > S * 0.50 * fh && m.spanX > minThick * 2.1)
             {
                 const forkTilt = side < 0 ? -0.26 : 0.28;
                 const yNorm = vnorm([
@@ -1200,7 +1712,7 @@ function buildCrackedMonolithBlocks(params, rng, crackSalt)
                     masterN[2] * Math.cos(forkTilt) + masterT[2] * 0.22
                 ]);
                 const forkPivot = [m.centroid[0], m.minY + m.spanY * 0.36, m.centroid[2]];
-                const forkGap = (0.004 + 0.014 * aperture) * S;
+                const forkGap = (0.003 + 0.016 * aperture) * S;
                 const [innerHorn, outerHorn] = splitPolyByPlane(poly, yNorm, vdot(yNorm, forkPivot), forkGap);
 
                 if (innerHorn && outerHorn && isSubstantialBlock(innerHorn, minThick) && isSubstantialBlock(outerHorn, minThick))
@@ -1208,7 +1720,7 @@ function buildCrackedMonolithBlocks(params, rng, crackSalt)
                     const outTilt = (side < 0 ? 0.38 : -0.42) * tiltRad;
                     const tiltedOuter = transformPoly(
                         outerHorn,
-                        [side * masterN[0] * S * 0.008, -S * 0.010 * faultSlip, side * masterN[2] * S * 0.008],
+                        [side * masterN[0] * S * 0.008 * aperture, -S * 0.010 * faultSlip * aperture, side * masterN[2] * S * 0.008 * aperture],
                         masterT,
                         outTilt,
                         [forkPivot[0], m.minY + m.spanY * 0.18, forkPivot[2]]
@@ -1220,27 +1732,26 @@ function buildCrackedMonolithBlocks(params, rng, crackSalt)
             finalPolys.push(poly);
         }
 
-        // Sub-horizontal dipping release joint across tall blocks
         for (let fp = 0; fp < finalPolys.length; fp++)
         {
             const poly = finalPolys[fp];
             const m = measurePoly(poly);
             if (!m || !isSubstantialBlock(poly, minThick)) continue;
 
-            if (m.spanY > S * 0.44 && i < 3)
+            if (splitMode !== 'none' && aperture > 0.04 && m.spanY > S * 0.44 * fh && i < 3)
             {
                 const shNorm = vnorm([masterN[0] * 0.22, 0.95, masterT[2] * 0.16]);
                 const splitH = m.minY + m.spanY * 0.48;
                 const shOff = vdot(shNorm, [m.centroid[0], splitH, m.centroid[2]]);
-                const shGap = (0.003 + 0.008 * aperture) * S;
+                const shGap = (0.002 + 0.009 * aperture) * S;
                 const [lowerB, upperB] = splitPolyByPlane(poly, shNorm, shOff, shGap);
                 if (lowerB && upperB && isSubstantialBlock(lowerB, minThick) && isSubstantialBlock(upperB, minThick))
                 {
                     const slippedUpper = transformPoly(
                         upperB,
-                        [masterN[0] * S * 0.010 * faultSlip, 0, masterT[2] * S * 0.008 * faultSlip],
+                        [masterN[0] * S * 0.010 * faultSlip * aperture, 0, masterT[2] * S * 0.008 * faultSlip * aperture],
                         [0, 1, 0],
-                        0.03 * faultSlip
+                        0.03 * faultSlip * aperture
                     );
                     const b0 = compileFractureBlock(lowerB, { edgeBevel: bevel, strataWeight: 0.22, seedSalt: crackSalt + i * 37 + fp * 7 });
                     const b1 = compileFractureBlock(slippedUpper, { edgeBevel: bevel, strataWeight: 0.22, seedSalt: crackSalt + i * 37 + fp * 7 + 3 });
@@ -1255,20 +1766,19 @@ function buildCrackedMonolithBlocks(params, rng, crackSalt)
         }
     }
 
-    // Wedged angular chockstones caught inside the opened central chasm!
-    if (aperture > 0.18)
+    if (splitMode !== 'none' && aperture > 0.18)
     {
         const chockSpecs = [
-            { yFrac: 0.50, along: 0.03, rFrac: 0.068 },
-            { yFrac: 0.29, along: -0.05, rFrac: 0.058 }
+            { yFrac: 0.50 * fh, along: 0.03 * fl, rFrac: 0.068 },
+            { yFrac: 0.29 * fh, along: -0.05 * fl, rFrac: 0.058 }
         ];
         for (let c = 0; c < chockSpecs.length; c++)
         {
             const cs = chockSpecs[c];
-            const cPos = toWorld(0.01 + aperture * 0.02, cs.yFrac, cs.along);
+            const cPos = toWorld((params.splitOffset ?? 0.0) * 0.36 * fw + 0.01 + aperture * 0.02, cs.yFrac, cs.along);
             const cr = S * cs.rFrac * (0.75 + 0.45 * aperture);
             const cf = buildStrikeDipFrame(rng.float() * Math.PI, rng.range(0.35, 0.95));
-            let cPoly = sculptGeologicalParentPoly(cPos, [cr * 1.15, cr * 0.92, cr * 1.05], cf, rng, {
+            const cPoly = sculptGeologicalParentPoly(cPos, [cr * 1.15, cr * 0.92, cr * 1.05], cf, rng, {
                 jointDispersion: 0.26, cornerBlunt: 0.65, extraBevelCuts: 3
             });
             if (cPoly)
@@ -1289,7 +1799,7 @@ function buildCrackedMonolithBlocks(params, rng, crackSalt)
         }
     }
 
-    addPedestalSpalls(blocks, toWorld, null, rng, S, bevel, params.spallCalving ?? 0.68, 0.18, crackSalt);
+    addPedestalSpalls(blocks, toWorld, null, rng, S, bevel, params.spallCalving ?? 0.68, 0.18, crackSalt, fw, fl);
     return blocks;
 }
 
@@ -1297,12 +1807,11 @@ function buildAlNaslaaSplitBlocks(params, rng, crackSalt)
 {
     const S = params.scale;
     const blocks = [];
-    const aperture = params.chasmAperture ?? 0.50;
-    const tiltRad = (params.hingeTiltDeg ?? 2.1) * DEG2RAD;
-    const faultSlip = params.faultHeave ?? 0.28;
+    const fw = clamp(params.formWidth ?? 1.0, 0.35, 2.50);
+    const fl = clamp(params.formLength ?? 1.0, 0.35, 2.50);
     const bevel = S * (0.0018 + 0.0075 * (params.edgeChamfer ?? 0.22));
 
-    const chasmAz = 0.28;
+    const chasmAz = (params.splitAngleDeg ?? 16) * DEG2RAD;
     const masterT = [Math.sin(chasmAz), 0, Math.cos(chasmAz)];
     const masterN = [Math.cos(chasmAz), 0, -Math.sin(chasmAz)];
     const toWorld = (across, yFrac, along) => [
@@ -1311,64 +1820,44 @@ function buildAlNaslaaSplitBlocks(params, rng, crackSalt)
         masterN[2] * (across * S) + masterT[2] * (along * S)
     ];
 
-    const bf = buildStrikeDipFrame(0.15, 0.08); // Nearly horizontal sandstone bedding!
-
-    // Main balanced megalith hovering above two narrow weathered pedestals!
-    const boulderCenter = toWorld(0.0, 0.46, 0.0);
-    const parentBoulder = sculptGeologicalParentPoly(
-        boulderCenter,
+    const bf = buildStrikeDipFrame(0.15, 0.08);
+    const hull = generateBaseRockHull(
+        [0.0, S * 0.46, 0.0],
         [S * 0.46, S * 0.36, S * 0.28],
         bf,
         rng,
-        { jointDispersion: 0.13, cornerBlunt: 0.82, flatBaseY: S * 0.11, extraBevelCuts: 6 }
+        params,
+        {
+            jointDispersion: 0.13,
+            cornerBlunt: 0.82,
+            flatBaseY: S * 0.11,
+            extraBevelCuts: 6,
+            defaultPedestals: true
+        }
     );
 
-    const gap = (0.016 + 0.036 * aperture) * S;
-    const laserNormal = vnorm([masterN[0], 0.015, masterN[2]]);
-    const [leftB, rightB] = splitPolyByPlane(parentBoulder, laserNormal, 0.0, gap);
+    const pieces = applyControllableSplits(hull.poly, params, S, {
+        defaultAzDeg: 16,
+        defaultDipDeg: 1,
+        gapMult: 1.05
+    });
 
-    const leftPedPos = toWorld(-0.20, 0.07, 0.0);
-    const rightPedPos = toWorld(0.21, 0.07, 0.01);
-
-    if (leftB)
+    for (let i = 0; i < pieces.length; i++)
     {
-        const movedL = transformPoly(
-            leftB,
-            [-masterN[0] * gap * 0.25, 0, -masterN[2] * gap * 0.25],
-            masterT,
-            tiltRad * 0.45,
-            leftPedPos
-        );
-        const bL = compileFractureBlock(movedL, { edgeBevel: bevel, strataWeight: 0.92, seedSalt: crackSalt + 11 });
-        if (bL) blocks.push(bL);
+        const b = compileFractureBlock(pieces[i].poly, {
+            edgeBevel: bevel,
+            strataWeight: 0.92,
+            seedSalt: crackSalt + 11 + i * 13
+        });
+        if (b) blocks.push(b);
     }
 
-    if (rightB)
+    if (hull.usePedestals)
     {
-        const movedR = transformPoly(
-            rightB,
-            [masterN[0] * gap * 0.45, -S * 0.032 * faultSlip, masterN[2] * gap * 0.45],
-            masterT,
-            -tiltRad * 0.85,
-            rightPedPos
-        );
-        const bR = compileFractureBlock(movedR, { edgeBevel: bevel, strataWeight: 0.92, seedSalt: crackSalt + 23 });
-        if (bR) blocks.push(bR);
+        appendPedestalSupportsForPieces(blocks, pieces, hull.baseY, S, bf, rng, bevel, 0.88, crackSalt);
     }
 
-    // Two narrow undercut sandstone pedestals supporting left & right halves
-    const pedL = sculptGeologicalParentPoly(leftPedPos, [S * 0.14, S * 0.10, S * 0.15], bf, rng, {
-        jointDispersion: 0.18, cornerBlunt: 0.80, flatBaseY: 0, extraBevelCuts: 3
-    });
-    const pedR = sculptGeologicalParentPoly(rightPedPos, [S * 0.15, S * 0.095, S * 0.15], bf, rng, {
-        jointDispersion: 0.18, cornerBlunt: 0.80, flatBaseY: 0, extraBevelCuts: 3
-    });
-    const cpL = compileFractureBlock(pedL, { edgeBevel: bevel * 1.2, strataWeight: 0.85, seedSalt: crackSalt + 41 });
-    const cpR = compileFractureBlock(pedR, { edgeBevel: bevel * 1.2, strataWeight: 0.85, seedSalt: crackSalt + 53 });
-    if (cpL) blocks.push(cpL);
-    if (cpR) blocks.push(cpR);
-
-    addPedestalSpalls(blocks, toWorld, bf, rng, S, bevel, params.spallCalving ?? 0.45, 0.85, crackSalt);
+    addPedestalSpalls(blocks, toWorld, bf, rng, S, bevel, params.spallCalving ?? 0.45, 0.85, crackSalt, fw, fl);
     return blocks;
 }
 
@@ -1376,12 +1865,11 @@ function buildThermal90FinBlocks(params, rng, crackSalt)
 {
     const S = params.scale;
     const blocks = [];
-    const aperture = params.chasmAperture ?? 0.36;
-    const tiltRad = (params.hingeTiltDeg ?? 2.8) * DEG2RAD;
-    const faultSlip = params.faultHeave ?? 0.22;
+    const fw = clamp(params.formWidth ?? 1.0, 0.35, 2.50);
+    const fl = clamp(params.formLength ?? 1.0, 0.35, 2.50);
     const bevel = S * (0.0020 + 0.0075 * (params.edgeChamfer ?? 0.28));
 
-    const az = 0.32;
+    const az = (params.splitAngleDeg ?? 18) * DEG2RAD;
     const masterT = [Math.sin(az), 0, Math.cos(az)];
     const masterN = [Math.cos(az), 0, -Math.sin(az)];
     const toWorld = (across, yFrac, along) => [
@@ -1391,47 +1879,37 @@ function buildThermal90FinBlocks(params, rng, crackSalt)
     ];
 
     const bf = buildStrikeDipFrame(0.24, 0.16);
-    // Broad sandstone fin presenting a wide sun-drenched SW face for 90-degree T-junction crazing!
-    const finPoly = sculptGeologicalParentPoly(
-        toWorld(0, 0.42, 0),
+    const hull = generateBaseRockHull(
+        [0.0, S * 0.42, 0.0],
         [S * 0.48, S * 0.46, S * 0.20],
         bf,
         rng,
+        params,
         { jointDispersion: 0.12, cornerBlunt: 0.82, flatBaseY: 0, extraBevelCuts: 4 }
     );
 
-    // Split fin across two master vertical thermal joints at right angles to the fin crest
-    const gap1 = (0.008 + 0.024 * aperture) * S;
-    const [leftSlab, midRight] = splitPolyByPlane(finPoly, masterN, -S * 0.11, gap1);
-    if (leftSlab)
+    const pieces = applyControllableSplits(hull.poly, params, S, {
+        defaultAzDeg: 18,
+        defaultDipDeg: 0,
+        gapMult: 0.88
+    });
+
+    for (let i = 0; i < pieces.length; i++)
     {
-        const mL = transformPoly(leftSlab, [-masterN[0] * gap1 * 0.3, 0, -masterN[2] * gap1 * 0.3], masterT, tiltRad * 0.45, toWorld(-0.22, 0.02, 0));
-        const bL = compileFractureBlock(mL, { edgeBevel: bevel, strataWeight: 0.65, seedSalt: crackSalt + 17 });
-        if (bL) blocks.push(bL);
-    }
-    if (midRight)
-    {
-        const [centerTower, rightWing] = splitPolyByPlane(midRight, masterN, S * 0.16, gap1 * 0.85);
-        if (centerTower)
-        {
-            const bC = compileFractureBlock(centerTower, { edgeBevel: bevel, strataWeight: 0.65, seedSalt: crackSalt + 29 });
-            if (bC) blocks.push(bC);
-        }
-        if (rightWing)
-        {
-            const mR = transformPoly(
-                rightWing,
-                [masterN[0] * gap1 * 0.5, -S * 0.026 * faultSlip, masterN[2] * gap1 * 0.5],
-                masterT,
-                -tiltRad * 0.75,
-                toWorld(0.24, 0.02, 0)
-            );
-            const bR = compileFractureBlock(mR, { edgeBevel: bevel, strataWeight: 0.65, seedSalt: crackSalt + 43 });
-            if (bR) blocks.push(bR);
-        }
+        const b = compileFractureBlock(pieces[i].poly, {
+            edgeBevel: bevel,
+            strataWeight: 0.65,
+            seedSalt: crackSalt + 17 + i * 13
+        });
+        if (b) blocks.push(b);
     }
 
-    addPedestalSpalls(blocks, toWorld, bf, rng, S, bevel, params.spallCalving ?? 0.40, 0.65, crackSalt);
+    if (hull.usePedestals)
+    {
+        appendPedestalSupportsForPieces(blocks, pieces, hull.baseY, S, bf, rng, bevel, 0.65, crackSalt);
+    }
+
+    addPedestalSpalls(blocks, toWorld, bf, rng, S, bevel, params.spallCalving ?? 0.40, 0.65, crackSalt, fw, fl);
     return blocks;
 }
 
@@ -1439,37 +1917,44 @@ function buildExfoliationDomeBlocks(params, rng, crackSalt)
 {
     const S = params.scale;
     const blocks = [];
-    const aperture = params.chasmAperture ?? 0.20;
-    const tiltRad = (params.hingeTiltDeg ?? 1.6) * DEG2RAD;
+    const fw = clamp(params.formWidth ?? 1.0, 0.35, 2.50);
+    const fl = clamp(params.formLength ?? 1.0, 0.35, 2.50);
     const bevel = S * (0.0055 + 0.0135 * (params.edgeChamfer ?? 0.72));
 
     const bf = buildStrikeDipFrame(0.18, 0.08);
     const toWorld = (x, y, z) => [x * S, y * S, z * S];
 
-    const domePoly = sculptGeologicalParentPoly(
-        [0, S * 0.37, 0],
+    const hull = generateBaseRockHull(
+        [0.0, S * 0.37, 0.0],
         [S * 0.49, S * 0.43, S * 0.45],
         bf,
         rng,
+        params,
         { jointDispersion: 0.12, cornerBlunt: 0.96, flatBaseY: 0, extraBevelCuts: 12 }
     );
 
-    const gap = (0.004 + 0.018 * aperture) * S;
-    const jNorm = vnorm([0.86, 0.06, -0.50]);
-    const [dA, dB] = splitPolyByPlane(domePoly, jNorm, S * 0.14, gap);
-    if (dA)
+    const pieces = applyControllableSplits(hull.poly, params, S, {
+        defaultAzDeg: 30,
+        defaultDipDeg: 2,
+        gapMult: 0.95
+    });
+
+    for (let i = 0; i < pieces.length; i++)
     {
-        const bA = compileFractureBlock(dA, { edgeBevel: bevel, strataWeight: 0.05, seedSalt: crackSalt + 13 });
-        if (bA) blocks.push(bA);
-    }
-    if (dB)
-    {
-        const mB = transformPoly(dB, [jNorm[0] * gap * 0.4, -S * 0.012 * (params.faultHeave ?? 0.12), jNorm[2] * gap * 0.4], [0.50, 0, 0.86], -tiltRad * 0.55, [S * 0.22, 0, -S * 0.10]);
-        const bB = compileFractureBlock(mB, { edgeBevel: bevel, strataWeight: 0.05, seedSalt: crackSalt + 27 });
-        if (bB) blocks.push(bB);
+        const b = compileFractureBlock(pieces[i].poly, {
+            edgeBevel: bevel,
+            strataWeight: 0.05,
+            seedSalt: crackSalt + 13 + i * 17
+        });
+        if (b) blocks.push(b);
     }
 
-    addPedestalSpalls(blocks, toWorld, bf, rng, S, bevel * 0.75, params.spallCalving ?? 0.72, 0.06, crackSalt);
+    if (hull.usePedestals)
+    {
+        appendPedestalSupportsForPieces(blocks, pieces, hull.baseY, S, bf, rng, bevel * 0.9, 0.08, crackSalt);
+    }
+
+    addPedestalSpalls(blocks, toWorld, bf, rng, S, bevel * 0.75, params.spallCalving ?? 0.72, 0.06, crackSalt, fw, fl);
     return blocks;
 }
 
@@ -1477,64 +1962,156 @@ function buildColumnarBasaltBlocks(params, rng, crackSalt)
 {
     const S = params.scale;
     const blocks = [];
+    const fw = clamp(params.formWidth ?? 1.0, 0.40, 2.30);
+    const fh = clamp(params.formHeight ?? 1.0, 0.30, 2.10);
+    const fl = clamp(params.formLength ?? 1.0, 0.35, 2.30);
+    const colScale = clamp(params.columnRadiusScale ?? 1.0, 0.50, 1.80);
+    const taper = clamp(params.formTaper ?? 0.0, -0.70, 0.95);
+    const asym = clamp(params.formAsymmetry ?? 0.0, -0.75, 0.75);
+    const formShape = params.baseFormShape && params.baseFormShape !== 'default' ? params.baseFormShape : 'cliff';
+    const splitMode = params.splitMode ?? 'cross';
+
     const aperture = params.chasmAperture ?? 0.48;
     const tiltRad = (params.hingeTiltDeg ?? 3.4) * DEG2RAD;
     const faultSlip = params.faultHeave ?? 0.40;
     const bevel = S * (0.0016 + 0.0055 * (params.edgeChamfer ?? 0.24));
 
-    const colRadius = S * 0.105;
+    const colRadius = S * 0.105 * colScale;
     const spacingX = colRadius * 1.82;
     const spacingZ = colRadius * 1.58;
-    const gap = (0.003 + 0.011 * aperture) * S;
+    const coolingGap = (splitMode === 'single' ? 0.35 : 1.0) * (0.002 + 0.011 * aperture) * S;
 
-    const ringSpecs = [
-        // Central tall colonnade
-        [0, 0, 0.72], [-1, 0, 0.66], [1, 0, 0.58],
-        [-0.5, -1, 0.76], [0.5, -1, 0.69], [-1.5, -1, 0.54], [1.5, -1, 0.50],
-        // Stepped front colonnade tiers
-        [-0.5, 1, 0.44], [0.5, 1, 0.36], [-1.5, 1, 0.39], [1.5, 1, 0.28],
-        [0, 2, 0.22], [-1, 2, 0.18]
-    ];
+    const halfSpanX = S * 0.34 * fw;
+    const halfSpanZ = S * 0.28 * fl;
+    const maxColsX = Math.max(1, Math.min(6, Math.round(halfSpanX / spacingX)));
+    const maxRowsZ = Math.max(1, Math.min(5, Math.round(halfSpanZ / spacingZ)));
 
-    for (let i = 0; i < ringSpecs.length; i++)
+    const gorgeAz = (params.splitAngleDeg ?? 14) * DEG2RAD;
+    const gorgeN = [Math.cos(gorgeAz), 0.0, -Math.sin(gorgeAz)];
+    const gorgeOff = (params.splitOffset ?? 0.0) * halfSpanX * 1.15;
+    const gorgeHalfGap = splitMode === 'single' ? (0.045 + 0.145 * aperture) * S : 0.0;
+
+    const candidates = [];
+    for (let rIdx = -maxRowsZ; rIdx <= maxRowsZ; rIdx++)
     {
-        const [gx, gz, hFrac] = ringSpecs[i];
-        const cx = gx * spacingX + rng.signed() * S * 0.008;
-        const cz = gz * spacingZ + rng.signed() * S * 0.008;
-        const colH = S * hFrac * (1.0 - (gx > 0.2 ? 0.10 * faultSlip : 0.0));
-        const r = colRadius - gap * 0.5;
+        const rowShift = (Math.abs(rIdx) % 2 === 1) ? 0.5 : 0.0;
+        const qMin = Math.floor(-maxColsX - rowShift);
+        const qMax = Math.ceil(maxColsX - rowShift);
+        for (let qIdx = qMin; qIdx <= qMax; qIdx++)
+        {
+            const gx = qIdx + rowShift;
+            const gz = rIdx;
+            const cx0 = gx * spacingX;
+            const cz0 = gz * spacingZ;
 
-        // Build crisp 6-sided hexagonal basalt prism with slight geological face variation + top chisel cap!
+            const nx = cx0 / Math.max(0.15, halfSpanX * 1.18);
+            const nz = cz0 / Math.max(0.15, halfSpanZ * 1.18);
+
+            let hBase = 0.0;
+            if (formShape === 'mound')
+            {
+                const rad = Math.hypot(nx, nz);
+                if (rad > 1.08) continue;
+                const expP = 1.65 + taper * 1.15;
+                hBase = 0.78 * Math.pow(Math.max(0.0, 1.0 - Math.pow(rad / 1.08, 2.0)), Math.max(0.45, expP * 0.55)) + 0.12;
+                hBase = Math.round(hBase * 7.5) / 7.5;
+            }
+            else if (formShape === 'ridge')
+            {
+                if (Math.abs(nx) > 1.12 || Math.abs(nz) > 1.06) continue;
+                const crest = 1.0 - Math.abs(nz) * (0.68 + 0.25 * taper);
+                const endFade = 1.0 - 0.28 * Math.pow(Math.abs(nx), 2.2);
+                hBase = 0.74 * Math.max(0.18, crest * endFade);
+                hBase = Math.round(hBase * 7.0) / 7.0;
+            }
+            else if (formShape === 'amphitheater')
+            {
+                const rad = Math.hypot(nx * 0.92, (nz - 0.35) * 0.95);
+                if (Math.abs(nx) > 1.12 || Math.abs(nz) > 1.10) continue;
+                if (rad < 0.42 && nz > -0.10) continue;
+                const rim = clamp((rad - 0.32) * 1.15, 0.18, 0.80);
+                const backBoost = clamp((0.35 - nz) * 0.32, 0.0, 0.24);
+                hBase = clamp(rim + backBoost * (1.0 + 0.35 * taper), 0.18, 0.84);
+                hBase = Math.round(hBase * 7.0) / 7.0;
+            }
+            else
+            {
+                const radEll = Math.hypot(nx * 0.92, nz * 0.95);
+                if (radEll > 1.14) continue;
+                const stepSlope = 0.52 + 0.26 * taper;
+                const tFront = clamp((nz + 0.95) * 0.52, 0.0, 1.0);
+                hBase = 0.76 * (1.0 - stepSlope * tFront) - 0.12 * nx * nx;
+                hBase = Math.round(clamp(hBase, 0.16, 0.82) * 8.0) / 8.0;
+            }
+
+            hBase *= (1.0 + asym * nx * 0.36) * rng.range(0.91, 1.08);
+            if (hBase < 0.12) continue;
+
+            const projGorge = cx0 * gorgeN[0] + cz0 * gorgeN[2] - gorgeOff;
+            if (splitMode === 'single' && Math.abs(projGorge) < gorgeHalfGap)
+            {
+                continue;
+            }
+
+            candidates.push({ gx, gz, cx0, cz0, nx, nz, hBase, projGorge });
+        }
+    }
+
+    if (candidates.length > 40)
+    {
+        candidates.sort((a, b) => b.hBase - a.hBase);
+        candidates.length = 40;
+    }
+
+    for (let i = 0; i < candidates.length; i++)
+    {
+        const c = candidates[i];
+        let cx = c.cx0 + rng.signed() * colRadius * 0.07;
+        let cz = c.cz0 + rng.signed() * colRadius * 0.07;
+
+        const gorgeSide = c.projGorge >= 0 ? 1 : -1;
+        if (splitMode === 'single' && aperture > 0.01)
+        {
+            cx += gorgeSide * gorgeN[0] * gorgeHalfGap * 0.32;
+            cz += gorgeSide * gorgeN[2] * gorgeHalfGap * 0.32;
+        }
+
+        const colH = S * c.hBase * fh * (1.0 - (c.gx > 0.2 ? 0.10 * faultSlip : 0.0));
+        const r = Math.max(S * 0.032, colRadius - coolingGap * 0.5);
+
         let poly = createBoxPoly(cx - r * 1.3, 0, cz - r * 1.3, cx + r * 1.3, colH + r, cz + r * 1.3, 0);
-        const sides = i % 4 === 0 ? 5 : 6;
-        const rot0 = 0.26 + rng.signed() * 0.09;
+        const sides = i % 5 === 0 ? 5 : 6;
+        const rot0 = 0.26 + rng.signed() * 0.08;
         for (let s = 0; s < sides; s++)
         {
-            const ang = rot0 + (s * Math.PI * 2) / sides + rng.signed() * 0.06;
-            const n = vnorm([Math.cos(ang), rng.signed() * 0.02, Math.sin(ang)]);
+            const ang = rot0 + (s * Math.PI * 2) / sides + rng.signed() * 0.05;
+            const n = vnorm([Math.cos(ang), rng.signed() * 0.018, Math.sin(ang)]);
             const off = n[0] * cx + n[2] * cz + r * rng.range(0.94, 1.05);
             poly = clipPolyByHalfSpace(poly, n, off, s % 2 === 0 ? 1.0 : -1.0);
         }
-        // Cup-and-ball / chisel cross-joint top cap
-        const capN = vnorm([rng.signed() * 0.16, 1.0, rng.signed() * 0.16]);
+        const capN = vnorm([rng.signed() * 0.15, 1.0, rng.signed() * 0.15]);
         poly = clipPolyByHalfSpace(poly, capN, capN[0] * cx + capN[1] * colH + capN[2] * cz, 1.0);
-
         if (!poly) continue;
 
-        // Outer front columns lean/cant slightly from frost/cooling topple!
-        if (gz >= 1 && Math.abs(gx) >= 0.4)
+        const edgeDist = Math.hypot(c.nx, c.nz);
+        if (edgeDist > 0.62 && tiltRad > 0.002)
         {
-            const outDir = vnorm([cx, 0, cz]);
+            const outDir = vnorm([cx || 0.1, 0, cz || 0.1]);
             const axis = [-outDir[2], 0, outDir[0]];
-            poly = transformPoly(poly, [outDir[0] * gap * 0.8, 0, outDir[2] * gap * 0.8], axis, -tiltRad * (gz === 2 ? 1.15 : 0.55), [cx, 0, cz]);
+            poly = transformPoly(
+                poly,
+                [outDir[0] * coolingGap * 0.6, 0, outDir[2] * coolingGap * 0.6],
+                axis,
+                -tiltRad * clamp((edgeDist - 0.55) * 1.6, 0.25, 1.15),
+                [cx, 0, cz]
+            );
         }
 
-        // Split taller columns across horizontal entablature cross-joint!
-        if (colH > S * 0.52)
+        if (splitMode === 'cross' && colH > S * 0.46 * fh && blocks.length < 72)
         {
             const midY = colH * rng.range(0.46, 0.58);
             const cjN = vnorm([rng.signed() * 0.10, 1.0, rng.signed() * 0.10]);
-            const [lowDrum, highDrum] = splitPolyByPlane(poly, cjN, cjN[0] * cx + cjN[1] * midY + cjN[2] * cz, gap * 0.55);
+            const [lowDrum, highDrum] = splitPolyByPlane(poly, cjN, cjN[0] * cx + cjN[1] * midY + cjN[2] * cz, coolingGap * 0.55);
             if (lowDrum && highDrum)
             {
                 const shiftedTop = transformPoly(highDrum, [rng.signed() * S * 0.008 * faultSlip, 0, S * 0.010 * faultSlip], [0, 1, 0], 0.04 * faultSlip);
@@ -1551,7 +2128,7 @@ function buildColumnarBasaltBlocks(params, rng, crackSalt)
     }
 
     const toWorld = (x, y, z) => [x * S, y * S, z * S];
-    addPedestalSpalls(blocks, toWorld, null, rng, S, bevel, params.spallCalving ?? 0.75, 0.10, crackSalt);
+    addPedestalSpalls(blocks, toWorld, null, rng, S, bevel, params.spallCalving ?? 0.75, 0.10, crackSalt, fw, fl);
     return blocks;
 }
 
@@ -1559,70 +2136,46 @@ function buildFrostWedgedAreteBlocks(params, rng, crackSalt)
 {
     const S = params.scale;
     const blocks = [];
-    const aperture = params.chasmAperture ?? 0.66;
-    const tiltRad = (params.hingeTiltDeg ?? 6.4) * DEG2RAD;
-    const faultSlip = params.faultHeave ?? 0.62;
+    const fw = clamp(params.formWidth ?? 1.0, 0.35, 2.50);
+    const fl = clamp(params.formLength ?? 1.0, 0.35, 2.50);
     const bevel = S * (0.0018 + 0.0068 * (params.edgeChamfer ?? 0.26));
-    const minThick = S * 0.06;
 
-    const bf = buildStrikeDipFrame(0.38, 1.05); // Steeply dipping alpine gneiss foliation (~60 deg)!
+    const bf = buildStrikeDipFrame(0.38, 1.05);
     const toWorld = (x, y, z) => [x * S, y * S, z * S];
 
-    const spire = sculptGeologicalParentPoly(
-        [0, S * 0.48, 0],
+    const hull = generateBaseRockHull(
+        [0.0, S * 0.48, 0.0],
         [S * 0.38, S * 0.54, S * 0.28],
         bf,
         rng,
+        params,
         { jointDispersion: 0.16, cornerBlunt: 0.68, flatBaseY: 0, extraBevelCuts: 5 }
     );
 
-    // Mohr-Coulomb 60° / 120° conjugate shear joint pair!
-    const conjA = vnorm([Math.sin(1.06), Math.cos(1.06), 0.14]);
-    const conjB = vnorm([-Math.sin(1.04), Math.cos(1.04), -0.12]);
-    const gap = (0.010 + 0.030 * aperture) * S;
+    const pieces = applyControllableSplits(hull.poly, params, S, {
+        defaultAzDeg: 8,
+        defaultDipDeg: 28,
+        conjugateAngleDeg: 172,
+        opposingDip: true,
+        gapMult: 0.92
+    });
 
-    const [footwall, hanging] = splitPolyByPlane(spire, conjA, S * 0.18, gap);
-    const candidates = [];
-    if (footwall) candidates.push({ poly: footwall, tag: -1 });
-    if (hanging)
+    for (let i = 0; i < pieces.length; i++)
     {
-        const heaved = transformPoly(
-            hanging,
-            [S * 0.032 * faultSlip, -S * 0.042 * faultSlip, S * 0.012 * faultSlip],
-            [0, 0, 1],
-            -tiltRad * 0.95,
-            [S * 0.14, S * 0.06, 0]
-        );
-        candidates.push({ poly: heaved, tag: 1 });
+        const b = compileFractureBlock(pieces[i].poly, {
+            edgeBevel: bevel,
+            strataWeight: 0.42,
+            seedSalt: crackSalt + i * 29 + 11
+        });
+        if (b) blocks.push(b);
     }
 
-    for (let i = 0; i < candidates.length; i++)
+    if (hull.usePedestals)
     {
-        const { poly, tag } = candidates[i];
-        if (!isSubstantialBlock(poly, minThick)) continue;
-        const [sub1, sub2] = splitPolyByPlane(poly, conjB, S * (0.16 + 0.06 * i), gap * 0.78);
-        if (sub1 && sub2 && isSubstantialBlock(sub1, minThick) && isSubstantialBlock(sub2, minThick))
-        {
-            const wedged2 = transformPoly(
-                sub2,
-                [-S * 0.022 * aperture, S * 0.010 * aperture, 0],
-                [0, 0, 1],
-                tiltRad * 0.65 * (tag < 0 ? 1 : -0.6),
-                [-S * 0.12, S * 0.15, 0]
-            );
-            const b1 = compileFractureBlock(sub1, { edgeBevel: bevel, strataWeight: 0.42, seedSalt: crackSalt + i * 29 });
-            const b2 = compileFractureBlock(wedged2, { edgeBevel: bevel, strataWeight: 0.42, seedSalt: crackSalt + i * 29 + 7 });
-            if (b1) blocks.push(b1);
-            if (b2) blocks.push(b2);
-        }
-        else
-        {
-            const b = compileFractureBlock(poly, { edgeBevel: bevel, strataWeight: 0.42, seedSalt: crackSalt + i * 29 });
-            if (b) blocks.push(b);
-        }
+        appendPedestalSupportsForPieces(blocks, pieces, hull.baseY, S, bf, rng, bevel, 0.40, crackSalt);
     }
 
-    addPedestalSpalls(blocks, toWorld, bf, rng, S, bevel, params.spallCalving ?? 0.80, 0.35, crackSalt);
+    addPedestalSpalls(blocks, toWorld, bf, rng, S, bevel, params.spallCalving ?? 0.80, 0.35, crackSalt, fw, fl);
     return blocks;
 }
 
@@ -1630,64 +2183,45 @@ function buildKarstTafoniTowerBlocks(params, rng, crackSalt)
 {
     const S = params.scale;
     const blocks = [];
-    const aperture = params.chasmAperture ?? 0.44;
-    const tiltRad = (params.hingeTiltDeg ?? 2.4) * DEG2RAD;
-    const faultSlip = params.faultHeave ?? 0.30;
+    const fw = clamp(params.formWidth ?? 1.0, 0.35, 2.50);
+    const fl = clamp(params.formLength ?? 1.0, 0.35, 2.50);
     const bevel = S * (0.0040 + 0.0110 * (params.edgeChamfer ?? 0.54));
 
-    const bf = buildStrikeDipFrame(0.22, 0.06); // Sub-horizontal marine limestone bedding!
+    const bf = buildStrikeDipFrame(0.22, 0.06);
     const toWorld = (x, y, z) => [x * S, y * S, z * S];
 
-    // Primary soaring limestone karst tower + flanking pinnacle needles separated by dissolved grike corridors!
-    const mainTower = sculptGeologicalParentPoly(
+    const hull = generateBaseRockHull(
         [0.0, S * 0.46, 0.0],
         [S * 0.42, S * 0.52, S * 0.34],
         bf,
         rng,
+        params,
         { jointDispersion: 0.14, cornerBlunt: 0.88, flatBaseY: 0, extraBevelCuts: 8 }
     );
 
-    const grikeGap = (0.010 + 0.032 * aperture) * S;
-    const grikeN1 = vnorm([0.91, 0.03, -0.41]);
-    const grikeN2 = vnorm([-0.38, 0.04, 0.92]);
+    const pieces = applyControllableSplits(hull.poly, params, S, {
+        defaultAzDeg: 24,
+        defaultDipDeg: 2,
+        conjugateAngleDeg: 78,
+        gapMult: 0.95
+    });
 
-    const [westMass, eastNeedle] = splitPolyByPlane(mainTower, grikeN1, S * 0.09, grikeGap);
-    if (eastNeedle)
+    for (let i = 0; i < pieces.length; i++)
     {
-        const leanedE = transformPoly(
-            eastNeedle,
-            [grikeN1[0] * grikeGap * 0.45, -S * 0.028 * faultSlip, grikeN1[2] * grikeGap * 0.45],
-            [0.41, 0, 0.91],
-            -tiltRad * 0.85,
-            [S * 0.18, 0.0, -S * 0.08]
-        );
-        const bE = compileFractureBlock(leanedE, { edgeBevel: bevel, strataWeight: 0.92, seedSalt: crackSalt + 17 });
-        if (bE) blocks.push(bE);
+        const b = compileFractureBlock(pieces[i].poly, {
+            edgeBevel: bevel,
+            strataWeight: 0.92,
+            seedSalt: crackSalt + 17 + i * 19
+        });
+        if (b) blocks.push(b);
     }
 
-    if (westMass)
+    if (hull.usePedestals)
     {
-        const [northSpire, southButtress] = splitPolyByPlane(westMass, grikeN2, S * 0.07, grikeGap * 0.82);
-        if (northSpire)
-        {
-            const bN = compileFractureBlock(northSpire, { edgeBevel: bevel, strataWeight: 0.92, seedSalt: crackSalt + 31 });
-            if (bN) blocks.push(bN);
-        }
-        if (southButtress)
-        {
-            const leanedS = transformPoly(
-                southButtress,
-                [grikeN2[0] * grikeGap * 0.35, -S * 0.016 * faultSlip, grikeN2[2] * grikeGap * 0.35],
-                [0.92, 0, 0.38],
-                tiltRad * 0.60,
-                [-S * 0.12, 0.0, S * 0.16]
-            );
-            const bS = compileFractureBlock(leanedS, { edgeBevel: bevel, strataWeight: 0.92, seedSalt: crackSalt + 47 });
-            if (bS) blocks.push(bS);
-        }
+        appendPedestalSupportsForPieces(blocks, pieces, hull.baseY, S, bf, rng, bevel, 0.88, crackSalt);
     }
 
-    addPedestalSpalls(blocks, toWorld, bf, rng, S, bevel * 0.95, params.spallCalving ?? 0.55, 0.78, crackSalt);
+    addPedestalSpalls(blocks, toWorld, bf, rng, S, bevel * 0.95, params.spallCalving ?? 0.55, 0.78, crackSalt, fw, fl);
     return blocks;
 }
 
@@ -1837,12 +2371,17 @@ export function evalSingleFractureBlock(block, wx, wy, wz, formation, includeWal
         extWarpY = wa * 0.75 * scalarField3D(p0x * wf + 5.7, p0y * wf * 0.9 - 3.1, p0z * wf, crackSalt + 137);
         extWarpZ = wa * scalarField3D(p0x * wf - 4.3, p0y * wf * 0.9 + 6.2, p0z * wf, crackSalt + 139);
 
-        if (chemDissolveBlk > 0.01 && !block.isSpall && wy < S * 0.32)
+        if (chemDissolveBlk > 0.01 && !block.isSpall)
         {
-            const yRel = (wy - S * 0.095) / (S * 0.076);
-            const notchBell = Math.exp(-yRel * yRel) * smoothstep(0.0, S * 0.028, wy);
-            const bedMod = 0.74 + 0.26 * Math.sin(p0y * (12.0 / S) + 1.1 * scalarField3D(p0x * (1.5 / S), p0y * (1.5 / S), p0z * (1.5 / S), crackSalt + 701));
-            basalNotch = S * 0.058 * chemDissolveBlk * notchBell * bedMod;
+            const fhNotch = Math.min(1.15, clamp(params.formHeight ?? 1.0, 0.30, 2.20));
+            const wyNotch = wy / fhNotch;
+            if (wyNotch < S * 0.32)
+            {
+                const yRel = (wyNotch - S * 0.095) / (S * 0.076);
+                const notchBell = Math.exp(-yRel * yRel) * smoothstep(0.0, S * 0.028, wyNotch);
+                const bedMod = 0.74 + 0.26 * Math.sin(p0y * (12.0 / S) + 1.1 * scalarField3D(p0x * (1.5 / S), p0y * (1.5 / S), p0z * (1.5 / S), crackSalt + 701));
+                basalNotch = S * 0.058 * chemDissolveBlk * notchBell * bedMod;
+            }
         }
     }
 
@@ -2040,6 +2579,10 @@ export function evalFracturedFormationSdf(formation, wx, wy, wz, candidateBlocks
         thermalStressAtPt = insolFactor;
 
         const p0x = _bestMeta.p0x, p0y = _bestMeta.p0y, p0z = _bestMeta.p0z;
+        const fw = clamp(params.formWidth ?? 1.0, 0.35, 2.50);
+        const fh = clamp(params.formHeight ?? 1.0, 0.30, 2.20);
+        const fl = clamp(params.formLength ?? 1.0, 0.35, 2.50);
+        const wyNorm = wy / fh;
 
         // (A) 4-Tier Concentric Spheroidal Onion-Skin Exfoliation + Shell-Confined Plate Cracks + Deep Undercut Parting Slots!
         if (exfol > 0.14)
@@ -2050,12 +2593,10 @@ export function evalFracturedFormationSdf(formation, wx, wy, wz, candidateBlocks
 
             if (dExt0 > -(4.8 * hShell) && dExt0 < S * 0.04)
             {
-                // Summit-crowned spall geometry: primary focus `f1` sits ABOVE the `0.80*S` summit on the upper-front-right
-                // (`y = 0.94*S`) so sheets spall off the crown & slide down — cradling the gleaming corestone crown in 4
-                // sweeping diagonal stone onion husks (ZERO closed bullseye target holes or hanging top arches!)
-                const r1 = Math.hypot((p0x - S * 0.30) * 0.88, (p0y - S * 0.94) * 0.96, (p0z - S * 0.32) * 0.90);
-                // Secondary flank spall notch on the opposite rear-left shoulder for 360-degree visual interest!
-                const r2 = Math.hypot((p0x + S * 0.48) * 0.92, (p0y - S * 0.68) * 1.02, (p0z + S * 0.44) * 0.92) + S * 0.16;
+                // Proportion-normalized radial frame `(qx, qy, qz)` so onion shells wrap wide, squat, or tall boulders cleanly!
+                const qx = p0x / fw, qy = p0y / fh, qz = p0z / fl;
+                const r1 = Math.hypot((qx - S * 0.30) * 0.88, (qy - S * 0.94) * 0.96, (qz - S * 0.32) * 0.90);
+                const r2 = Math.hypot((qx + S * 0.48) * 0.92, (qy - S * 0.68) * 1.02, (qz + S * 0.44) * 0.92) + S * 0.16;
                 const rBase = smin(r1, r2, S * 0.14);
 
                 // Bold multi-scale angular brittle rock-ledge deflection (royal-arches stepped granite scarps!)
@@ -2066,7 +2607,7 @@ export function evalFracturedFormationSdf(formation, wx, wy, wz, candidateBlocks
                     0.032 * (Math.abs(scalarField3D(p0x * wf2, p0y * wf2, p0z * wf2, crackSalt + 499)) * 2.0 - 1.0)
                 );
                 // Keep basal apron cradled in intact outer onion shells near y=0 like a broken stone calyx!
-                const basalHold = Math.max(0.0, S * 0.14 - p0y) * 1.65;
+                const basalHold = Math.max(0.0, S * 0.14 - qy) * 1.65;
                 const rSpall = rBase + wShared + basalHold;
 
                 // Asymmetric Fanned Terrace Widths: shells bunch into tight stacked multi-layer ledges on one flank
@@ -2250,9 +2791,9 @@ export function evalFracturedFormationSdf(formation, wx, wy, wz, candidateBlocks
         }
 
         // (D) Basal Acidic Groundwater Solute Staining (geometry smoothly sculpted in block hull above -> zero tearing!)
-        if (chemDissolve > 0.01 && wy < S * 0.28)
+        if (chemDissolve > 0.01 && wyNorm < S * 0.28)
         {
-            const yRel = (wy - S * 0.095) / (S * 0.082);
+            const yRel = (wyNorm - S * 0.095) / (S * 0.082);
             chemStain = Math.max(chemStain, clamp(Math.exp(-yRel * yRel) * chemDissolve * 0.95, 0.0, 1.0));
         }
 
@@ -2263,7 +2804,7 @@ export function evalFracturedFormationSdf(formation, wx, wy, wz, candidateBlocks
         {
             // Concentrates in sheltered overhangs & lower-to-mid capillary salt-wicking zones!
             const shelterGate = smoothstep(0.62, -0.02, ny);
-            const heightZone = smoothstep(S * 0.03, S * 0.11, wy) * smoothstep(S * 0.88, S * 0.54, wy + S * 0.20 * (params.karrenFlutes ?? 0.0));
+            const heightZone = smoothstep(S * 0.03, S * 0.11, wyNorm) * smoothstep(S * 0.88, S * 0.54, wyNorm + S * 0.20 * (params.karrenFlutes ?? 0.0));
             const patchN = scalarField3D(p0x * (1.15 / S), p0y * (1.55 / S), p0z * (1.15 / S), crackSalt + 719);
             const colonyGate = smoothstep(-0.20 + (1.0 - tafoni) * 0.36, 0.32, patchN) * shelterGate * heightZone * extRindGate;
 
@@ -2315,7 +2856,7 @@ export function evalFracturedFormationSdf(formation, wx, wy, wz, candidateBlocks
         // (F) Pure-SDF Rainwater Rillenkarren / Tsingy Vertical Solution Organ-Pipe Flutes & Summit Gnamma Basins!
         if (karren > 0.01 && extRindGate > 0.02 && dMacro > -S * 0.075)
         {
-            const rainGate = smoothstep(-0.10, 0.36, ny) * smoothstep(S * 0.16, S * 0.40, wy) * extRindGate;
+            const rainGate = smoothstep(-0.10, 0.36, ny) * smoothstep(S * 0.16, S * 0.40, wyNorm) * extRindGate;
             if (rainGate > 0.01)
             {
                 const kw = S * 0.018;
@@ -2337,7 +2878,7 @@ export function evalFracturedFormationSdf(formation, wx, wy, wz, candidateBlocks
             }
 
             // Flat-floored summit Gnamma / Kamenitza rainwater solution pans on upward benches (`ny > 0.75`)!
-            const benchGate = smoothstep(0.75, 0.94, ny) * smoothstep(S * 0.28, S * 0.48, wy) * extRindGate;
+            const benchGate = smoothstep(0.75, 0.94, ny) * smoothstep(S * 0.28, S * 0.48, wyNorm) * extRindGate;
             if (benchGate > 0.01)
             {
                 const gs = 3.8 / S;

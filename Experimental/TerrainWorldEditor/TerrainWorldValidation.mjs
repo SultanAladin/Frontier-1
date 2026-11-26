@@ -26,6 +26,8 @@ import {
 } from './Engine/RockCliff/Core/QefDualContour.js';
 import {
     FRACTURE_PRESETS,
+    BASE_FORM_SHAPES_POLY,
+    BASE_FORM_SHAPES_BASALT,
     createBoxPoly,
     splitPolyByPlane,
     transformPoly,
@@ -1110,4 +1112,153 @@ Suite('26. Pure-SDF Chemical Rock Erosion carves basal solution notches, exterio
         `Honeycomb tafoni & vertical karren flutes must carve exterior cavities & flutes (max carve=${MaxTafoniOrFluteCarve.toFixed(3)}m)`);
 });
 
-console.log(`\nAll ${Passed}/26 Open-World SDF Terrain & Pure-SDF Rock Formation Studio validation suites passed!`);
+// 27. Controllable Split System (Al-Naslaa / Onion-Skin / Parallel / Cross / Unsplit) & Unified Base Rock Form Generator
+Suite('27. Controllable Split System & Base Rock Form Generator reshape proportions, silhouettes & splits across all 7 rocks', () =>
+{
+    assert.ok(BASE_FORM_SHAPES_POLY.length >= 6 && BASE_FORM_SHAPES_BASALT.length >= 4,
+        'Base Form shape catalogs must provide rich polyhedral & basalt colonnade silhouettes');
+
+    // 1. Onion-Skin Exfoliation Dome full split control: Unsplit ('none') vs Al-Naslaa Single Split vs Closed Gap vs Shifted Split vs Parallel/Cross!
+    const DomeUnsplit = buildFracturedFormation({
+        presetId: 'exfoliation-dome',
+        splitMode: 'none',
+        spallCalving: 0.0
+    });
+    assert.equal(DomeUnsplit.blocks.length, 1, 'Unsplit Onion-Skin Exfoliation Dome must compile to 1 unbroken solid dome block');
+    assert.ok(evalFracturedFormationSdf(DomeUnsplit, 0.0, 2.0, 0.0) < -0.50,
+        'Unsplit Onion-Skin Exfoliation Dome center must be solid stone');
+
+    const DomeAlNaslaa = buildFracturedFormation({
+        presetId: 'exfoliation-dome',
+        baseFormShape: 'mushroom',
+        splitMode: 'single',
+        splitAngleDeg: 0,
+        splitDipDeg: 0,
+        splitOffset: 0.0,
+        chasmAperture: 0.65,
+        hingeTiltDeg: 3.5,
+        faultHeave: 0.20,
+        spallCalving: 0.0
+    });
+    // 2 cleaved onion-skin boulder halves + 2 fitted balanced undercut stone pedestals = 4 blocks!
+    assert.equal(DomeAlNaslaa.blocks.length, 4, 'Balanced-pedestal Al-Naslaa split Onion-Skin boulder must build 2 halves + 2 pedestals');
+    let DChasmOpen = -1e9;
+    for (let sx = -0.35; sx <= 0.35; sx += 0.05)
+    {
+        DChasmOpen = Math.max(DChasmOpen, evalFracturedFormationSdf(DomeAlNaslaa, sx, 2.6, 0.0));
+    }
+    const BLeft = DomeAlNaslaa.blocks[0], BRight = DomeAlNaslaa.blocks[1];
+    const DLeftHalf = evalFracturedFormationSdf(DomeAlNaslaa, BLeft.cx, BLeft.cy, BLeft.cz);
+    const DRightHalf = evalFracturedFormationSdf(DomeAlNaslaa, BRight.cx, BRight.cy, BRight.cz);
+    assert.ok(DChasmOpen > 0.08, `Open Al-Naslaa split on Onion-Skin boulder must carve clear air chasm near center (got d=${DChasmOpen.toFixed(3)})`);
+    assert.ok(DLeftHalf < -0.50 && DRightHalf < -0.50,
+        `Both cleaved Onion-Skin halves must remain solid stone (L=${DLeftHalf.toFixed(3)}, R=${DRightHalf.toFixed(3)})`);
+
+    // Closing Split Gap Width to 0 (`chasmAperture = 0, hingeTiltDeg = 0, faultHeave = 0`) seals hairline-tight!
+    const DomeClosed = buildFracturedFormation({
+        presetId: 'exfoliation-dome',
+        splitMode: 'single',
+        splitAngleDeg: 0,
+        splitOffset: 0.0,
+        chasmAperture: 0.0,
+        hingeTiltDeg: 0.0,
+        faultHeave: 0.0,
+        voronoiJointStrength: 0.0,
+        crazing90Strength: 0.0,
+        spallCalving: 0.0
+    });
+    let MaxSeamD = -1e9;
+    for (let sx = -0.50; sx <= 0.50; sx += 0.04)
+    {
+        MaxSeamD = Math.max(MaxSeamD, evalFracturedFormationSdf(DomeClosed, sx, 2.0, 0.0));
+    }
+    assert.ok(MaxSeamD <= 0.002, `Zero-aperture split must close hairline-tight with 0 air gap across the seam (max d=${MaxSeamD.toFixed(4)})`);
+
+    // Shifting `splitOffset` moves the split chasm cleanly off-center while center becomes solid!
+    const DomeShifted = buildFracturedFormation({
+        presetId: 'exfoliation-dome',
+        splitMode: 'single',
+        splitAngleDeg: 0,
+        splitOffset: 0.34,
+        chasmAperture: 0.65,
+        hingeTiltDeg: 0.0,
+        faultHeave: 0.0,
+        spallCalving: 0.0
+    });
+    assert.ok(evalFracturedFormationSdf(DomeShifted, 0.0, 2.0, 0.0) < -0.20,
+        'Shifting splitOffset to +0.34 must leave center x=0 inside solid rock');
+
+    // Parallel (3 slabs) & Crossed splits (>= 3 blocks)
+    const DomeParallel = buildFracturedFormation({ presetId: 'exfoliation-dome', splitMode: 'parallel', spallCalving: 0.0 });
+    const DomeCross = buildFracturedFormation({ presetId: 'exfoliation-dome', splitMode: 'cross', spallCalving: 0.0 });
+    assert.equal(DomeParallel.blocks.length, 3, 'Parallel split mode must cleave dome into 3 slabs');
+    assert.ok(DomeCross.blocks.length >= 3, 'Crossed conjugate split mode must cleave dome into >= 3 wedged blocks');
+
+    // 2. Unified Base Rock Form Generator stretches Width (X), Height (Y) & Length (Z) across ALL 7 Rock Formations!
+    for (const Preset of FRACTURE_PRESETS)
+    {
+        const NarrowShort = buildFracturedFormation({
+            presetId: Preset.id,
+            formWidth: 0.55,
+            formHeight: 0.50,
+            formLength: 0.55,
+            spallCalving: 0.0
+        });
+        const WideTallLong = buildFracturedFormation({
+            presetId: Preset.id,
+            formWidth: 1.75,
+            formHeight: 1.65,
+            formLength: 1.75,
+            spallCalving: 0.0
+        });
+
+        const SpanXNarrow = NarrowShort.bounds.maxX - NarrowShort.bounds.minX;
+        const SpanXWide = WideTallLong.bounds.maxX - WideTallLong.bounds.minX;
+        const SpanYShort = NarrowShort.bounds.maxY - NarrowShort.bounds.minY;
+        const SpanYTall = WideTallLong.bounds.maxY - WideTallLong.bounds.minY;
+        const SpanZShort = NarrowShort.bounds.maxZ - NarrowShort.bounds.minZ;
+        const SpanZLong = WideTallLong.bounds.maxZ - WideTallLong.bounds.minZ;
+
+        assert.ok(SpanXWide > SpanXNarrow * 1.65,
+            `${Preset.id}: formWidth must widen rock X-span (${SpanXNarrow.toFixed(2)}m -> ${SpanXWide.toFixed(2)}m)`);
+        assert.ok(SpanYTall > SpanYShort * 1.65,
+            `${Preset.id}: formHeight must heighten rock Y-span (${SpanYShort.toFixed(2)}m -> ${SpanYTall.toFixed(2)}m)`);
+        assert.ok(SpanZLong > SpanZShort * 1.65,
+            `${Preset.id}: formLength must lengthen rock Z-span (${SpanZShort.toFixed(2)}m -> ${SpanZLong.toFixed(2)}m)`);
+        assert.ok(WideTallLong.blocks.length <= 96,
+            `${Preset.id}: compiled block count (${WideTallLong.blocks.length}) must fit GPU bake texture cap (96)`);
+    }
+
+    // 3. Columnar Basalt Base Form Shapes ('cliff', 'mound', 'ridge', 'amphitheater') + Sea-Gorge Split + QEF Bake
+    for (const Shape of ['cliff', 'mound', 'ridge', 'amphitheater'])
+    {
+        const Basalt = buildFracturedFormation({
+            presetId: 'columnar-basalt',
+            baseFormShape: Shape,
+            formWidth: 1.45,
+            formHeight: 1.15,
+            formLength: 1.35,
+            columnRadiusScale: 0.85,
+            splitMode: Shape === 'mound' ? 'single' : 'cross'
+        });
+        assert.ok(Basalt.blocks.length >= 8 && Basalt.blocks.length <= 96,
+            `Columnar Basalt '${Shape}' must build valid colonnade within GPU cap (got ${Basalt.blocks.length} blocks)`);
+        const Packed = packFracturedFormationGpuBuffers(Basalt);
+        assert.equal(Packed.numBlocks, Basalt.blocks.length);
+    }
+
+    const BasaltQef = bakeFracturedFormationQefMesh(
+        buildFracturedFormation({
+            presetId: 'columnar-basalt',
+            baseFormShape: 'mound',
+            formWidth: 1.35,
+            formHeight: 1.25,
+            splitMode: 'single',
+            chasmAperture: 0.55
+        }),
+        { maxAxisRes: 56 }
+    );
+    assert.ok(BasaltQef.sdfStats.triangles > 2000, 'Custom-formed Sea-Gorge Columnar Basalt must QEF-bake cleanly');
+});
+
+console.log(`\nAll ${Passed}/27 Open-World SDF Terrain & Pure-SDF Rock Formation Studio validation suites passed!`);

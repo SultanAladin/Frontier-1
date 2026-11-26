@@ -47,6 +47,8 @@ import {
 } from './StudioControls.js';
 import {
     FRACTURE_PRESETS,
+    BASE_FORM_SHAPES_POLY,
+    BASE_FORM_SHAPES_BASALT,
     getFracturePreset,
     createDefaultFractureParams,
     buildFracturedFormation,
@@ -3106,7 +3108,8 @@ class TerrainWorldStudioApp
             B.addEventListener('click', OnClick);
             return B;
         };
-        const HasSplitMotion = (Preset.defaults.chasmAperture > 0.001 || Preset.defaults.hingeTiltDeg > 0.01 || Preset.defaults.faultHeave > 0.001);
+        const IsSplitActive = (P.splitMode ?? 'single') !== 'none';
+        const HasSplitMotion = IsSplitActive && (Preset.defaults.chasmAperture > 0.001 || Preset.defaults.hingeTiltDeg > 0.01 || Preset.defaults.faultHeave > 0.001);
         const IsClosedJigsaw = (P.chasmAperture <= 0.001 && P.hingeTiltDeg <= 0.01 && P.faultHeave <= 0.001);
 
         Switches.appendChild(MakeTile('QEF Mesh', 'Boxes', !!IsQef, () =>
@@ -3166,9 +3169,9 @@ class TerrainWorldStudioApp
             this.refreshChrome();
         };
 
-        // 3. Rock Formation Selector, Scale & Seed
+        // 3A. Rock Formation Preset & Seed
         const PresetGroup = MakePropertyGroup(
-            'Rock Formation & Scale',
+            'Rock Formation & Seed',
             'Mountain',
             Preset.badge,
             true,
@@ -3180,11 +3183,6 @@ class TerrainWorldStudioApp
             P.presetId,
             Val => this._selectFracturePreset(Val)
         ));
-        PresetGroup.Body.appendChild(MakeSliderPillRow('Formation Scale', 4.5, 12.5, 0.1, P.scale ?? 7.0, 1, 'm', V =>
-        {
-            P.scale = V;
-            this._rebuildFractureFormationNow(true, true);
-        }, OnCommit));
 
         const SeedActionRow = MakeEl('div', 'studio-btn-row');
         const SeedBtn = MakeEl('button', 'button', `New Seed (#${P.seed})`);
@@ -3207,6 +3205,60 @@ class TerrainWorldStudioApp
         PresetGroup.Body.appendChild(SeedActionRow);
         Content.appendChild(PresetGroup.Group);
 
+        // 3B. Unified Pure-SDF Base Rock Form Generator (available across ALL rock formations!)
+        const BaseFormOptions = Preset.isBasaltColonnade ? BASE_FORM_SHAPES_BASALT : BASE_FORM_SHAPES_POLY;
+        const BaseFormGroup = MakePropertyGroup(
+            'Base Rock Form Generator',
+            'Sliders',
+            'BASE FORM',
+            true,
+            Preset.isBasaltColonnade
+                ? 'Choose stepped cliff, volcanic plug mound, causeway ridge or sea-cove amphitheater — and stretch width, height & length.'
+                : 'Choose base boulder/dome/spire/fin/mesa/pedestal form — and freely stretch width, height, length, crown taper & skew.'
+        );
+        BaseFormGroup.Body.appendChild(MakeSelectRow(
+            'Base Form Shape',
+            BaseFormOptions,
+            P.baseFormShape ?? Preset.defaults.baseFormShape ?? 'default',
+            Val =>
+            {
+                P.baseFormShape = Val;
+                OnChangeStructural();
+                this.refreshChrome();
+            }
+        ));
+        BaseFormGroup.Body.appendChild(MakeSliderPillRow('Width (X Span)', 0.40, 2.20, 0.02, P.formWidth ?? 1.0, 2, '×', V =>
+        {
+            P.formWidth = V;
+            OnChangeStructural();
+        }, OnCommit));
+        BaseFormGroup.Body.appendChild(MakeSliderPillRow('Height (Y Tall)', 0.35, 2.00, 0.02, P.formHeight ?? 1.0, 2, '×', V =>
+        {
+            P.formHeight = V;
+            OnChangeStructural();
+        }, OnCommit));
+        BaseFormGroup.Body.appendChild(MakeSliderPillRow('Length (Z Depth)', 0.40, 2.20, 0.02, P.formLength ?? 1.0, 2, '×', V =>
+        {
+            P.formLength = V;
+            OnChangeStructural();
+        }, OnCommit));
+        BaseFormGroup.Body.appendChild(MakeSliderPillRow('Crown Taper / Flare', -0.55, 0.75, 0.02, P.formTaper ?? 0.0, 2, 'w', V =>
+        {
+            P.formTaper = V;
+            OnChangeStructural();
+        }, OnCommit));
+        BaseFormGroup.Body.appendChild(MakeSliderPillRow('Asymmetric Skew', -0.65, 0.65, 0.02, P.formAsymmetry ?? 0.0, 2, 'w', V =>
+        {
+            P.formAsymmetry = V;
+            OnChangeStructural();
+        }, OnCommit));
+        BaseFormGroup.Body.appendChild(MakeSliderPillRow('Overall Scale', 4.0, 13.0, 0.1, P.scale ?? 7.0, 1, 'm', V =>
+        {
+            P.scale = V;
+            OnChangeStructural();
+        }, OnCommit));
+        Content.appendChild(BaseFormGroup.Group);
+
         // 4. Tailored Per-Rock Control Groups (specific to the selected Rock Formation!)
         for (const GrpSpec of (Preset.controlGroups || []))
         {
@@ -3217,8 +3269,32 @@ class TerrainWorldStudioApp
                 true,
                 GrpSpec.hint || ''
             );
+            let VisibleCount = 0;
             for (const Ctrl of (GrpSpec.controls || []))
             {
+                if (Ctrl.whenSplit && !IsSplitActive) continue;
+                if (Ctrl.showForModes && !Ctrl.showForModes.includes(P.splitMode ?? Preset.defaults.splitMode)) continue;
+
+                VisibleCount++;
+                if (Ctrl.type === 'select')
+                {
+                    const CurSel = P[Ctrl.key] ?? Preset.defaults[Ctrl.key];
+                    Grp.Body.appendChild(MakeSelectRow(
+                        Ctrl.label,
+                        Ctrl.options,
+                        CurSel,
+                        Val =>
+                        {
+                            P[Ctrl.key] = Val;
+                            if (Ctrl.structural) OnChangeStructural();
+                            else OnChangeShader();
+                            if (Ctrl.rebuildInspector) this.rebuildInspector();
+                            this.refreshChrome();
+                        }
+                    ));
+                    continue;
+                }
+
                 const CurVal = P[Ctrl.key] ?? Preset.defaults[Ctrl.key] ?? Ctrl.min;
                 Grp.Body.appendChild(MakeSliderPillRow(
                     Ctrl.label,
@@ -3237,7 +3313,7 @@ class TerrainWorldStudioApp
                     OnCommit
                 ));
             }
-            Content.appendChild(Grp.Group);
+            if (VisibleCount > 0) Content.appendChild(Grp.Group);
         }
 
         // 5. Lighting & Interior Cutaway Slice (Slice Offset shown ONLY when Cutaway is enabled!)
