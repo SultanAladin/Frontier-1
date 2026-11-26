@@ -14,21 +14,21 @@
     <meta http-equiv="Expires" content="0" />
     <title>SDF Terrain Studio — Frontier Experimental Remastered</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23161616'/%3E%3Cpath d='M5 23l7-12 5 7 4-5 6 10z' fill='%23eff4cf'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="./TerrainWorldEditor.css?v=20261126e" />
+    <link rel="stylesheet" href="./TerrainWorldEditor.css?v=20261126f" />
     <script type="importmap">
     {
         "imports": {
-            "./Engine/RockCliff/Core/SpatialNoise3D.js": "./Engine/RockCliff/Core/SpatialNoise3D.js?v=20261126e",
-            "./Engine/RockCliff/Core/SparseSdfBrickGrid.js": "./Engine/RockCliff/Core/SparseSdfBrickGrid.js?v=20261126e",
-            "./Engine/RockCliff/Core/QefDualContour.js": "./Engine/RockCliff/Core/QefDualContour.js?v=20261126e",
-            "./Engine/RockCliff/PureSdfFractureEngine.js": "./Engine/RockCliff/PureSdfFractureEngine.js?v=20261126e",
-            "./Engine/RockCliff/FractureLabViewport.js": "./Engine/RockCliff/FractureLabViewport.js?v=20261126e",
-            "./Engine/TerrainLayerStack.js": "./Engine/TerrainLayerStack.js?v=20261126e",
-            "./StudioControls.js": "./StudioControls.js?v=20261126e"
+            "./Engine/RockCliff/Core/SpatialNoise3D.js": "./Engine/RockCliff/Core/SpatialNoise3D.js?v=20261126f",
+            "./Engine/RockCliff/Core/SparseSdfBrickGrid.js": "./Engine/RockCliff/Core/SparseSdfBrickGrid.js?v=20261126f",
+            "./Engine/RockCliff/Core/QefDualContour.js": "./Engine/RockCliff/Core/QefDualContour.js?v=20261126f",
+            "./Engine/RockCliff/PureSdfFractureEngine.js": "./Engine/RockCliff/PureSdfFractureEngine.js?v=20261126f",
+            "./Engine/RockCliff/FractureLabViewport.js": "./Engine/RockCliff/FractureLabViewport.js?v=20261126f",
+            "./Engine/TerrainLayerStack.js": "./Engine/TerrainLayerStack.js?v=20261126f",
+            "./StudioControls.js": "./StudioControls.js?v=20261126f"
         }
     }
     </script>
-    <script type="module" src="./TerrainWorldEditor.js?v=20261126e"></script>
+    <script type="module" src="./TerrainWorldEditor.js?v=20261126f"></script>
 </head>
 <body class="ws-fracture">
     <div id="app">
@@ -48,7 +48,7 @@
                 <button class="nav-button" data-ws="2d" type="button">2D Mask <small>1</small></button>
                 <button class="nav-button" data-ws="3d" type="button">3D Landscape <small>2</small></button>
                 <button class="nav-button" data-ws="split" type="button">Split 2D + 3D <small>3</small></button>
-                <button class="nav-button active" data-ws="fracture" type="button">SDF Fracture Lab <small>4</small></button>
+                <button class="nav-button active" data-ws="fracture" type="button">Rock Formation <small>4</small></button>
                 <a class="nav-button" href="../SdfSculptEditor/index.html" style="text-decoration:none">3D Clay Studio ↗</a>
             </nav>
 
@@ -81,12 +81,12 @@
                 <div class="scene-statistics">
                     <div class="scene-stat">
                         <span class="stat-symbol enabled-symbol" id="stat-active-icon"></span>
-                        <span class="stat-label">Terrains ON</span>
+                        <span class="stat-label" id="stat-label-1">Terrains ON</span>
                         <strong id="stat-terrains-on">3</strong>
                     </div>
                     <div class="scene-stat">
                         <span class="stat-symbol cutter-symbol" id="stat-spline-icon" style="background:rgba(239,244,207,0.16);color:#eff4cf"></span>
-                        <span class="stat-label">Layers &amp; Splines</span>
+                        <span class="stat-label" id="stat-label-2">Layers &amp; Splines</span>
                         <strong id="stat-layers-total">9</strong>
                     </div>
                 </div>
@@ -126,7 +126,7 @@
             <section class="center-panel" id="center-panel">
                 <div class="viewport-bar">
                     <span id="viewport-title-icon"></span>
-                    <strong>Stage</strong>
+                    <strong id="stage-bar-title">Stage</strong>
                     <span class="bar-divider"></span>
 
                     <select id="scope-select" aria-label="3D multi-terrain view scope" title="Work on all enabled terrains, multi-selected terrains, or solo active terrain">
@@ -210,27 +210,27 @@
                         </div>
                     </div>
 
-                    <!-- Pure-SDF Brittle Fracture & Thermal Cracking Lab Pane -->
+                    <!-- Pure-SDF Rock Formation Pane -->
                     <div class="stage-pane stage-pane-fracture" id="PaneFracture">
-                        <canvas id="CanvasFracture" aria-label="Pure-SDF Brittle Fracture &amp; QEF Dual-Contour 3D Viewport"></canvas>
+                        <canvas id="CanvasFracture" aria-label="Pure-SDF Rock Formation &amp; QEF Dual-Contour 3D Viewport"></canvas>
 
                         <div class="viewport-caption">
-                            <span class="live-pill"><i></i><span>PURE-SDF FRACTURE LAB</span></span>
+                            <span class="live-pill"><i></i><span>ROCK FORMATION</span></span>
                             <span id="hud-fracture-preset">01 · Cracked Jigsaw Monolith</span>
-                            <small id="hud-fracture-zero" class="tabular">0 Mesh→SDF</small>
+                            <small id="hud-fracture-zero" class="tabular">Pure SDF</small>
                         </div>
 
-                        <div class="fracture-floating-bar" role="toolbar" aria-label="Pure-SDF Fracture Render &amp; Diagnostic Controls">
+                        <div class="fracture-floating-bar" role="toolbar" aria-label="Rock Formation Render &amp; Diagnostic Controls">
                             <button id="frac-mode-ray-btn" class="fracture-pill-btn active" type="button" title="Real-time 60 FPS GPU Pure-SDF Raymarcher">60 FPS GPU SDF</button>
-                            <button id="frac-mode-qef-btn" class="fracture-pill-btn" type="button" title="Ported 4^3 Sparse-Brick QEF Dual-Contoured Manifold Mesh">QEF Dual-Contour Mesh</button>
-                            <button id="frac-wire-btn" class="fracture-pill-btn" type="button" title="Overlay QEF sharp-crease wireframe">Wireframe</button>
-                            <button id="frac-cutaway-btn" class="fracture-pill-btn" type="button" title="Slice solid SDF volume open to inspect inward-tapering V-tipped thermal cracks &amp; exfoliation shells">Cutaway Slice</button>
-                            <select id="frac-lens-select" class="fracture-lens-select" aria-label="Fracture diagnostic lens">
-                                <option value="0" selected>Lens · Rind vs Fresh Split PBR</option>
+                            <button id="frac-mode-qef-btn" class="fracture-pill-btn" type="button" title="4^3 Sparse-Brick QEF Dual-Contoured Manifold Mesh">QEF Dual-Contour Mesh</button>
+                            <button id="frac-wire-btn" class="fracture-pill-btn" type="button" title="Overlay QEF sharp-crease wireframe" style="display:none">Wireframe</button>
+                            <button id="frac-cutaway-btn" class="fracture-pill-btn" type="button" title="Slice solid SDF volume open to inspect interior cracks, tafoni &amp; exfoliation shells">Cutaway Slice</button>
+                            <select id="frac-lens-select" class="fracture-lens-select" aria-label="Rock formation diagnostic lens">
+                                <option value="0" selected>Lens · Weathered vs Fresh Rock PBR</option>
                                 <option value="1">Lens · Fresh Fracture Mask</option>
-                                <option value="2">Lens · Solar ΔT Thermal Shock</option>
+                                <option value="2">Lens · Weathering &amp; Solute Stain</option>
                                 <option value="3">Lens · Volumetric 3D SDF AO</option>
-                                <option value="4">Lens · Normals &amp; 90° Dihedrals</option>
+                                <option value="4">Lens · Surface Normals &amp; Creases</option>
                             </select>
                         </div>
 
@@ -240,7 +240,7 @@
                         </div>
 
                         <div class="viewport-help">
-                            <span>Drag: orbit 360°</span><i>·</i><span>Shift+Drag / MMB: pan</span><i>·</i><span>Wheel: zoom</span><i>·</i><span>Sliders: live 60 FPS Pure-SDF fracture</span>
+                            <span>Drag: orbit 360°</span><i>·</i><span>Shift+Drag / MMB: pan</span><i>·</i><span>Wheel: zoom</span><i>·</i><span>Sliders: live 60 FPS Pure-SDF rock formation</span>
                         </div>
                     </div>
                 </div>
@@ -279,7 +279,7 @@
                 <!-- Lower 42px History & Demo Presets Strip -->
                 <div class="timeline" aria-label="World presets and quick actions">
                     <div class="timeline-label">
-                        <span>WORLD</span>
+                        <span id="timeline-heading">WORLD</span>
                         <span id="stroke-counter" class="tabular">3 DEMO MASKS</span>
                     </div>
                     <div class="history-strip" id="preset-strip"></div>
@@ -306,7 +306,7 @@
                 </div>
 
                 <div class="inspector-tabs" id="inspector-tabs" role="tablist" aria-label="Inspector categories">
-                    <button data-itab="fracture" class="active" type="button">SDF Fracture</button>
+                    <button data-itab="fracture" class="active" type="button">Rock Formation</button>
                     <button data-itab="layers" type="button">Layers &amp; Falloff</button>
                     <button data-itab="spline" type="button">Spline &amp; Gizmo</button>
                     <button data-itab="slab" type="button">Thin-Slab</button>

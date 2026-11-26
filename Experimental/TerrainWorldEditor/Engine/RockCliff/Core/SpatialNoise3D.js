@@ -417,6 +417,7 @@ export function ridged3D(x, y, z, octaves = 3, salt = 0)
 
 export const cleavageResult = {
     wallDist: 1.0,
+    f1: 0.0,
     cellRand: 0.0,
     cellId: 0,
     wnx: 0.0,
@@ -494,6 +495,7 @@ export function evalPlanarCleavage3D(x, y, z, jitter = 0.72, salt = 0)
         cleavageResult.wnz = bz * inv;
     }
 
+    cleavageResult.f1 = Math.sqrt(Math.max(0.0, min1));
     cleavageResult.wallDist = wallDist;
     cleavageResult.cellId = id1;
     cleavageResult.cellRand = ((id1 >>> 8) & 0xffff) / 32767.5 - 1.0;

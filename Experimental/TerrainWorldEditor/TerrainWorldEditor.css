@@ -396,14 +396,29 @@
     height: 100%;
 }
 
+body.ws-fracture .document-dock,
+body.ws-fracture #undo-btn,
+body.ws-fracture #redo-btn,
+body.ws-fracture #import-btn,
+body.ws-fracture #add-button,
+body.ws-fracture #scene-filters,
+body.ws-fracture #quick-library,
 body.ws-fracture #scope-select,
 body.ws-fracture #lens-select,
-body.ws-fracture #quick-add-spline,
-body.ws-fracture #quick-place-knot,
-body.ws-fracture #ocean-toggle,
-body.ws-fracture #brush-size-pill,
-body.ws-fracture #sky-select,
-body.ws-fracture #new-terrain-btn {
+body.ws-fracture .sym-cluster,
+body.ws-fracture #toggle-ocean-btn,
+body.ws-fracture #toggle-gizmo-btn,
+body.ws-fracture #toggle-bounds-btn,
+body.ws-fracture #toggle-contours-btn,
+body.ws-fracture .viewport-bar .bar-divider,
+body.ws-fracture .transport,
+body.ws-fracture #reset-demo-btn,
+body.ws-fracture #object-heading .switch,
+body.ws-fracture #inspector-tabs {
+    display: none !important;
+}
+
+body:not(.ws-fracture) #inspector-tabs button[data-itab="fracture"] {
     display: none !important;
 }
 

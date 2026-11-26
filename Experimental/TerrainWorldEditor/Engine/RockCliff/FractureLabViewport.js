@@ -48,6 +48,7 @@ uniform float uScale;
 uniform vec3 uSunDir;
 uniform float uJigsawRoughness;
 uniform float uPlumoseStrength;
+uniform float uStrataContrast;
 uniform float uThermalNorm;
 uniform float uDirectionalBias;
 uniform float uSkinDepth;
@@ -55,6 +56,9 @@ uniform float uCrazing90Strength;
 uniform float uCrazingSpacing;
 uniform float uVoronoiStrength;
 uniform float uExfoliationStrength;
+uniform float uChemicalDissolution;
+uniform float uTafoniHoneycomb;
+uniform float uKarrenFlutes;
 
 float hash31(int ix, int iy, int iz, int salt) {
     uint n = uint(ix) * 1597334677u ^ uint(iy) * 3812015801u ^ uint(iz) * 2798796415u ^ uint(salt) * 198491317u;
@@ -112,7 +116,7 @@ void vorCorner(ivec3 base, int ox, int oy, int oz, vec3 p, float jitter, int sal
     }
 }
 
-vec2 evalFastCleavage3D(vec3 p, float jitter, int salt) {
+vec3 evalFastCleavage3D(vec3 p, float jitter, int salt) {
     ivec3 base = ivec3(floor(p - 0.5));
     float min1 = 1e9;
     float min2 = 1e9;
@@ -132,7 +136,7 @@ vec2 evalFastCleavage3D(vec3 p, float jitter, int salt) {
     float bLen = length(c2 - c1);
     float wallDist = bLen > 1e-5 ? (min2 - min1) / (2.0 * bLen) : 1.0;
     float cellRand = float((id1 >> 8u) & 0xffffu) / 32767.5 - 1.0;
-    return vec2(wallDist, cellRand);
+    return vec3(wallDist, cellRand, sqrt(max(0.0, min1)));
 }
 
 vec4 evalOrganic90Crazing3D(float u, float v, float w, float spacing, int salt) {
@@ -236,6 +240,7 @@ void main() {
     bool noCracks = false;
 
     float exfRound = uScale * 0.088 * smoothstep(0.18, 0.95, uExfoliationStrength);
+    float chemRound = uScale * 0.056 * uChemicalDissolution;
 
     for (int i = 0; i < 32; i++) {
         if (i >= uNumBlocks) break;
@@ -255,6 +260,7 @@ void main() {
         vec4 m5 = texelFetch(uBlockTex, ivec2(5, i), 0);
 
         vec3 p0 = vec3(dot(r0.xyz, p) + r0.w, dot(r1.xyz, p) + r1.w, dot(r2.xyz, p) + r2.w);
+        float effStrata = m5.y * uStrataContrast;
 
         float f0 = 0.58 / uScale;
         float f1 = 1.65 / uScale;
@@ -267,13 +273,15 @@ void main() {
         float rNuc = length(vec3(p0.x, p0.y - uScale * 0.08, p0.z));
         float plum = sin(rNuc * (22.0 / uScale) + w1 * 4.2) * 0.45 +
                      scalarField3D(vec3(p0.x * (8.5 / uScale), p0.y * (4.8 / uScale), p0.z * (8.5 / uScale)), uCrackSalt + 71) * 0.55;
+        float plumAuto = clamp(0.20 + 0.72 * uJigsawRoughness, 0.0, 1.0) * mix(0.65, uPlumoseStrength, 0.5) * smoothstep(0.0, 0.20, uJigsawRoughness);
         float jigsawDisp = uScale * uJigsawRoughness * (0.022 * macroBend + 0.017 * w1 + 0.007 * jagTooth) +
-                           uScale * 0.0080 * uPlumoseStrength * plum;
+                           uScale * 0.0080 * plumAuto * plum;
 
+        float chemSoften = 1.0 - 0.42 * uChemicalDissolution;
         float macroLobe = uScale * 0.024 * scalarField3D(vec3(p0.x, p0.y * 0.85, p0.z) * (0.85 / uScale), uCrackSalt + 109);
-        float angularCrag = uScale * 0.015 * (abs(scalarField3D(p0 * (2.15 / uScale), uCrackSalt + 113)) * 2.0 - 1.0);
-        float fineGrain = uScale * 0.0050 * scalarField3D(p0 * (5.10 / uScale), uCrackSalt + 127);
-        float strataAmp = uScale * 0.0060 * m5.y;
+        float angularCrag = uScale * 0.015 * chemSoften * (abs(scalarField3D(p0 * (2.15 / uScale), uCrackSalt + 113)) * 2.0 - 1.0);
+        float fineGrain = uScale * 0.0050 * chemSoften * scalarField3D(p0 * (5.10 / uScale), uCrackSalt + 127);
+        float strataAmp = uScale * 0.0065 * effStrata * (1.0 - 0.55 * uKarrenFlutes);
         float bedY = p0.y * (5.4 / uScale) + 0.52 * scalarField3D(vec3(p0.x * (1.6 / uScale), p0.y * (2.4 / uScale), p0.z * (1.6 / uScale)), uCrackSalt + 149);
         float strataLedge = strataAmp * (sin(bedY * 6.2831853) * 0.72 + 0.28 * sin(bedY * 12.5663706 + 0.8));
         float extRelief = macroLobe + angularCrag + fineGrain + strataLedge;
@@ -285,7 +293,16 @@ void main() {
             wa * 0.75 * scalarField3D(vec3(p0.x * wf + 5.7, p0.y * wf * 0.9 - 3.1, p0.z * wf), uCrackSalt + 137),
             wa * scalarField3D(vec3(p0.x * wf - 4.3, p0.y * wf * 0.9 + 6.2, p0.z * wf), uCrackSalt + 139)
         );
-        float kLse = max(0.012, (bevel * (0.95 + 0.85 * abs(scalarField3D(p0 * (1.6 / uScale), uCrackSalt + 163))) + exfRound) * 0.42);
+
+        float basalNotch = 0.0;
+        if (uChemicalDissolution > 0.01 && !blkNoCracks && p.y < uScale * 0.32) {
+            float yRel = (p.y - uScale * 0.095) / (uScale * 0.076);
+            float notchBell = exp(-yRel * yRel) * smoothstep(0.0, uScale * 0.028, p.y);
+            float bedMod = 0.74 + 0.26 * sin(p0.y * (12.0 / uScale) + 1.1 * scalarField3D(p0 * (1.5 / uScale), uCrackSalt + 701));
+            basalNotch = uScale * 0.058 * uChemicalDissolution * notchBell * bedMod;
+        }
+
+        float kLse = max(0.012, (bevel * (0.95 + 0.85 * abs(scalarField3D(p0 * (1.6 / uScale), uCrackSalt + 163))) + exfRound + chemRound) * 0.42);
         float invKLse = 1.0 / kLse;
         float invNormSoft = 1.0 / max(0.035, kLse * 1.35);
 
@@ -308,7 +325,8 @@ void main() {
             } else if (pl.y <= -0.85) {
                 dFloor = max(dFloor, pd);
             } else {
-                pd += extRelief + dot(pl.xyz, extWarp);
+                float sideMask = max(0.0, 1.0 - abs(pl.y) * 0.80);
+                pd += extRelief + basalNotch * sideMask + dot(pl.xyz, extWarp);
                 if (pd > bestExtPd) {
                     sumExtExp = bestExtPd > -1e8 ? sumExtExp * exp(max(-24.0, (bestExtPd - pd) * invKLse)) + 1.0 : 1.0;
                     bestExtPd = pd;
@@ -344,7 +362,7 @@ void main() {
             bestP0 = p0;
             bestN = bN;
             noCracks = blkNoCracks;
-            bestStrata = m5.y;
+            bestStrata = effStrata;
             float tr = max(0.015, bevel * 1.35);
             bestFresh = smoothstep(-tr, tr, dFrac - dMaxExt);
         }
@@ -353,12 +371,17 @@ void main() {
     float d = bestD;
     float curMacro = bestD;
     float crackFresh = 0.0;
+    float chemStain = 0.0;
     float thermalStress = uThermalNorm;
     float shellAgeFactor = 1.0;
 
-    float maxFineDepth = max(uSkinDepth * 2.2, uExfoliationStrength > 0.14 ? uScale * 0.13 : 0.12);
+    float maxFineDepth = max(
+        max(uSkinDepth * 1.65, uExfoliationStrength > 0.14 ? uScale * 0.13 : 0.12),
+        (uChemicalDissolution > 0.01 || uTafoniHoneycomb > 0.01 || uKarrenFlutes > 0.01) ? uScale * 0.11 : 0.12
+    );
     if (!noCracks && curMacro < uScale * 0.05 && curMacro > -maxFineDepth &&
-        (uCrazing90Strength > 0.01 || uVoronoiStrength > 0.01 || uExfoliationStrength > 0.14)) {
+        (uCrazing90Strength > 0.01 || uVoronoiStrength > 0.01 || uExfoliationStrength > 0.14 ||
+         uChemicalDissolution > 0.01 || uTafoniHoneycomb > 0.01 || uKarrenFlutes > 0.01)) {
 
         float ndots = max(1e-4, dot(bestN, uSunDir));
         float sunGate = clamp(pow(ndots, 1.25) + 0.10, 0.0, 1.0);
@@ -404,7 +427,7 @@ void main() {
                 float pScale = (0.95 / uScale) * 3.6;
                 float pwx = 0.36 * scalarField3D(p0 * (pScale * 0.5), uCrackSalt + 563);
                 float pwz = 0.36 * scalarField3D(p0 * (pScale * 0.5) + vec3(4.8, 0.0, -3.1), uCrackSalt + 569);
-                vec2 plateClv = evalFastCleavage3D(vec3(p0.x * pScale + pwx, p0.y * pScale * 0.9, p0.z * pScale + pwz), 0.62, uCrackSalt + 577);
+                vec3 plateClv = evalFastCleavage3D(vec3(p0.x * pScale + pwx, p0.y * pScale * 0.9, p0.z * pScale + pwz), 0.62, uCrackSalt + 577);
                 float plateWallWorld = plateClv.x / pScale;
                 float plateOpen = smoothstep(-0.18, 0.34, scalarField3D(p0 * (pScale * 0.45), uCrackSalt + 587));
 
@@ -456,25 +479,29 @@ void main() {
 
         float tipDepth = max(0.06, uSkinDepth) * clamp(0.30 + 0.70 * insol, 0.15, 1.35) * (0.35 + 0.65 * shellAgeFactor);
         float vTaper = max(0.0, 1.0 + min(0.0, curMacro) / tipDepth) * shellAgeFactor;
+        float grikeFlare = 1.0 + 1.35 * uChemicalDissolution * smoothstep(-uScale * 0.050, 0.0, curMacro);
+        float grikeLipSmooth = 1.0 + 1.80 * uChemicalDissolution;
 
-        if (uCrazing90Strength > 0.01 && insol > 0.02 && curMacro > -(tipDepth + uScale * 0.06)) {
+        if (uCrazing90Strength > 0.01 && insol > 0.02 && curMacro > -(tipDepth + uSkinDepth * 0.65)) {
             vec3 an = abs(bestN);
             vec3 uvwT = (an.y >= an.x && an.y >= an.z) ? vec3(p0.x, p0.z, p0.y)
                       : (an.x >= an.z)                ? vec3(p0.z, p0.y, p0.x)
                                                       : vec3(p0.x, p0.y, p0.z);
             vec4 c90 = evalOrganic90Crazing3D(uvwT.x, uvwT.y, uvwT.z, uCrazingSpacing, uCrackSalt + 211);
-            float surfHalfAp90 = uCrazingSpacing * 0.068 * uCrazing90Strength * insol;
+            float surfHalfAp90 = uCrazingSpacing * 0.068 * uCrazing90Strength * insol * grikeFlare;
             if (surfHalfAp90 > 0.0015) {
                 float ap1 = surfHalfAp90 * c90.z * vTaper;
                 float ap2 = surfHalfAp90 * c90.w * vTaper;
                 float cutOrganic90 = min(c90.x - ap1, c90.y * 1.12 - ap2);
                 float effAp = max(ap1, ap2);
                 float cut90 = max(cutOrganic90, (-curMacro) - tipDepth);
-                d = chamferSub(d, cut90, effAp * 0.35);
+                d = uChemicalDissolution > 0.15
+                    ? smaxPoly(d, -cut90, effAp * 0.42 * grikeLipSmooth)
+                    : chamferSub(d, cut90, effAp * 0.35);
             }
         }
 
-        if (uVoronoiStrength > 0.01 && curMacro > -(tipDepth + uScale * 0.06)) {
+        if (uVoronoiStrength > 0.01 && curMacro > -(tipDepth + uSkinDepth * 0.65)) {
             float vorScale = (1.35 / uScale) * 4.2;
             vec3 vp = vec3(p0.x * vorScale, p0.y * vorScale * 0.86, p0.z * vorScale);
             vec3 w0 = vec3(
@@ -482,24 +509,26 @@ void main() {
                 0.36 * scalarField3D(vp * 0.55 + vec3(5.2, -2.8, 0.0), uCrackSalt + 331) + 0.12 * (abs(scalarField3D(vp * 2.15 + vec3(-3.4, 0.0, 0.0), uCrackSalt + 337)) * 2.0 - 1.0),
                 0.38 * scalarField3D(vp * 0.55 + vec3(-4.1, 6.3, 0.0), uCrackSalt + 347) + 0.12 * (abs(scalarField3D(vp * 2.15 + vec3(0.0, 4.1, 0.0), uCrackSalt + 353)) * 2.0 - 1.0)
             );
-            vec2 clv = evalFastCleavage3D(vp + w0, 0.62, uCrackSalt + 307);
+            vec3 clv = evalFastCleavage3D(vp + w0, 0.62, uCrackSalt + 307);
             float worldWall = clv.x / vorScale;
 
             float vorVit = scalarField3D(vp * 0.48 + vec3(-7.1, 3.9, 0.0), uCrackSalt + 367);
             float openVor = smoothstep(-0.12, 0.46, vorVit);
             float vorBridge = openVor * sqrt(max(0.0, openVor)) * (0.82 + 0.46 * abs(scalarField3D(vp * 2.7, uCrackSalt + 379)));
 
-            float surfHalfApVor = (0.010 + 0.030 * uVoronoiStrength) * (0.45 + 0.55 * insol) * (uScale / 7.0) * vorBridge;
+            float surfHalfApVor = (0.010 + 0.030 * uVoronoiStrength) * (0.45 + 0.55 * insol) * (uScale / 7.0) * vorBridge * grikeFlare;
             if (surfHalfApVor > 0.0012) {
                 float halfApVor = surfHalfApVor * vTaper;
                 float cutVor = max(worldWall - halfApVor, (-curMacro) - tipDepth);
-                d = chamferSub(d, cutVor, halfApVor * 0.36);
+                d = uChemicalDissolution > 0.15
+                    ? smaxPoly(d, -cutVor, halfApVor * 0.45 * grikeLipSmooth)
+                    : chamferSub(d, cutVor, halfApVor * 0.36);
             }
 
             float nearPrimary = smoothstep(0.42, 0.02, clv.x) * smoothstep(0.12, 0.60, vorBridge);
             if (nearPrimary > 0.04 && vTaper > 0.0) {
                 float subScale = 2.45;
-                vec2 subClv = evalFastCleavage3D((vp + w0 * 1.3) * subScale, 0.62, uCrackSalt + 389);
+                vec3 subClv = evalFastCleavage3D((vp + w0 * 1.3) * subScale, 0.62, uCrackSalt + 389);
                 float subWallWorld = subClv.x / (vorScale * subScale);
                 float subHalfAp = (0.0045 + 0.012 * uVoronoiStrength) * nearPrimary * vTaper * (uScale / 7.0);
                 if (subHalfAp > 0.0010) {
@@ -508,13 +537,93 @@ void main() {
                 }
             }
         }
+
+        if (uChemicalDissolution > 0.01 && p.y < uScale * 0.28) {
+            float yRel = (p.y - uScale * 0.095) / (uScale * 0.082);
+            chemStain = max(chemStain, clamp(exp(-yRel * yRel) * uChemicalDissolution * 0.95, 0.0, 1.0));
+        }
+
+        float extRindGate = smoothstep(0.60, 0.10, bestFresh);
+
+        if (uTafoniHoneycomb > 0.01 && extRindGate > 0.02 && curMacro > -uScale * 0.075) {
+            float shelterGate = smoothstep(0.62, -0.02, bestN.y);
+            float heightZone = smoothstep(uScale * 0.03, uScale * 0.11, p.y) * smoothstep(uScale * 0.88, uScale * 0.54, p.y + uScale * 0.20 * uKarrenFlutes);
+            float patchN = scalarField3D(vec3(p0.x * (1.15 / uScale), p0.y * (1.55 / uScale), p0.z * (1.15 / uScale)), uCrackSalt + 719);
+            float colonyGate = smoothstep(-0.20 + (1.0 - uTafoniHoneycomb) * 0.36, 0.32, patchN) * shelterGate * heightZone * extRindGate;
+
+            if (colonyGate > 0.02) {
+                float ts1 = 4.8 / uScale;
+                float twx = 0.20 * scalarField3D(p0 * (ts1 * 0.5), uCrackSalt + 727);
+                float twz = 0.20 * scalarField3D(p0 * (ts1 * 0.5) + vec3(3.9, -2.4, 0.0), uCrackSalt + 731);
+                vec3 tc1 = evalFastCleavage3D(vec3(p0.x * ts1 + twx, p0.y * ts1 * 1.38, p0.z * ts1 + twz), 0.58, uCrackSalt + 733);
+
+                float cellAct1 = 0.72 + 0.28 * (0.5 + 0.5 * tc1.y);
+                float rPit1 = (0.43 * (0.62 + 0.38 * uTafoniHoneycomb) * cellAct1 * (0.55 + 0.45 * colonyGate)) / ts1;
+                float tRib1 = 0.105 / ts1;
+                float maxDepth1 = uScale * (0.020 + 0.028 * uTafoniHoneycomb) * colonyGate * cellAct1;
+                float dBowl1 = smaxPoly(smaxPoly((tc1.z / ts1) - rPit1, tRib1 - (tc1.x / ts1), 0.055), (-curMacro) - maxDepth1, 0.055);
+                float prevD = d;
+                d = smaxPoly(d, -dBowl1, 0.048 + 0.025 * uTafoniHoneycomb);
+                if (d > prevD + 0.002) {
+                    chemStain = max(chemStain, clamp((d - prevD) * 14.0 * uTafoniHoneycomb, 0.0, 0.92));
+                    crackFresh = max(crackFresh, 0.32 * uTafoniHoneycomb * colonyGate);
+                }
+
+                float ts2 = 9.2 / uScale;
+                vec3 tc2 = evalFastCleavage3D(vec3(p0.x * ts2 - twz, p0.y * ts2 * 1.32, p0.z * ts2 + twx), 0.58, uCrackSalt + 751);
+                float cellAct2 = smoothstep(-0.30, 0.25, tc2.y);
+                if (cellAct2 > 0.02) {
+                    float rPit2 = (0.40 * (0.55 + 0.45 * uTafoniHoneycomb) * cellAct2 * colonyGate) / ts2;
+                    float tRib2 = 0.105 / ts2;
+                    float maxDepth2 = uScale * (0.010 + 0.015 * uTafoniHoneycomb) * colonyGate * cellAct2;
+                    float dBowl2 = smaxPoly(smaxPoly((tc2.z / ts2) - rPit2, tRib2 - (tc2.x / ts2), 0.032), (-curMacro) - maxDepth2, 0.032);
+                    float prevD2 = d;
+                    d = smaxPoly(d, -dBowl2, 0.028 + 0.015 * uTafoniHoneycomb);
+                    if (d > prevD2 + 0.001) chemStain = max(chemStain, clamp((d - prevD2) * 18.0 * uTafoniHoneycomb, 0.0, 0.85));
+                }
+            }
+        }
+
+        if (uKarrenFlutes > 0.01 && extRindGate > 0.02 && curMacro > -uScale * 0.075) {
+            float rainGate = smoothstep(-0.10, 0.36, bestN.y) * smoothstep(uScale * 0.16, uScale * 0.40, p.y) * extRindGate;
+            if (rainGate > 0.01) {
+                float kw = uScale * 0.018;
+                float kx = p0.x + kw * scalarField3D(vec3(p0.x * (1.6 / uScale), p0.y * (0.40 / uScale), p0.z * (1.6 / uScale)), uCrackSalt + 769);
+                float kz = p0.z + kw * scalarField3D(vec3(p0.x * (1.6 / uScale) + 4.7, p0.y * (0.40 / uScale) - 2.3, p0.z * (1.6 / uScale)), uCrackSalt + 773);
+
+                float fk1 = 10.5 / uScale;
+                float fk2 = 22.0 / uScale;
+                float u1 = smoothstep(0.02, 0.66, abs(scalarField3D(vec3(kx * fk1, p0.y * fk1 * 0.05, kz * fk1), uCrackSalt + 787)));
+                float u2 = smoothstep(0.02, 0.66, abs(scalarField3D(vec3(kx * fk2 + 2.9, p0.y * fk2 * 0.05, kz * fk2 - 1.7), uCrackSalt + 797)));
+
+                float depthFade = smoothstep(-uScale * 0.065, 0.0, curMacro);
+                float fluteRecess = uScale * (0.032 * u1 + 0.013 * u2) * uKarrenFlutes * rainGate * depthFade;
+                d += fluteRecess;
+                crackFresh = max(crackFresh, (1.0 - u1) * rainGate * uKarrenFlutes * 0.42);
+                chemStain = max(chemStain, u1 * rainGate * uKarrenFlutes * 0.48);
+            }
+
+            float benchGate = smoothstep(0.75, 0.94, bestN.y) * smoothstep(uScale * 0.28, uScale * 0.48, p.y) * extRindGate;
+            if (benchGate > 0.01) {
+                float gs = 3.8 / uScale;
+                vec3 gc = evalFastCleavage3D(vec3(p0.x * gs, p0.y * gs * 0.35, p0.z * gs), 0.58, uCrackSalt + 809);
+                float rPan = (0.38 * (0.60 + 0.40 * uKarrenFlutes) * benchGate) / gs;
+                float panMaxD = uScale * 0.022 * uKarrenFlutes * benchGate;
+                float dPan = smaxPoly(smaxPoly((gc.z / gs) - rPan, (0.11 / gs) - (gc.x / gs), 0.04), (-curMacro) - panMaxD, 0.035);
+                d = smaxPoly(d, -dPan, 0.032);
+                if (-dPan > -0.01) chemStain = max(chemStain, 0.62 * uKarrenFlutes * benchGate);
+            }
+        }
     }
 
     float grain = scalarField3D(bestP0 * 6.5, uCrackSalt + 601);
     float bedBand = sin((bestP0.y * (5.4 / uScale) + 0.44 * scalarField3D(bestP0 * 0.6, uCrackSalt + 619)) * 6.2831853);
     float strataMod = 1.0 + bedBand * 0.14 * bestStrata + grain * 0.07;
 
-    outSdf = vec4(d, clamp(max(bestFresh, crackFresh), 0.0, 1.0), clamp(thermalStress, 0.0, 1.5), strataMod);
+    float chemAny = step(0.015, uChemicalDissolution + uTafoniHoneycomb + uKarrenFlutes);
+    float weatherChan = mix(clamp(thermalStress, 0.0, 1.2), clamp(max(chemStain, thermalStress * 0.35), 0.0, 1.0), chemAny);
+
+    outSdf = vec4(d, clamp(max(bestFresh, crackFresh), 0.0, 1.0), weatherChan, strataMod);
 }
 `;
 
@@ -549,6 +658,7 @@ uniform int uLensMode;
 
 uniform float uScale;
 uniform float uSkinDepth;
+uniform float uChemActive;
 uniform int uCutawayEnabled;
 uniform int uCutawayAxis;
 uniform float uCutawayOffset;
@@ -722,7 +832,8 @@ void main() {
         } else {
             albedo = mix(uColRind, uColFresh, freshMask) * strataMod;
             float liesegang = sin(clamp(freshMask, 0.0, 1.0) * 3.14159265);
-            albedo = mix(albedo, uColIron, clamp(cav * 0.68 + liesegang * 0.58, 0.0, 1.0) * 0.44);
+            float chemStain = thermalStress * uChemActive;
+            albedo = mix(albedo, uColIron, clamp(cav * 0.68 + chemStain * 0.65 + liesegang * 0.50, 0.0, 1.0) * 0.44);
             float upLichen = (1.0 - freshMask) * smoothstep(0.55, 0.92, n.y);
             albedo = mix(albedo, uColLichen, upLichen * 0.28);
             albedo *= (1.0 + edg * 0.18 - cav * 0.18);
@@ -1105,13 +1216,17 @@ export class FractureLabViewport
         gl.uniform3fv(gl.getUniformLocation(this.bakeProg, 'uSunDir'), sunDir);
         gl.uniform1f(gl.getUniformLocation(this.bakeProg, 'uJigsawRoughness'), params.jigsawRoughness ?? 0.55);
         gl.uniform1f(gl.getUniformLocation(this.bakeProg, 'uPlumoseStrength'), params.plumoseStrength ?? 0.60);
+        gl.uniform1f(gl.getUniformLocation(this.bakeProg, 'uStrataContrast'), params.strataContrast ?? 1.0);
         gl.uniform1f(gl.getUniformLocation(this.bakeProg, 'uThermalNorm'), clamp((params.thermalDeltaT ?? 38) / 65.0, 0, 1.5));
         gl.uniform1f(gl.getUniformLocation(this.bakeProg, 'uDirectionalBias'), params.directionalBias ?? 0.55);
         gl.uniform1f(gl.getUniformLocation(this.bakeProg, 'uSkinDepth'), Math.max(0.06, params.thermalSkinDepth ?? 0.44));
         gl.uniform1f(gl.getUniformLocation(this.bakeProg, 'uCrazing90Strength'), params.crazing90Strength ?? 0.30);
         gl.uniform1f(gl.getUniformLocation(this.bakeProg, 'uCrazingSpacing'), Math.max(0.18, params.crazingSpacing ?? 0.62));
         gl.uniform1f(gl.getUniformLocation(this.bakeProg, 'uVoronoiStrength'), params.voronoiJointStrength ?? 0.36);
-        gl.uniform1f(gl.getUniformLocation(this.bakeProg, 'uExfoliationStrength'), params.exfoliationStrength ?? 0.14);
+        gl.uniform1f(gl.getUniformLocation(this.bakeProg, 'uExfoliationStrength'), params.exfoliationStrength ?? 0.0);
+        gl.uniform1f(gl.getUniformLocation(this.bakeProg, 'uChemicalDissolution'), params.chemicalDissolution ?? 0.0);
+        gl.uniform1f(gl.getUniformLocation(this.bakeProg, 'uTafoniHoneycomb'), params.tafoniHoneycomb ?? 0.0);
+        gl.uniform1f(gl.getUniformLocation(this.bakeProg, 'uKarrenFlutes'), params.karrenFlutes ?? 0.0);
 
         const uSliceLoc = gl.getUniformLocation(this.bakeProg, 'uSliceZNorm');
         gl.bindVertexArray(this.emptyVao);
@@ -1156,7 +1271,7 @@ export class FractureLabViewport
                     const d = evalFracturedFormationSdf(this.formation, wx, wy, wz, null, info);
                     buf[ptr] = d;
                     buf[ptr + 1] = info.freshMask ?? 0;
-                    buf[ptr + 2] = info.thermalStress ?? 0.5;
+                    buf[ptr + 2] = Math.max(info.chemStain ?? 0, (info.thermalStress ?? 0.5) * 0.35);
                     buf[ptr + 3] = 1.0;
                     ptr += 4;
                 }
@@ -1395,8 +1510,10 @@ export class FractureLabViewport
             gl.uniform1f(gl.getUniformLocation(this.rayProg, 'uExposure'), this.exposure);
             gl.uniform1i(gl.getUniformLocation(this.rayProg, 'uLensMode'), this.lensMode);
 
+            const chemSum = (params.chemicalDissolution ?? 0) + (params.tafoniHoneycomb ?? 0) + (params.karrenFlutes ?? 0);
             gl.uniform1f(gl.getUniformLocation(this.rayProg, 'uScale'), params.scale);
             gl.uniform1f(gl.getUniformLocation(this.rayProg, 'uSkinDepth'), Math.max(0.06, params.thermalSkinDepth ?? 0.44));
+            gl.uniform1f(gl.getUniformLocation(this.rayProg, 'uChemActive'), chemSum > 0.015 ? 1.0 : 0.0);
             gl.uniform1i(gl.getUniformLocation(this.rayProg, 'uCutawayEnabled'), params.cutawayEnabled ? 1 : 0);
             gl.uniform1i(gl.getUniformLocation(this.rayProg, 'uCutawayAxis'), params.cutawayAxis ?? 0);
             gl.uniform1f(gl.getUniformLocation(this.rayProg, 'uCutawayOffset'), params.cutawayOffset ?? 0.25);

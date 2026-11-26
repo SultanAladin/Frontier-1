@@ -536,7 +536,7 @@ export const FRACTURE_PRESETS = [
         id: 'cracked-monolith',
         name: '01 · Cracked Jigsaw Monolith',
         badge: 'JIGSAW + HINGE',
-        subtitle: 'Basal-hinged granite spire split with matching jigsaw walls, plumose hackles, chockstones & spalls',
+        subtitle: 'Basal-hinged granite buttress split with interlocking jigsaw walls, chockstones & fallen talus',
         lithology: 'granite',
         defaults: {
             presetId: 'cracked-monolith',
@@ -548,6 +548,7 @@ export const FRACTURE_PRESETS = [
             jigsawRoughness: 0.65,
             plumoseStrength: 0.68,
             edgeChamfer: 0.34,
+            strataContrast: 0.60,
             thermalDeltaT: 38,
             sunAzimuthDeg: 48,
             sunElevationDeg: 40,
@@ -556,19 +557,48 @@ export const FRACTURE_PRESETS = [
             crazing90Strength: 0.30,
             crazingSpacing: 0.68,
             voronoiJointStrength: 0.36,
-            exfoliationStrength: 0.14,
+            exfoliationStrength: 0.0,
+            chemicalDissolution: 0.0,
+            tafoniHoneycomb: 0.0,
+            karrenFlutes: 0.0,
             spallCalving: 0.68,
             cutawayEnabled: false,
             cutawayAxis: 0,
             cutawayOffset: 0.35,
             meshResolution: 84
-        }
+        },
+        controlGroups: [
+            {
+                title: 'Monolith Split & Block Motion',
+                glyph: 'Boxes',
+                badge: 'TECTONIC',
+                hint: 'Controls the master tensile split, basal hinge rotation, and interlocking jigsaw wall teeth.',
+                controls: [
+                    { key: 'chasmAperture', label: 'Chasm Split Width', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true },
+                    { key: 'hingeTiltDeg', label: 'Basal Hinge Tilt', min: 0.0, max: 14.0, step: 0.1, decimals: 1, unit: '°', structural: true },
+                    { key: 'faultHeave', label: 'Normal-Fault Drop', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true },
+                    { key: 'jigsawRoughness', label: 'Jigsaw Wall Roughness', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false },
+                    { key: 'spallCalving', label: 'Fallen Pedestal Talus', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true }
+                ]
+            },
+            {
+                title: 'Cracking & Chemical Weathering',
+                glyph: 'Activity',
+                badge: 'EROSION',
+                hint: 'Branches 3D stress fissures and dissolves granite corners, basal notches & cavernous tafoni pockets.',
+                controls: [
+                    { key: 'voronoiJointStrength', label: '3D Stress Fissures', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false },
+                    { key: 'chemicalDissolution', label: 'Chemical Dissolution', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false },
+                    { key: 'tafoniHoneycomb', label: 'Honeycomb Tafoni Caves', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false }
+                ]
+            }
+        ]
     },
     {
         id: 'al-naslaa-split',
         name: '02 · Al-Naslaa Laser-Split Boulder',
-        badge: 'STRATA PULLBACK',
-        subtitle: 'Balanced twin sandstone megaliths cleaved by a razor tensile joint with continuous cross-beds across the gap',
+        badge: 'DESERT TAFONI',
+        subtitle: 'Balanced twin sandstone megaliths on undercut pedestals with continuous cross-beds & honeycomb tafoni',
         lithology: 'sandstone',
         defaults: {
             presetId: 'al-naslaa-split',
@@ -580,6 +610,7 @@ export const FRACTURE_PRESETS = [
             jigsawRoughness: 0.14,
             plumoseStrength: 0.78,
             edgeChamfer: 0.22,
+            strataContrast: 0.90,
             thermalDeltaT: 46,
             sunAzimuthDeg: 44,
             sunElevationDeg: 42,
@@ -588,19 +619,47 @@ export const FRACTURE_PRESETS = [
             crazing90Strength: 0.44,
             crazingSpacing: 0.62,
             voronoiJointStrength: 0.16,
-            exfoliationStrength: 0.08,
+            exfoliationStrength: 0.0,
+            chemicalDissolution: 0.22,
+            tafoniHoneycomb: 0.28,
+            karrenFlutes: 0.0,
             spallCalving: 0.45,
             cutawayEnabled: false,
             cutawayAxis: 2,
             cutawayOffset: 0.40,
             meshResolution: 84
-        }
+        },
+        controlGroups: [
+            {
+                title: 'Twin Megaliths & Cross-Bedding',
+                glyph: 'Boxes',
+                badge: 'SANDSTONE',
+                hint: 'Adjusts the razor tensile split, balanced pedestal cant, and horizontal sedimentary bedding ledges.',
+                controls: [
+                    { key: 'chasmAperture', label: 'Laser Joint Gap', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true },
+                    { key: 'hingeTiltDeg', label: 'Pedestal Balance Cant', min: 0.0, max: 10.0, step: 0.1, decimals: 1, unit: '°', structural: true },
+                    { key: 'faultHeave', label: 'Twin Vertical Offset', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true },
+                    { key: 'strataContrast', label: 'Sedimentary Cross-Beds', min: 0.0, max: 1.5, step: 0.02, decimals: 2, unit: 'w', structural: false }
+                ]
+            },
+            {
+                title: 'Desert Crazing & Chemical Tafoni',
+                glyph: 'Activity',
+                badge: 'CHEMICAL',
+                hint: 'Salt-hydration honeycomb tafoni caves, basal pedestal undercutting, and desert thermal crazing.',
+                controls: [
+                    { key: 'tafoniHoneycomb', label: 'Honeycomb Tafoni Caves', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false },
+                    { key: 'chemicalDissolution', label: 'Basal Salt Undercut', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false },
+                    { key: 'crazing90Strength', label: 'Desert Thermal Crazing', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false }
+                ]
+            }
+        ]
     },
     {
         id: 'thermal-90-fin',
-        name: '03 · 90° T-Junction Sun-Crazed Fin',
+        name: '03 · 90° Sun-Crazed Desert Fin',
         badge: '90° T-JUNCTIONS',
-        subtitle: 'Directional solar ΔT thermal shock carving hierarchical 90° orthogonal T-junction V-tipped skin cracks',
+        subtitle: 'Navajo red-sandstone fin carved by directional solar ΔT orthogonal T-junction cracks & rain alcoves',
         lithology: 'redSandstone',
         defaults: {
             presetId: 'thermal-90-fin',
@@ -612,6 +671,7 @@ export const FRACTURE_PRESETS = [
             jigsawRoughness: 0.42,
             plumoseStrength: 0.52,
             edgeChamfer: 0.28,
+            strataContrast: 1.0,
             thermalDeltaT: 64,
             sunAzimuthDeg: 52,
             sunElevationDeg: 36,
@@ -621,18 +681,47 @@ export const FRACTURE_PRESETS = [
             crazingSpacing: 0.54,
             voronoiJointStrength: 0.14,
             exfoliationStrength: 0.10,
+            chemicalDissolution: 0.0,
+            tafoniHoneycomb: 0.0,
+            karrenFlutes: 0.0,
             spallCalving: 0.40,
             cutawayEnabled: false,
             cutawayAxis: 0,
             cutawayOffset: 0.25,
             meshResolution: 88
-        }
+        },
+        controlGroups: [
+            {
+                title: '90° Solar Thermal Crazing',
+                glyph: 'Activity',
+                badge: 'THERMAL ΔT',
+                hint: 'V-tipped orthogonal T-junction cracks driven by solar thermal shock and finite skin depth.',
+                controls: [
+                    { key: 'crazing90Strength', label: '90° T-Junction Crazing', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false },
+                    { key: 'crazingSpacing', label: 'Polygon Tile Spacing', min: 0.22, max: 1.30, step: 0.02, decimals: 2, unit: 'm', structural: false },
+                    { key: 'thermalSkinDepth', label: 'Crack Skin Depth (V-Tip)', min: 0.10, max: 1.15, step: 0.02, decimals: 2, unit: 'm', structural: false },
+                    { key: 'directionalBias', label: 'Sun-Face Bias', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false }
+                ]
+            },
+            {
+                title: 'Sandstone Fin & Chemical Erosion',
+                glyph: 'Boxes',
+                badge: 'ALCOVES',
+                hint: 'Master cross-fin joints plus honeycomb tafoni alcoves and rainwater solution runnels.',
+                controls: [
+                    { key: 'chasmAperture', label: 'Cross-Fin Joint Gap', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true },
+                    { key: 'faultHeave', label: 'Tower Step Drop', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true },
+                    { key: 'tafoniHoneycomb', label: 'Alcove Tafoni Pockets', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false },
+                    { key: 'karrenFlutes', label: 'Rain Solution Flutes', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false }
+                ]
+            }
+        ]
     },
     {
         id: 'exfoliation-dome',
         name: '04 · Granite Exfoliation Dome',
         badge: 'ONION-SKIN SDF',
-        subtitle: '4 concentric spheroidal granite onion shells with undercut parting shadows peeling off a pale batholith corestone',
+        subtitle: '4 concentric spheroidal granite onion shells with undercut parting shadows peeling off a batholith corestone',
         lithology: 'sierraGranite',
         defaults: {
             presetId: 'exfoliation-dome',
@@ -644,6 +733,7 @@ export const FRACTURE_PRESETS = [
             jigsawRoughness: 0.34,
             plumoseStrength: 0.35,
             edgeChamfer: 0.72,
+            strataContrast: 0.25,
             thermalDeltaT: 52,
             sunAzimuthDeg: 42,
             sunElevationDeg: 42,
@@ -653,18 +743,46 @@ export const FRACTURE_PRESETS = [
             crazingSpacing: 0.80,
             voronoiJointStrength: 0.38,
             exfoliationStrength: 0.95,
+            chemicalDissolution: 0.0,
+            tafoniHoneycomb: 0.0,
+            karrenFlutes: 0.0,
             spallCalving: 0.72,
             cutawayEnabled: false,
             cutawayAxis: 0,
             cutawayOffset: 0.15,
             meshResolution: 88
-        }
+        },
+        controlGroups: [
+            {
+                title: 'Concentric Onion-Skin Shells',
+                glyph: 'Layers',
+                badge: '4 SHELLS',
+                hint: 'Peels 4 overhanging concentric granite sheets with basal undercut shadows around a smooth corestone.',
+                controls: [
+                    { key: 'exfoliationStrength', label: 'Onion-Skin Peeling', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false },
+                    { key: 'edgeChamfer', label: 'Corestone Dome Rounding', min: 0.10, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true },
+                    { key: 'chasmAperture', label: 'Center Tectonic Split', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true },
+                    { key: 'spallCalving', label: 'Fallen Shell Slabs', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true }
+                ]
+            },
+            {
+                title: 'Outer Husk Cracks & Chemical Pans',
+                glyph: 'Activity',
+                badge: 'PSEUDOKARST',
+                hint: 'Polygonal crust fractures on older outer shells plus granite gnamma solution flutes & saprolite undercut.',
+                controls: [
+                    { key: 'voronoiJointStrength', label: 'Outer Husk Cracks', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false },
+                    { key: 'karrenFlutes', label: 'Rain Flutes & Gnamma Pans', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false },
+                    { key: 'chemicalDissolution', label: 'Basal Saprolite Notch', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false }
+                ]
+            }
+        ]
     },
     {
         id: 'columnar-basalt',
         name: '05 · Columnar Basalt Cooling Cliff',
         badge: 'HEX COOLING',
-        subtitle: 'Thermal contraction polygonal basalt columns with stepped chisel cross-joints & toppled drums',
+        subtitle: 'Thermal contraction hexagonal basalt columns with stepped chisel cross-joints & toppled drums',
         lithology: 'basalt',
         defaults: {
             presetId: 'columnar-basalt',
@@ -676,6 +794,7 @@ export const FRACTURE_PRESETS = [
             jigsawRoughness: 0.28,
             plumoseStrength: 0.58,
             edgeChamfer: 0.24,
+            strataContrast: 0.50,
             thermalDeltaT: 54,
             sunAzimuthDeg: 50,
             sunElevationDeg: 38,
@@ -684,13 +803,42 @@ export const FRACTURE_PRESETS = [
             crazing90Strength: 0.32,
             crazingSpacing: 0.58,
             voronoiJointStrength: 0.82,
-            exfoliationStrength: 0.06,
+            exfoliationStrength: 0.0,
+            chemicalDissolution: 0.0,
+            tafoniHoneycomb: 0.0,
+            karrenFlutes: 0.0,
             spallCalving: 0.75,
             cutawayEnabled: false,
             cutawayAxis: 0,
             cutawayOffset: 0.30,
             meshResolution: 86
-        }
+        },
+        controlGroups: [
+            {
+                title: 'Hexagonal Colonnade Structure',
+                glyph: 'Boxes',
+                badge: 'HEXAGONAL',
+                hint: 'Controls cooling joint spacing between 6-sided basalt columns, outward column lean & cross-joint steps.',
+                controls: [
+                    { key: 'chasmAperture', label: 'Column Cooling Gap', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true },
+                    { key: 'hingeTiltDeg', label: 'Outer Column Topple', min: 0.0, max: 12.0, step: 0.1, decimals: 1, unit: '°', structural: true },
+                    { key: 'faultHeave', label: 'Cross-Joint Step Offset', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true },
+                    { key: 'edgeChamfer', label: 'Column Arris Bevel', min: 0.05, max: 0.90, step: 0.01, decimals: 2, unit: 'w', structural: true },
+                    { key: 'spallCalving', label: 'Toppled Basal Drums', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true }
+                ]
+            },
+            {
+                title: 'Entablature Cracks & Sea-Spray Pitting',
+                glyph: 'Activity',
+                badge: 'WEATHERING',
+                hint: 'Cooling fissures across prism faces plus chemical column rounding and vesicular salt pitting.',
+                controls: [
+                    { key: 'voronoiJointStrength', label: 'Entablature Cooling Cracks', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false },
+                    { key: 'chemicalDissolution', label: 'Chemical Joint Spheroidizing', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false },
+                    { key: 'tafoniHoneycomb', label: 'Vesicular Salt Pitting', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false }
+                ]
+            }
+        ]
     },
     {
         id: 'frost-wedged-arete',
@@ -708,6 +856,7 @@ export const FRACTURE_PRESETS = [
             jigsawRoughness: 0.58,
             plumoseStrength: 0.62,
             edgeChamfer: 0.26,
+            strataContrast: 0.80,
             thermalDeltaT: 44,
             sunAzimuthDeg: 54,
             sunElevationDeg: 36,
@@ -716,13 +865,104 @@ export const FRACTURE_PRESETS = [
             crazing90Strength: 0.38,
             crazingSpacing: 0.64,
             voronoiJointStrength: 0.54,
-            exfoliationStrength: 0.20,
+            exfoliationStrength: 0.0,
+            chemicalDissolution: 0.0,
+            tafoniHoneycomb: 0.0,
+            karrenFlutes: 0.0,
             spallCalving: 0.80,
             cutawayEnabled: false,
             cutawayAxis: 0,
             cutawayOffset: 0.20,
             meshResolution: 84
-        }
+        },
+        controlGroups: [
+            {
+                title: '60°/120° Conjugate Frost Wedging',
+                glyph: 'Boxes',
+                badge: 'CRYO-SHEAR',
+                hint: 'Dilates steep intersecting alpine shear planes via ice-lens wedging, hanging-wall slip & scree calving.',
+                controls: [
+                    { key: 'chasmAperture', label: 'Ice-Lens Wedge Dilation', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true },
+                    { key: 'faultHeave', label: 'Hanging-Wall Shear Slip', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true },
+                    { key: 'hingeTiltDeg', label: 'Frost-Topple Cant', min: 0.0, max: 14.0, step: 0.1, decimals: 1, unit: '°', structural: true },
+                    { key: 'jigsawRoughness', label: 'Shear Foliation Teeth', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false },
+                    { key: 'spallCalving', label: 'Shattered Scree Apron', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true }
+                ]
+            },
+            {
+                title: 'Alpine Cleavage & Snowmelt Leaching',
+                glyph: 'Activity',
+                badge: 'ALPINE',
+                hint: 'Secondary cryo-cleavage network and acidic snowmelt dissolution runnels.',
+                controls: [
+                    { key: 'voronoiJointStrength', label: 'Frost Cleavage Network', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false },
+                    { key: 'karrenFlutes', label: 'Snowmelt Solution Flutes', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false },
+                    { key: 'chemicalDissolution', label: 'Lichen & Acid Leaching', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false }
+                ]
+            }
+        ]
+    },
+    {
+        id: 'karst-tafoni-tower',
+        name: '07 · Karst & Tafoni Dissolution Tower',
+        badge: 'CHEMICAL KARST',
+        subtitle: 'Acid-dissolved limestone karst pinnacles sculpted by honeycomb tafoni caves, vertical karren flutes & basal notches',
+        lithology: 'karstLimestone',
+        defaults: {
+            presetId: 'karst-tafoni-tower',
+            seed: 6420,
+            scale: 7.4,
+            chasmAperture: 0.42,
+            hingeTiltDeg: 2.2,
+            faultHeave: 0.28,
+            jigsawRoughness: 0.34,
+            plumoseStrength: 0.28,
+            edgeChamfer: 0.58,
+            strataContrast: 0.95,
+            thermalDeltaT: 42,
+            sunAzimuthDeg: 46,
+            sunElevationDeg: 42,
+            directionalBias: 0.35,
+            thermalSkinDepth: 0.46,
+            crazing90Strength: 0.06,
+            crazingSpacing: 0.72,
+            voronoiJointStrength: 0.14,
+            exfoliationStrength: 0.0,
+            chemicalDissolution: 0.85,
+            tafoniHoneycomb: 0.88,
+            karrenFlutes: 0.90,
+            spallCalving: 0.50,
+            cutawayEnabled: false,
+            cutawayAxis: 0,
+            cutawayOffset: 0.20,
+            meshResolution: 88
+        },
+        controlGroups: [
+            {
+                title: 'Chemical Karst & Honeycomb Erosion',
+                glyph: 'Activity',
+                badge: 'DISSOLUTION',
+                hint: 'Carbonic-acid limestone rounding, basal water-table undercut notch, cavernous honeycomb tafoni & vertical rain flutes.',
+                controls: [
+                    { key: 'chemicalDissolution', label: 'Karst Acidic Dissolution', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false },
+                    { key: 'tafoniHoneycomb', label: 'Honeycomb Tafoni Caves', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false },
+                    { key: 'karrenFlutes', label: 'Vertical Karren Flutes', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false },
+                    { key: 'strataContrast', label: 'Bedding Ledge Solubility', min: 0.0, max: 1.5, step: 0.02, decimals: 2, unit: 'w', structural: false }
+                ]
+            },
+            {
+                title: 'Limestone Grikes & Pinnacle Structure',
+                glyph: 'Boxes',
+                badge: 'PINNACLES',
+                hint: 'Solution-widened grike corridors, karst subsidence lean, and guiding carbonate joint networks.',
+                controls: [
+                    { key: 'chasmAperture', label: 'Solution Grike Corridor', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true },
+                    { key: 'hingeTiltDeg', label: 'Karst Subsidence Tilt', min: 0.0, max: 10.0, step: 0.1, decimals: 1, unit: '°', structural: true },
+                    { key: 'voronoiJointStrength', label: 'Carbonate Joint Network', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: false },
+                    { key: 'spallCalving', label: 'Collapsed Karst Blocks', min: 0.0, max: 1.0, step: 0.01, decimals: 2, unit: 'w', structural: true }
+                ]
+            }
+        ]
     }
 ];
 
@@ -762,6 +1002,12 @@ export const LITHOLOGY_THEMES = {
         fresh: [0.39, 0.41, 0.45],     // Bright pale frost-shattered gneiss cleavage!
         iron: [0.29, 0.16, 0.08],
         lichen: [0.17, 0.23, 0.10]
+    },
+    karstLimestone: {
+        rind: [0.115, 0.120, 0.128],   // Cool silver-ash weathered karst limestone crust
+        fresh: [0.38, 0.36, 0.31],     // Warm cream leached travertine / calcite interior!
+        iron: [0.33, 0.15, 0.065],     // Terra-rossa & limonite karst cave clay stain
+        lichen: [0.15, 0.21, 0.105]
     }
 };
 
@@ -1380,6 +1626,71 @@ function buildFrostWedgedAreteBlocks(params, rng, crackSalt)
     return blocks;
 }
 
+function buildKarstTafoniTowerBlocks(params, rng, crackSalt)
+{
+    const S = params.scale;
+    const blocks = [];
+    const aperture = params.chasmAperture ?? 0.44;
+    const tiltRad = (params.hingeTiltDeg ?? 2.4) * DEG2RAD;
+    const faultSlip = params.faultHeave ?? 0.30;
+    const bevel = S * (0.0040 + 0.0110 * (params.edgeChamfer ?? 0.54));
+
+    const bf = buildStrikeDipFrame(0.22, 0.06); // Sub-horizontal marine limestone bedding!
+    const toWorld = (x, y, z) => [x * S, y * S, z * S];
+
+    // Primary soaring limestone karst tower + flanking pinnacle needles separated by dissolved grike corridors!
+    const mainTower = sculptGeologicalParentPoly(
+        [0.0, S * 0.46, 0.0],
+        [S * 0.42, S * 0.52, S * 0.34],
+        bf,
+        rng,
+        { jointDispersion: 0.14, cornerBlunt: 0.88, flatBaseY: 0, extraBevelCuts: 8 }
+    );
+
+    const grikeGap = (0.010 + 0.032 * aperture) * S;
+    const grikeN1 = vnorm([0.91, 0.03, -0.41]);
+    const grikeN2 = vnorm([-0.38, 0.04, 0.92]);
+
+    const [westMass, eastNeedle] = splitPolyByPlane(mainTower, grikeN1, S * 0.09, grikeGap);
+    if (eastNeedle)
+    {
+        const leanedE = transformPoly(
+            eastNeedle,
+            [grikeN1[0] * grikeGap * 0.45, -S * 0.028 * faultSlip, grikeN1[2] * grikeGap * 0.45],
+            [0.41, 0, 0.91],
+            -tiltRad * 0.85,
+            [S * 0.18, 0.0, -S * 0.08]
+        );
+        const bE = compileFractureBlock(leanedE, { edgeBevel: bevel, strataWeight: 0.92, seedSalt: crackSalt + 17 });
+        if (bE) blocks.push(bE);
+    }
+
+    if (westMass)
+    {
+        const [northSpire, southButtress] = splitPolyByPlane(westMass, grikeN2, S * 0.07, grikeGap * 0.82);
+        if (northSpire)
+        {
+            const bN = compileFractureBlock(northSpire, { edgeBevel: bevel, strataWeight: 0.92, seedSalt: crackSalt + 31 });
+            if (bN) blocks.push(bN);
+        }
+        if (southButtress)
+        {
+            const leanedS = transformPoly(
+                southButtress,
+                [grikeN2[0] * grikeGap * 0.35, -S * 0.016 * faultSlip, grikeN2[2] * grikeGap * 0.35],
+                [0.92, 0, 0.38],
+                tiltRad * 0.60,
+                [-S * 0.12, 0.0, S * 0.16]
+            );
+            const bS = compileFractureBlock(leanedS, { edgeBevel: bevel, strataWeight: 0.92, seedSalt: crackSalt + 47 });
+            if (bS) blocks.push(bS);
+        }
+    }
+
+    addPedestalSpalls(blocks, toWorld, bf, rng, S, bevel * 0.95, params.spallCalving ?? 0.55, 0.78, crackSalt);
+    return blocks;
+}
+
 /*==========================================================================================================================================
                                4. UNIFIED PURE-SDF FORMATION COMPILER & EVALUATOR
 ==========================================================================================================================================*/
@@ -1399,6 +1710,7 @@ export function buildFracturedFormation(rawParams = {})
         case 'exfoliation-dome':  blocks = buildExfoliationDomeBlocks(params, rng, crackSalt); break;
         case 'columnar-basalt':   blocks = buildColumnarBasaltBlocks(params, rng, crackSalt); break;
         case 'frost-wedged-arete':blocks = buildFrostWedgedAreteBlocks(params, rng, crackSalt); break;
+        case 'karst-tafoni-tower':blocks = buildKarstTafoniTowerBlocks(params, rng, crackSalt); break;
         case 'cracked-monolith':
         default:                  blocks = buildCrackedMonolithBlocks(params, rng, crackSalt); break;
     }
@@ -1473,10 +1785,14 @@ export function evalSingleFractureBlock(block, wx, wy, wz, formation, includeWal
     // Pre-evaluate parent-space jigsaw undulation + plumose hackle + sedimentary strata ONLY when near block!
     let jigsawDisp = 0.0;
     let extRelief = 0.0;
+    const strataScale = params.strataContrast ?? 1.0;
+    const effStrataWeight = block.strataWeight * strataScale;
+
     if (includeWallRelief)
     {
         const jigRough = params.jigsawRoughness ?? 0.55;
-        const plumAmp = S * 0.0080 * (params.plumoseStrength ?? 0.60);
+        const plumStrength = clamp(0.20 + 0.72 * jigRough, 0.0, 1.0) * (params.plumoseStrength !== undefined ? mix(0.65, params.plumoseStrength, 0.5) : 0.8);
+        const plumAmp = S * 0.0080 * plumStrength * smoothstep(0.0, 0.20, jigRough);
         if (jigRough > 1e-4 || plumAmp > 1e-5)
         {
             // Multi-scale crooked fault trajectory: bold S-bend stepovers + interlocking jigsaw teeth + angular grain kinks!
@@ -1498,18 +1814,21 @@ export function evalSingleFractureBlock(block, wx, wy, wz, formation, includeWal
         const lobeF = 0.85 / S;
         const cragF = 2.15 / S;
         const detailF = 5.10 / S;
+        const chemSoften = 1.0 - 0.42 * (params.chemicalDissolution ?? 0.0);
         const macroLobe = S * 0.024 * scalarField3D(p0x * lobeF, p0y * lobeF * 0.85, p0z * lobeF, crackSalt + 109);
-        const angularCrag = S * 0.015 * (Math.abs(scalarField3D(p0x * cragF, p0y * cragF, p0z * cragF, crackSalt + 113)) * 2.0 - 1.0);
-        const fineGrain = S * 0.0050 * scalarField3D(p0x * detailF, p0y * detailF, p0z * detailF, crackSalt + 127);
+        const angularCrag = S * 0.015 * chemSoften * (Math.abs(scalarField3D(p0x * cragF, p0y * cragF, p0z * cragF, crackSalt + 113)) * 2.0 - 1.0);
+        const fineGrain = S * 0.0050 * chemSoften * scalarField3D(p0x * detailF, p0y * detailF, p0z * detailF, crackSalt + 127);
 
-        const strataAmp = S * 0.0060 * block.strataWeight;
+        const strataAmp = S * 0.0065 * effStrataWeight * (1.0 - 0.55 * (params.karrenFlutes ?? 0.0));
         const bedY = p0y * (5.4 / S) + 0.52 * scalarField3D(p0x * (1.6 / S), p0y * (2.4 / S), p0z * (1.6 / S), crackSalt + 149);
         const strataLedge = strataAmp * (Math.sin(bedY * Math.PI * 2.0) * 0.72 + 0.28 * Math.sin(bedY * Math.PI * 4.0 + 0.8));
         extRelief = macroLobe + angularCrag + fineGrain + strataLedge;
     }
 
-    // Precompute 3D exterior boulder warp vector ONCE per block (zero noise calls inside plane loop -> 4x faster!)
+    // Precompute 3D exterior boulder warp vector + smooth basal groundwater solution notch ONCE per block!
     let extWarpX = 0.0, extWarpY = 0.0, extWarpZ = 0.0;
+    let basalNotch = 0.0;
+    const chemDissolveBlk = params.chemicalDissolution ?? 0.0;
     if (includeWallRelief)
     {
         const wf = 1.25 / S;
@@ -1517,15 +1836,24 @@ export function evalSingleFractureBlock(block, wx, wy, wz, formation, includeWal
         extWarpX = wa * scalarField3D(p0x * wf, p0y * wf * 0.9, p0z * wf, crackSalt + 131);
         extWarpY = wa * 0.75 * scalarField3D(p0x * wf + 5.7, p0y * wf * 0.9 - 3.1, p0z * wf, crackSalt + 137);
         extWarpZ = wa * scalarField3D(p0x * wf - 4.3, p0y * wf * 0.9 + 6.2, p0z * wf, crackSalt + 139);
+
+        if (chemDissolveBlk > 0.01 && !block.isSpall && wy < S * 0.32)
+        {
+            const yRel = (wy - S * 0.095) / (S * 0.076);
+            const notchBell = Math.exp(-yRel * yRel) * smoothstep(0.0, S * 0.028, wy);
+            const bedMod = 0.74 + 0.26 * Math.sin(p0y * (12.0 / S) + 1.1 * scalarField3D(p0x * (1.5 / S), p0y * (1.5 / S), p0z * (1.5 / S), crackSalt + 701));
+            basalNotch = S * 0.058 * chemDissolveBlk * notchBell * bedMod;
+        }
     }
 
     const planes = block.planes;
     const types = block.planeTypes;
     const r = block.edgeBevel;
     const exfRound = S * 0.088 * smoothstep(0.18, 0.95, params.exfoliationStrength ?? 0.0);
+    const chemRound = S * 0.056 * chemDissolveBlk;
     const kLse = Math.max(0.012, (r * (includeWallRelief
         ? (0.95 + 0.85 * Math.abs(scalarField3D(p0x * (1.6 / S), p0y * (1.6 / S), p0z * (1.6 / S), crackSalt + 163)))
-        : 1.15) + exfRound) * 0.42);
+        : 1.15) + exfRound + chemRound) * 0.42);
     const invKLse = 1.0 / kLse;
 
     let dFloor = -1e9;
@@ -1551,8 +1879,9 @@ export function evalSingleFractureBlock(block, wx, wy, wz, formation, includeWal
             }
             else if (pny > -0.85)
             {
-                // 3D domain-warp exterior boulder hull so ridges & faces curve organically!
-                pd += extRelief + (pnx * extWarpX + pny * extWarpY + pnz * extWarpZ);
+                // 3D domain-warp exterior hull + C-infinity smooth basal acidic water-table undercut notch!
+                const sideMask = Math.max(0.0, 1.0 - Math.abs(pny) * 0.80);
+                pd += extRelief + basalNotch * sideMask + (pnx * extWarpX + pny * extWarpY + pnz * extWarpZ);
             }
         }
 
@@ -1623,7 +1952,7 @@ export function evalSingleFractureBlock(block, wx, wy, wz, formation, includeWal
         const transition = Math.max(0.015, r * 1.35);
         outMeta.freshMask = smoothstep(-transition, transition, dFrac - dMaxExt);
         outMeta.noThermalCracks = block.noThermalCracks;
-        outMeta.strataWeight = block.strataWeight;
+        outMeta.strataWeight = effStrataWeight;
     }
 
     return dBlock;
@@ -1683,16 +2012,24 @@ export function evalFracturedFormationSdf(formation, wx, wy, wz, candidateBlocks
     const thermalNorm = clamp((params.thermalDeltaT ?? 38) / 65.0, 0.0, 1.5);
     const crazing90 = params.crazing90Strength ?? 0.30;
     const vorStrength = params.voronoiJointStrength ?? 0.36;
-    const exfol = params.exfoliationStrength ?? 0.14;
+    const exfol = params.exfoliationStrength ?? 0.0;
+    const chemDissolve = params.chemicalDissolution ?? 0.0;
+    const tafoni = params.tafoniHoneycomb ?? 0.0;
+    const karren = params.karrenFlutes ?? 0.0;
 
     let crackFreshBoost = 0.0;
+    let chemStain = 0.0;
     let thermalStressAtPt = thermalNorm;
     let shellAgeFactor = 1.0;
 
-    // Evaluate fine thermal V-tipped cracks & 4-shell concentric onion-skin exfoliation inside the active shell/skin band!
-    const maxFineDepth = Math.max(skinDepth * 2.2, exfol > 0.14 ? S * 0.13 : 0.12);
-    if (!_bestMeta.noThermalCracks && dMacro < S * 0.04 && dMacro > -maxFineDepth &&
-        (crazing90 > 0.01 || vorStrength > 0.01 || exfol > 0.14))
+    // Evaluate fine cracks, 4-shell onion-skin exfoliation & Pure-SDF Chemical Erosion inside the active shell/skin band!
+    const maxFineDepth = Math.max(
+        skinDepth * 1.65,
+        exfol > 0.14 ? S * 0.13 : 0.12,
+        (chemDissolve > 0.01 || tafoni > 0.01 || karren > 0.01) ? S * 0.11 : 0.12
+    );
+    if (!_bestMeta.noThermalCracks && dMacro < S * 0.045 && dMacro > -maxFineDepth &&
+        (crazing90 > 0.01 || vorStrength > 0.01 || exfol > 0.14 || chemDissolve > 0.01 || tafoni > 0.01 || karren > 0.01))
     {
         const nx = _bestMeta.nx, ny = _bestMeta.ny, nz = _bestMeta.nz;
 
@@ -1830,9 +2167,12 @@ export function evalFracturedFormationSdf(formation, wx, wy, wz, candidateBlocks
         // Irwin Finite-Depth V-Tipped Crack Wedge Profile (scaled by `shellAgeFactor` so freshly peeled inner corestone stays smooth!):
         const tipDepth = skinDepth * clamp(0.30 + 0.70 * insolFactor, 0.15, 1.35) * (0.35 + 0.65 * shellAgeFactor);
         const vTaper = Math.max(0.0, 1.0 + Math.min(0.0, dMacro) / tipDepth) * shellAgeFactor;
+        // Carbonic/humic acid solution-flares crack mouths smoothly into rounded grikes near `dMacro = 0`!
+        const grikeFlare = 1.0 + 1.35 * chemDissolve * smoothstep(-S * 0.050, 0.0, dMacro);
+        const grikeLipSmooth = 1.0 + 1.80 * chemDissolve;
 
         // (B) Organic Curvilinear & Pinch-and-Swell 90° T-Junction Thermal Crazing!
-        if (crazing90 > 0.01 && insolFactor > 0.02 && dMacro > -(tipDepth + S * 0.08))
+        if (crazing90 > 0.01 && insolFactor > 0.02 && dMacro > -(tipDepth + skinDepth * 0.65))
         {
             const ax = Math.abs(nx), ay = Math.abs(ny), az = Math.abs(nz);
             let u, v, w;
@@ -1842,7 +2182,7 @@ export function evalFracturedFormationSdf(formation, wx, wy, wz, candidateBlocks
 
             const spacing = Math.max(0.18, params.crazingSpacing ?? 0.62);
             const c90 = evalHierarchical90Crazing3D(u, v, w, spacing, crackSalt + 211);
-            const surfHalfAp90 = spacing * 0.068 * crazing90 * insolFactor;
+            const surfHalfAp90 = spacing * 0.068 * crazing90 * insolFactor * grikeFlare;
             if (surfHalfAp90 > 0.0015)
             {
                 const ap1 = surfHalfAp90 * c90.mod1 * vTaper;
@@ -1852,12 +2192,14 @@ export function evalFracturedFormationSdf(formation, wx, wy, wz, candidateBlocks
                 const cutOrganic90 = Math.min(cut1, cut2);
                 const effAp = Math.max(ap1, ap2);
                 const cut90 = Math.max(cutOrganic90, (-dMacro) - tipDepth);
-                d = chamferSub(d, cut90, effAp * 0.35);
+                d = chemDissolve > 0.15
+                    ? smax(d, -cut90, effAp * 0.42 * grikeLipSmooth)
+                    : chamferSub(d, cut90, effAp * 0.35);
             }
         }
 
         // (C) Organic Domain-Warped 3D Voronoi Fissures + Pinch-and-Swell Rock Bridges + Dendritic Splinters!
-        if (vorStrength > 0.01 && dMacro > -(tipDepth + S * 0.08))
+        if (vorStrength > 0.01 && dMacro > -(tipDepth + skinDepth * 0.65))
         {
             const vorScale = (1.35 / S) * 4.2;
             let vx = p0x * vorScale;
@@ -1881,12 +2223,14 @@ export function evalFracturedFormationSdf(formation, wx, wy, wz, candidateBlocks
             const vorBridge = openVor * Math.sqrt(openVor) *
                               (0.82 + 0.46 * Math.abs(scalarField3D(vx * 2.7, vy * 2.7, vz * 2.7, crackSalt + 379)));
 
-            const surfHalfApVor = (0.010 + 0.030 * vorStrength) * (0.45 + 0.55 * insolFactor) * (S / 7.0) * vorBridge;
+            const surfHalfApVor = (0.010 + 0.030 * vorStrength) * (0.45 + 0.55 * insolFactor) * (S / 7.0) * vorBridge * grikeFlare;
             if (surfHalfApVor > 0.0012)
             {
                 const halfApVor = surfHalfApVor * vTaper;
                 const cutVor = Math.max(worldWallDist - halfApVor, (-dMacro) - tipDepth);
-                d = chamferSub(d, cutVor, halfApVor * 0.36);
+                d = chemDissolve > 0.15
+                    ? smax(d, -cutVor, halfApVor * 0.45 * grikeLipSmooth)
+                    : chamferSub(d, cutVor, halfApVor * 0.36);
             }
 
             // Secondary dendritic hairline splinters branching ONLY near primary open fissures!
@@ -1902,6 +2246,107 @@ export function evalFracturedFormationSdf(formation, wx, wy, wz, candidateBlocks
                     const cutSub = Math.max(subWallWorld - subHalfAp, (-dMacro) - tipDepth * 0.55);
                     d = chamferSub(d, cutSub, subHalfAp * 0.32);
                 }
+            }
+        }
+
+        // (D) Basal Acidic Groundwater Solute Staining (geometry smoothly sculpted in block hull above -> zero tearing!)
+        if (chemDissolve > 0.01 && wy < S * 0.28)
+        {
+            const yRel = (wy - S * 0.095) / (S * 0.082);
+            chemStain = Math.max(chemStain, clamp(Math.exp(-yRel * yRel) * chemDissolve * 0.95, 0.0, 1.0));
+        }
+
+        const extRindGate = smoothstep(0.60, 0.10, _bestMeta.freshMask);
+
+        // (E) Pure-SDF Clustered Honeycomb Tafoni Caves (smooth ellipsoidal bowls + thick 10cm rounded stone arches -> ZERO razor shards!)
+        if (tafoni > 0.01 && extRindGate > 0.02 && dMacro > -S * 0.075)
+        {
+            // Concentrates in sheltered overhangs & lower-to-mid capillary salt-wicking zones!
+            const shelterGate = smoothstep(0.62, -0.02, ny);
+            const heightZone = smoothstep(S * 0.03, S * 0.11, wy) * smoothstep(S * 0.88, S * 0.54, wy + S * 0.20 * (params.karrenFlutes ?? 0.0));
+            const patchN = scalarField3D(p0x * (1.15 / S), p0y * (1.55 / S), p0z * (1.15 / S), crackSalt + 719);
+            const colonyGate = smoothstep(-0.20 + (1.0 - tafoni) * 0.36, 0.32, patchN) * shelterGate * heightZone * extRindGate;
+
+            if (colonyGate > 0.02)
+            {
+                // Tier-1 Clustered Alcove Tafoni Bowls (~65-90 cm wide ellipsoidal caves separated by thick smooth 11cm stone arches!)
+                const ts1 = 4.8 / S;
+                const twx = 0.20 * scalarField3D(p0x * ts1 * 0.5, p0y * ts1 * 0.5, p0z * ts1 * 0.5, crackSalt + 727);
+                const twz = 0.20 * scalarField3D(p0x * ts1 * 0.5 + 3.9, p0y * ts1 * 0.5 - 2.4, p0z * ts1 * 0.5, crackSalt + 731);
+                const tc1 = evalPlanarCleavage3D(p0x * ts1 + twx, p0y * ts1 * 1.38, p0z * ts1 + twz, 0.58, crackSalt + 733);
+
+                const cellAct1 = 0.72 + 0.28 * (0.5 + 0.5 * tc1.cellRand);
+                const rPit1 = (0.43 * (0.62 + 0.38 * tafoni) * cellAct1 * (0.55 + 0.45 * colonyGate)) / ts1;
+                const tRib1 = 0.105 / ts1; // ~11 cm thick voxel-solid stone arches between neighboring caves!
+                const maxDepth1 = S * (0.020 + 0.028 * tafoni) * colonyGate * cellAct1;
+
+                const pSphere1 = (tc1.f1 / ts1) - rPit1;
+                const pRib1 = tRib1 - (tc1.wallDist / ts1);
+                const pFloor1 = (-dMacro) - maxDepth1;
+                const dBowl1 = smax(smax(pSphere1, pRib1, 0.055), pFloor1, 0.055);
+                const prevD = d;
+                d = smax(d, -dBowl1, 0.048 + 0.025 * tafoni);
+                if (d > prevD + 0.002)
+                {
+                    chemStain = Math.max(chemStain, clamp((d - prevD) * 14.0 * tafoni, 0.0, 0.92));
+                    crackFreshBoost = Math.max(crackFreshBoost, 0.32 * tafoni * colonyGate);
+                }
+
+                // Tier-2 Meso Honeycomb Alveoli (~32 cm smooth dimples clustered around the grotto margins, 6cm smooth septa!)
+                const ts2 = 9.2 / S;
+                const tc2 = evalPlanarCleavage3D(p0x * ts2 - twz, p0y * ts2 * 1.32, p0z * ts2 + twx, 0.58, crackSalt + 751);
+                const cellAct2 = smoothstep(-0.30, 0.25, tc2.cellRand);
+                if (cellAct2 > 0.02)
+                {
+                    const rPit2 = (0.40 * (0.55 + 0.45 * tafoni) * cellAct2 * colonyGate) / ts2;
+                    const tRib2 = 0.105 / ts2; // ~8.5 cm smooth rounded stone webbing!
+                    const maxDepth2 = S * (0.010 + 0.015 * tafoni) * colonyGate * cellAct2;
+                    const pSphere2 = (tc2.f1 / ts2) - rPit2;
+                    const pRib2 = tRib2 - (tc2.wallDist / ts2);
+                    const pFloor2 = (-dMacro) - maxDepth2;
+                    const dBowl2 = smax(smax(pSphere2, pRib2, 0.032), pFloor2, 0.032);
+                    const prevD2 = d;
+                    d = smax(d, -dBowl2, 0.028 + 0.015 * tafoni);
+                    if (d > prevD2 + 0.001) chemStain = Math.max(chemStain, clamp((d - prevD2) * 18.0 * tafoni, 0.0, 0.85));
+                }
+            }
+        }
+
+        // (F) Pure-SDF Rainwater Rillenkarren / Tsingy Vertical Solution Organ-Pipe Flutes & Summit Gnamma Basins!
+        if (karren > 0.01 && extRindGate > 0.02 && dMacro > -S * 0.075)
+        {
+            const rainGate = smoothstep(-0.10, 0.36, ny) * smoothstep(S * 0.16, S * 0.40, wy) * extRindGate;
+            if (rainGate > 0.01)
+            {
+                const kw = S * 0.018;
+                const kx = p0x + kw * scalarField3D(p0x * (1.6 / S), p0y * (0.40 / S), p0z * (1.6 / S), crackSalt + 769);
+                const kz = p0z + kw * scalarField3D(p0x * (1.6 / S) + 4.7, p0y * (0.40 / S) - 2.3, p0z * (1.6 / S), crackSalt + 773);
+
+                // Cusped razor-crest limestone ridges (`|n| = 0`) separating smooth U-shaped vertical rainwater flutes (`|n| > 0`)!
+                const fk1 = 10.5 / S;
+                const fk2 = 22.0 / S;
+                const u1 = smoothstep(0.02, 0.66, Math.abs(scalarField3D(kx * fk1, p0y * fk1 * 0.05, kz * fk1, crackSalt + 787)));
+                const u2 = smoothstep(0.02, 0.66, Math.abs(scalarField3D(kx * fk2 + 2.9, p0y * fk2 * 0.05, kz * fk2 - 1.7, crackSalt + 797)));
+
+                const depthFade = smoothstep(-S * 0.065, 0.0, dMacro);
+                const fluteRecess = S * (0.032 * u1 + 0.013 * u2) * karren * rainGate * depthFade;
+                d += fluteRecess;
+                const crestMask = (1.0 - u1) * rainGate * karren;
+                crackFreshBoost = Math.max(crackFreshBoost, crestMask * 0.42);
+                chemStain = Math.max(chemStain, u1 * rainGate * karren * 0.48);
+            }
+
+            // Flat-floored summit Gnamma / Kamenitza rainwater solution pans on upward benches (`ny > 0.75`)!
+            const benchGate = smoothstep(0.75, 0.94, ny) * smoothstep(S * 0.28, S * 0.48, wy) * extRindGate;
+            if (benchGate > 0.01)
+            {
+                const gs = 3.8 / S;
+                const gc = evalPlanarCleavage3D(p0x * gs, p0y * gs * 0.35, p0z * gs, 0.58, crackSalt + 809);
+                const rPan = (0.38 * (0.60 + 0.40 * karren) * benchGate) / gs;
+                const panMaxD = S * 0.022 * karren * benchGate;
+                const dPan = smax(smax((gc.f1 / gs) - rPan, (0.11 / gs) - (gc.wallDist / gs), 0.04), (-dMacro) - panMaxD, 0.035);
+                d = smax(d, -dPan, 0.032);
+                if (-dPan > -0.01) chemStain = Math.max(chemStain, 0.62 * karren * benchGate);
             }
         }
     }
@@ -1923,6 +2368,7 @@ export function evalFracturedFormationSdf(formation, wx, wy, wz, candidateBlocks
     {
         outInfo.dMacro = dMacro;
         outInfo.freshMask = clamp(Math.max(_bestMeta.freshMask, crackFreshBoost), 0.0, 1.0);
+        outInfo.chemStain = clamp(chemStain, 0.0, 1.0);
         outInfo.thermalStress = clamp(thermalStressAtPt, 0.0, 1.0);
         outInfo.isCutaway = isCutaway;
         outInfo.p0x = _bestMeta.p0x;
@@ -1959,7 +2405,7 @@ function evalMacroOnly(formation, wx, wy, wz, list)
                      5. PURE-SDF WEATHERED RIND vs FRESH FRACTURE INTERIOR MATERIAL & CUTAWAY SHADING
 ==========================================================================================================================================*/
 
-const _matInfo = { dMacro: 0, freshMask: 0, thermalStress: 0, isCutaway: false, p0x: 0, p0y: 0, p0z: 0, strataWeight: 0 };
+const _matInfo = { dMacro: 0, freshMask: 0, chemStain: 0, thermalStress: 0, isCutaway: false, p0x: 0, p0y: 0, p0z: 0, strataWeight: 0 };
 
 export function evalFracturedFormationMaterial(formation, px, py, pz, nx, ny, nz, ao, cav, edg, outMat)
 {
@@ -2004,12 +2450,12 @@ export function evalFracturedFormationMaterial(formation, px, py, pz, nx, ny, nz
     let g = mix(theme.rind[1], theme.fresh[1], fresh) * strataMod;
     let b = mix(theme.rind[2], theme.fresh[2], fresh) * strataMod;
 
-    // Iron-oxide / Liesegang spheroidal-weathering mineral staining along intermediate onion shells & fracture cavities!
+    // Iron-oxide / Liesegang & Karst Terra-Rossa chemical solute staining along onion shells, tafoni caves & cavities!
     const liesegang = Math.sin(clamp(fresh, 0.0, 1.0) * Math.PI);
-    const ironSeep = clamp(cav * 0.68 + liesegang * 0.52 + fresh * 0.18 * (0.5 + 0.5 * scalarField3D(p0x * 2.1, p0y * 0.8, p0z * 2.1, crackSalt + 643)), 0.0, 1.0);
-    r = mix(r, theme.iron[0], ironSeep * 0.40);
-    g = mix(g, theme.iron[1], ironSeep * 0.40);
-    b = mix(b, theme.iron[2], ironSeep * 0.40);
+    const ironSeep = clamp(cav * 0.68 + (_matInfo.chemStain ?? 0) * 0.65 + liesegang * 0.52 + fresh * 0.18 * (0.5 + 0.5 * scalarField3D(p0x * 2.1, p0y * 0.8, p0z * 2.1, crackSalt + 643)), 0.0, 1.0);
+    r = mix(r, theme.iron[0], ironSeep * 0.42);
+    g = mix(g, theme.iron[1], ironSeep * 0.42);
+    b = mix(b, theme.iron[2], ironSeep * 0.42);
 
     // Subtle upward-facing alpine lichen / weathered cap tint on unfractured exterior tops
     const upLichen = (1.0 - fresh) * smoothstep(0.55, 0.92, ny) * clamp(0.5 + 0.5 * grain, 0.0, 1.0);
@@ -2042,7 +2488,9 @@ export function bakeFracturedFormationQefMesh(formation, options = {})
     const negDispBound = Math.max(
         voxelSize * 2.5,
         (params.thermalSkinDepth ?? 0.44) * 1.25,
-        (params.exfoliationStrength ?? 0) > 0.14 ? params.scale * 0.14 : 0.09
+        (params.exfoliationStrength ?? 0) > 0.14 ? params.scale * 0.14 : 0.09,
+        ((params.chemicalDissolution ?? 0) > 0.01 || (params.tafoniHoneycomb ?? 0) > 0.01 || (params.karrenFlutes ?? 0) > 0.01)
+            ? params.scale * 0.12 : 0.09
     );
 
     const sdf = evaluateSparseSdf(bounds, voxelSize, {

@@ -939,10 +939,10 @@ Suite('23. Pure-SDF cutaway slice clips rock volume cleanly for interior V-tip i
     assert.equal(Packed.planeTexData.length, Packed.planeTexHeight * 2 * 4);
 });
 
-// 24. All 6 Pure-SDF Fracture Archetypes + 4^3 Sparse-Brick QEF Dual Contouring + .OBJ/.STL/.GLB Export
-Suite('24. All 6 Pure-SDF Fracture Archetypes extract sharp-creased QEF Dual-Contour meshes with 0 Mesh->SDF & valid .GLB/.OBJ/.STL', () =>
+// 24. All 7 Pure-SDF Rock Formations + 4^3 Sparse-Brick QEF Dual Contouring + .OBJ/.STL/.GLB Export
+Suite('24. All 7 Pure-SDF Rock Formations extract sharp-creased QEF Dual-Contour meshes with 0 Mesh->SDF & valid .GLB/.OBJ/.STL', () =>
 {
-    assert.equal(FRACTURE_PRESETS.length, 6);
+    assert.equal(FRACTURE_PRESETS.length, 7);
     for (const Preset of FRACTURE_PRESETS)
     {
         const F = buildFracturedFormation({ presetId: Preset.id, meshResolution: 46 });
@@ -1001,4 +1001,113 @@ Suite('25. Pure-SDF Fractured Rock layer stamps onto Open-World TerrainRegion, m
         'Restored Open-World project must preserve stamped rock_formation layer');
 });
 
-console.log(`\nAll ${Passed}/25 Open-World SDF Terrain & Pure-SDF Fracture Studio validation suites passed!`);
+// 26. Pure-SDF Chemical Rock Erosion (Karst Dissolution, Basal Notch, Honeycomb Tafoni, Karren Flutes) & Per-Rock Tailored Controls
+Suite('26. Pure-SDF Chemical Rock Erosion carves basal solution notches, exterior-gated honeycomb tafoni & karren flutes, and each rock formation exposes tailored controls', () =>
+{
+    // 1. Validate every rock formation has its own tailored controlGroups referencing valid default parameters
+    const Signatures = new Set();
+    for (const Preset of FRACTURE_PRESETS)
+    {
+        assert.ok(Array.isArray(Preset.controlGroups) && Preset.controlGroups.length >= 2,
+            `${Preset.id} must define tailored controlGroups`);
+        const Keys = [];
+        for (const Grp of Preset.controlGroups)
+        {
+            assert.ok(Array.isArray(Grp.controls) && Grp.controls.length >= 2,
+                `${Preset.id} group "${Grp.title}" must define active controls`);
+            for (const Ctrl of Grp.controls)
+            {
+                assert.ok(Object.prototype.hasOwnProperty.call(Preset.defaults, Ctrl.key),
+                    `${Preset.id} control "${Ctrl.key}" must exist in Preset.defaults`);
+                Keys.push(Ctrl.key);
+            }
+        }
+        Signatures.add(Keys.join(','));
+    }
+    assert.ok(Signatures.size >= 6, 'Rock formations must provide distinct rock-specific control sets rather than one generic list');
+
+    // 2. Basal Acid Undercut Notch & Dissolution Rounding on 07 · Karst & Tafoni Dissolution Tower
+    const KarstDry = buildFracturedFormation({
+        presetId: 'karst-tafoni-tower',
+        chemicalDissolution: 0.0,
+        tafoniHoneycomb: 0.0,
+        karrenFlutes: 0.0,
+        chasmAperture: 0.0,
+        hingeTiltDeg: 0.0,
+        spallCalving: 0.0
+    });
+    const KarstAcid = buildFracturedFormation({
+        presetId: 'karst-tafoni-tower',
+        chemicalDissolution: 0.95,
+        tafoniHoneycomb: 0.0,
+        karrenFlutes: 0.0,
+        chasmAperture: 0.0,
+        hingeTiltDeg: 0.0,
+        spallCalving: 0.0
+    });
+
+    const NotchY = KarstDry.params.scale * 0.095;
+    let MaxBasalRecess = 0.0;
+    for (let ang = 0; ang < Math.PI * 2; ang += Math.PI / 6)
+    {
+        for (let r = 0.8; r <= 3.0; r += 0.25)
+        {
+            const wx = Math.cos(ang) * r, wz = Math.sin(ang) * r;
+            const d0 = evalFracturedFormationSdf(KarstDry, wx, NotchY, wz);
+            if (Math.abs(d0) < 0.35)
+            {
+                const infoAcid = {};
+                const d1 = evalFracturedFormationSdf(KarstAcid, wx, NotchY, wz, null, infoAcid);
+                MaxBasalRecess = Math.max(MaxBasalRecess, d1 - d0);
+                if (Math.abs(d1) < 0.25)
+                {
+                    assert.ok((infoAcid.chemStain ?? 0) > 0.25, 'Basal solution zone must accumulate geochemical solute stain');
+                }
+            }
+        }
+    }
+    assert.ok(MaxBasalRecess > 0.12,
+        `Chemical dissolution must undercut the basal water-table notch smoothly (max recess=${MaxBasalRecess.toFixed(3)}m)`);
+
+    // Solid interior core of primary karst pinnacle must remain intact (no Swiss-cheese internal voids!)
+    let MinCoreD = 1e9;
+    for (const Blk of KarstAcid.blocks)
+    {
+        if (Blk.isSpall) continue;
+        MinCoreD = Math.min(MinCoreD, evalFracturedFormationSdf(KarstAcid, Blk.cx, Blk.cy, Blk.cz));
+    }
+    assert.ok(MinCoreD < -0.35, `Karst tower interior core must remain solid stone (got d=${MinCoreD.toFixed(3)})`);
+
+    // 3. Honeycomb Tafoni & Vertical Karren Flutes carve surface relief on upper/mid tower rinds
+    const KarstFull = buildFracturedFormation({
+        presetId: 'karst-tafoni-tower',
+        chemicalDissolution: 0.85,
+        tafoniHoneycomb: 0.92,
+        karrenFlutes: 0.95,
+        chasmAperture: 0.0,
+        hingeTiltDeg: 0.0,
+        spallCalving: 0.0
+    });
+    let MaxTafoniOrFluteCarve = 0.0;
+    for (const yFrac of [0.24, 0.36, 0.52, 0.64])
+    {
+        const wy = KarstAcid.params.scale * yFrac;
+        for (let ang = 0; ang < Math.PI * 2; ang += Math.PI / 8)
+        {
+            for (let r = 0.5; r <= 2.8; r += 0.18)
+            {
+                const wx = Math.cos(ang) * r, wz = Math.sin(ang) * r;
+                const dBase = evalFracturedFormationSdf(KarstAcid, wx, wy, wz);
+                if (dBase > -0.22 && dBase < 0.05)
+                {
+                    const dWeathered = evalFracturedFormationSdf(KarstFull, wx, wy, wz);
+                    MaxTafoniOrFluteCarve = Math.max(MaxTafoniOrFluteCarve, dWeathered - dBase);
+                }
+            }
+        }
+    }
+    assert.ok(MaxTafoniOrFluteCarve > 0.06,
+        `Honeycomb tafoni & vertical karren flutes must carve exterior cavities & flutes (max carve=${MaxTafoniOrFluteCarve.toFixed(3)}m)`);
+});
+
+console.log(`\nAll ${Passed}/26 Open-World SDF Terrain & Pure-SDF Rock Formation Studio validation suites passed!`);
