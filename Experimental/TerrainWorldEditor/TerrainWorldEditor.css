@@ -388,9 +388,28 @@
 /*------------------------------------------------------------------------------------------------------------------------
                                  PURE-SDF FRACTURE LAB VIEWPORT & ARCHETYPE CARDS
 ------------------------------------------------------------------------------------------------------------------------*/
+#PaneFracture,
+#CanvasFracture {
+    background: radial-gradient(circle at 50% 42%, #181c24 0%, #0b0d10 100%);
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+body.ws-fracture #scope-select,
+body.ws-fracture #lens-select,
+body.ws-fracture #quick-add-spline,
+body.ws-fracture #quick-place-knot,
+body.ws-fracture #ocean-toggle,
+body.ws-fracture #brush-size-pill,
+body.ws-fracture #sky-select,
+body.ws-fracture #new-terrain-btn {
+    display: none !important;
+}
+
 .fracture-floating-bar {
     position: absolute;
-    top: 12px;
+    bottom: 42px;
     left: 50%;
     transform: translateX(-50%);
     z-index: 4;
@@ -399,10 +418,10 @@
     gap: 6px;
     padding: 5px 8px;
     border-radius: 999px;
-    background: rgba(16, 17, 20, 0.86);
+    background: rgba(16, 17, 20, 0.88);
     backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.11);
-    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.48);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.52);
     max-width: calc(100% - 24px);
     flex-wrap: nowrap;
 }

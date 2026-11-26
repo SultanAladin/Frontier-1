@@ -289,9 +289,17 @@ class TerrainWorldStudioApp
         const FracCanvas = document.getElementById('CanvasFracture');
         if (FracCanvas)
         {
-            this.fractureView = new FractureLabViewport(FracCanvas);
-            this._rebuildFractureFormationNow(true);
-            this._bindFractureViewportToolbar();
+            try
+            {
+                this.fractureView = new FractureLabViewport(FracCanvas);
+                this._rebuildFractureFormationNow(true, true);
+                this._bindFractureViewportToolbar();
+            }
+            catch (Err)
+            {
+                console.error('[FractureLab] Viewport init failed, falling back gracefully:', Err);
+                this.fractureView = null;
+            }
         }
 
         this._mountStaticGlyphs();
@@ -885,6 +893,7 @@ class TerrainWorldStudioApp
     {
         const Prev = this.workspaceMode;
         this.workspaceMode = Mode;
+        document.body.classList.toggle('ws-fracture', Mode === 'fracture');
         const Grid = document.getElementById('StageGrid');
         Grid.classList.remove('mode-2d', 'mode-3d', 'mode-split', 'mode-fracture');
         Grid.classList.add(`mode-${Mode}`);
@@ -2726,16 +2735,28 @@ class TerrainWorldStudioApp
     /*======================================================================================================================================
                              PURE-SDF BRITTLE FRACTURE, THERMAL CRAZING & QEF DUAL-CONTOUR LAB CONTROLLER
     ======================================================================================================================================*/
-    _rebuildFractureFormationNow(Reframe = false)
+    _rebuildFractureFormationNow(Reframe = false, StructuralChanged = true)
     {
         if (!this.fracture) return;
-        const F = buildFracturedFormation(this.fracture.params);
-        this.fracture.formation = F;
+        let F = this.fracture.formation;
+        if (StructuralChanged || !F)
+        {
+            F = buildFracturedFormation(this.fracture.params);
+            this.fracture.formation = F;
+        }
+        else
+        {
+            // Fast path: update params & sunDir in place without rebuilding polyhedral blocks or 3D GPU volumes!
+            F.params = { ...F.params, ...this.fracture.params };
+            const Az = (F.params.sunAzimuthDeg ?? 48) * (Math.PI / 180);
+            const El = (F.params.sunElevationDeg ?? 40) * (Math.PI / 180);
+            F.sunDir = [Math.cos(El) * Math.sin(Az), Math.sin(El), Math.cos(El) * Math.cos(Az)];
+        }
         this.fracture.qefDirty = true;
 
         if (this.fractureView)
         {
-            this.fractureView.setFormation(F);
+            this.fractureView.setFormation(F, StructuralChanged);
             if (Reframe) this.fractureView.frameFormation();
         }
 
@@ -2861,7 +2882,7 @@ class TerrainWorldStudioApp
         document.getElementById('frac-cutaway-btn')?.addEventListener('click', () =>
         {
             this.fracture.params.cutawayEnabled = !this.fracture.params.cutawayEnabled;
-            this._rebuildFractureFormationNow(false);
+            this._rebuildFractureFormationNow(false, false);
             this._syncFractureToolbarButtons();
             this.rebuildInspector();
         });
@@ -3095,9 +3116,13 @@ class TerrainWorldStudioApp
         );
         Content.appendChild(Switches);
 
-        const OnChangeLive = () =>
+        const OnChangeStructural = () =>
         {
-            this._rebuildFractureFormationNow(false);
+            this._rebuildFractureFormationNow(false, true);
+        };
+        const OnChangeShader = () =>
+        {
+            this._rebuildFractureFormationNow(false, false);
         };
         const OnCommit = () =>
         {
@@ -3118,12 +3143,12 @@ class TerrainWorldStudioApp
             P.presetId,
             Val => this._selectFracturePreset(Val)
         ));
-        KinGroup.Body.appendChild(MakeSliderPillRow('Chasm Split Aperture', 0.0, 1.0, 0.01, P.chasmAperture, 2, 'w', V => { P.chasmAperture = V; OnChangeLive(); }, OnCommit));
-        KinGroup.Body.appendChild(MakeSliderPillRow('Basal Hinge Tilt', 0.0, 14.0, 0.1, P.hingeTiltDeg, 1, '°', V => { P.hingeTiltDeg = V; OnChangeLive(); }, OnCommit));
-        KinGroup.Body.appendChild(MakeSliderPillRow('Normal-Fault Heave Drop', 0.0, 1.0, 0.01, P.faultHeave, 2, 'w', V => { P.faultHeave = V; OnChangeLive(); }, OnCommit));
-        KinGroup.Body.appendChild(MakeSliderPillRow('Jigsaw Wall Roughness', 0.0, 1.0, 0.01, P.jigsawRoughness, 2, 'w', V => { P.jigsawRoughness = V; OnChangeLive(); }, OnCommit));
-        KinGroup.Body.appendChild(MakeSliderPillRow('Plumose Arrest Hackles', 0.0, 1.0, 0.01, P.plumoseStrength, 2, 'w', V => { P.plumoseStrength = V; OnChangeLive(); }, OnCommit));
-        KinGroup.Body.appendChild(MakeSliderPillRow('45° Rim Arris Chamfer', 0.0, 1.0, 0.01, P.edgeChamfer, 2, 'w', V => { P.edgeChamfer = V; OnChangeLive(); }, OnCommit));
+        KinGroup.Body.appendChild(MakeSliderPillRow('Chasm Split Aperture', 0.0, 1.0, 0.01, P.chasmAperture, 2, 'w', V => { P.chasmAperture = V; OnChangeStructural(); }, OnCommit));
+        KinGroup.Body.appendChild(MakeSliderPillRow('Basal Hinge Tilt', 0.0, 14.0, 0.1, P.hingeTiltDeg, 1, '°', V => { P.hingeTiltDeg = V; OnChangeStructural(); }, OnCommit));
+        KinGroup.Body.appendChild(MakeSliderPillRow('Normal-Fault Heave Drop', 0.0, 1.0, 0.01, P.faultHeave, 2, 'w', V => { P.faultHeave = V; OnChangeStructural(); }, OnCommit));
+        KinGroup.Body.appendChild(MakeSliderPillRow('Jigsaw Wall Roughness', 0.0, 1.0, 0.01, P.jigsawRoughness, 2, 'w', V => { P.jigsawRoughness = V; OnChangeShader(); }, OnCommit));
+        KinGroup.Body.appendChild(MakeSliderPillRow('Plumose Arrest Hackles', 0.0, 1.0, 0.01, P.plumoseStrength, 2, 'w', V => { P.plumoseStrength = V; OnChangeShader(); }, OnCommit));
+        KinGroup.Body.appendChild(MakeSliderPillRow('45° Rim Arris Chamfer', 0.0, 1.0, 0.01, P.edgeChamfer, 2, 'w', V => { P.edgeChamfer = V; OnChangeStructural(); }, OnCommit));
         Content.appendChild(KinGroup.Group);
 
         // 4. Group B: Diurnal ΔT Thermal Shock, 90° T-Junctions & V-Tipped Skin Cracks
@@ -3132,15 +3157,15 @@ class TerrainWorldStudioApp
             'Activity',
             `ΔT ${Math.round(P.thermalDeltaT)}°C`,
             true,
-            'V-tipped crack aperture decays inward as a(p) = a_surf · exp(φ₀ / δ_T); Tier-2 cross-joints arrest at 90° T-junctions.'
+            'V-tipped crack aperture tapers linearly to zero at skin depth δ_T; Tier-2 cross-joints arrest at 90° T-junctions.'
         );
-        ThermGroup.Body.appendChild(MakeSliderPillRow('Diurnal Thermal ΔT', 0, 85, 1, P.thermalDeltaT, 0, '°C', V => { P.thermalDeltaT = V; OnChangeLive(); }, OnCommit));
-        ThermGroup.Body.appendChild(MakeSliderPillRow('90° T-Junction Crazing', 0.0, 1.0, 0.01, P.crazing90Strength, 2, 'w', V => { P.crazing90Strength = V; OnChangeLive(); }, OnCommit));
-        ThermGroup.Body.appendChild(MakeSliderPillRow('90° Cell Spacing', 0.22, 1.40, 0.02, P.crazingSpacing, 2, 'm', V => { P.crazingSpacing = V; OnChangeLive(); }, OnCommit));
-        ThermGroup.Body.appendChild(MakeSliderPillRow('Skin Depth δ_T (V-Tip)', 0.08, 1.20, 0.02, P.thermalSkinDepth, 2, 'm', V => { P.thermalSkinDepth = V; OnChangeLive(); }, OnCommit));
-        ThermGroup.Body.appendChild(MakeSliderPillRow('3D Voronoi Stress Joints', 0.0, 1.0, 0.01, P.voronoiJointStrength, 2, 'w', V => { P.voronoiJointStrength = V; OnChangeLive(); }, OnCommit));
-        ThermGroup.Body.appendChild(MakeSliderPillRow('Solar Insolation Bias', 0.0, 1.0, 0.01, P.directionalBias, 2, 'w', V => { P.directionalBias = V; OnChangeLive(); }, OnCommit));
-        ThermGroup.Body.appendChild(MakeSliderPillRow('Sun Azimuth', 0, 360, 2, P.sunAzimuthDeg, 0, '°', V => { P.sunAzimuthDeg = V; OnChangeLive(); }, OnCommit));
+        ThermGroup.Body.appendChild(MakeSliderPillRow('Diurnal Thermal ΔT', 0, 85, 1, P.thermalDeltaT, 0, '°C', V => { P.thermalDeltaT = V; OnChangeShader(); }, OnCommit));
+        ThermGroup.Body.appendChild(MakeSliderPillRow('90° T-Junction Crazing', 0.0, 1.0, 0.01, P.crazing90Strength, 2, 'w', V => { P.crazing90Strength = V; OnChangeShader(); }, OnCommit));
+        ThermGroup.Body.appendChild(MakeSliderPillRow('90° Cell Spacing', 0.22, 1.40, 0.02, P.crazingSpacing, 2, 'm', V => { P.crazingSpacing = V; OnChangeShader(); }, OnCommit));
+        ThermGroup.Body.appendChild(MakeSliderPillRow('Skin Depth δ_T (V-Tip)', 0.08, 1.20, 0.02, P.thermalSkinDepth, 2, 'm', V => { P.thermalSkinDepth = V; OnChangeShader(); }, OnCommit));
+        ThermGroup.Body.appendChild(MakeSliderPillRow('3D Voronoi Stress Joints', 0.0, 1.0, 0.01, P.voronoiJointStrength, 2, 'w', V => { P.voronoiJointStrength = V; OnChangeShader(); }, OnCommit));
+        ThermGroup.Body.appendChild(MakeSliderPillRow('Solar Insolation Bias', 0.0, 1.0, 0.01, P.directionalBias, 2, 'w', V => { P.directionalBias = V; OnChangeShader(); }, OnCommit));
+        ThermGroup.Body.appendChild(MakeSliderPillRow('Sun Azimuth', 0, 360, 2, P.sunAzimuthDeg, 0, '°', V => { P.sunAzimuthDeg = V; OnChangeShader(); }, OnCommit));
         Content.appendChild(ThermGroup.Group);
 
         // 5. Group C: Onion-Skin Exfoliation, Spall Calving & Volumetric Cutaway Slice
@@ -3151,8 +3176,8 @@ class TerrainWorldStudioApp
             true,
             'Concentric unloading shells parallel to φ₀ = 0 plus live cross-section slicing to inspect V-tipped cracks inside the solid SDF.'
         );
-        ExfolGroup.Body.appendChild(MakeSliderPillRow('Onion-Skin Exfoliation', 0.0, 1.0, 0.01, P.exfoliationStrength, 2, 'w', V => { P.exfoliationStrength = V; OnChangeLive(); }, OnCommit));
-        ExfolGroup.Body.appendChild(MakeSliderPillRow('Basal Spalls & Chocks', 0.0, 1.0, 0.01, P.spallCalving, 2, 'w', V => { P.spallCalving = V; OnChangeLive(); }, OnCommit));
+        ExfolGroup.Body.appendChild(MakeSliderPillRow('Onion-Skin Exfoliation', 0.0, 1.0, 0.01, P.exfoliationStrength, 2, 'w', V => { P.exfoliationStrength = V; OnChangeShader(); }, OnCommit));
+        ExfolGroup.Body.appendChild(MakeSliderPillRow('Basal Spalls & Chocks', 0.0, 1.0, 0.01, P.spallCalving, 2, 'w', V => { P.spallCalving = V; OnChangeStructural(); }, OnCommit));
         ExfolGroup.Body.appendChild(MakeSelectRow('Cutaway Slice Axis', [
             ['Disabled (Full Solid Formation)', 'off'],
             ['Slice X-Axis (Inspect Interior φ₀ & V-Tips)', 'x'],
@@ -3162,7 +3187,7 @@ class TerrainWorldStudioApp
             if (Val === 'off') P.cutawayEnabled = false;
             else { P.cutawayEnabled = true; P.cutawayAxis = Val === 'x' ? 0 : 2; }
             this._syncFractureToolbarButtons();
-            OnChangeLive();
+            OnChangeShader();
             this.rebuildInspector();
         }));
         ExfolGroup.Body.appendChild(MakeSliderPillRow('Cutaway Slice Offset', -2.6, 2.6, 0.02, P.cutawayOffset, 2, 'm', V =>
@@ -3173,7 +3198,7 @@ class TerrainWorldStudioApp
                 P.cutawayEnabled = true;
                 this._syncFractureToolbarButtons();
             }
-            OnChangeLive();
+            OnChangeShader();
         }, OnCommit));
         Content.appendChild(ExfolGroup.Group);
 
