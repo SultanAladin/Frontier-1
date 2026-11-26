@@ -55,7 +55,7 @@
 .terrain-stage-grid.mode-2d .stage-pane-3d,
 .terrain-stage-grid.mode-2d .stage-pane-fracture,
 .terrain-stage-grid.mode-2d .stage-pane-rock2 {
-    display: none;
+    display: none !important;
 }
 
 .terrain-stage-grid.mode-3d {
@@ -64,7 +64,7 @@
 .terrain-stage-grid.mode-3d .stage-pane-2d,
 .terrain-stage-grid.mode-3d .stage-pane-fracture,
 .terrain-stage-grid.mode-3d .stage-pane-rock2 {
-    display: none;
+    display: none !important;
 }
 
 .terrain-stage-grid.mode-split {
@@ -75,7 +75,7 @@
 }
 .terrain-stage-grid.mode-split .stage-pane-fracture,
 .terrain-stage-grid.mode-split .stage-pane-rock2 {
-    display: none;
+    display: none !important;
 }
 
 .terrain-stage-grid.mode-fracture {
@@ -84,7 +84,7 @@
 .terrain-stage-grid.mode-fracture .stage-pane-2d,
 .terrain-stage-grid.mode-fracture .stage-pane-3d,
 .terrain-stage-grid.mode-fracture .stage-pane-rock2 {
-    display: none;
+    display: none !important;
 }
 .terrain-stage-grid.mode-fracture .stage-pane-fracture {
     display: block;
@@ -96,7 +96,7 @@
 .terrain-stage-grid.mode-rock2 .stage-pane-2d,
 .terrain-stage-grid.mode-rock2 .stage-pane-3d,
 .terrain-stage-grid.mode-rock2 .stage-pane-fracture {
-    display: none;
+    display: none !important;
 }
 .terrain-stage-grid.mode-rock2 .stage-pane-rock2 {
     display: block;
@@ -407,7 +407,6 @@
 #PaneFracture,
 #CanvasFracture {
     background: radial-gradient(circle at 50% 42%, #181c24 0%, #0b0d10 100%);
-    display: block;
     width: 100%;
     height: 100%;
 }
@@ -556,7 +555,6 @@ body:not(.ws-fracture) #inspector-tabs button[data-itab="fracture"] {
 #PaneRock2,
 #CanvasRock2 {
     background: radial-gradient(circle at 50% 42%, #181c24 0%, #0b0d10 100%);
-    display: block;
     width: 100%;
     height: 100%;
 }
@@ -691,6 +689,49 @@ body.ws-rock2 .quick-lib-scroll {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+.rock2-gen-pill {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 1.5px 5.5px;
+    border-radius: 6px;
+    background: rgba(142, 229, 184, 0.16);
+    border: 1px solid rgba(142, 229, 184, 0.35);
+    color: #9ef0c6;
+    text-transform: uppercase;
+    white-space: nowrap;
+    flex: none;
+}
+.rock2-gen-tabs {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 4px;
+    margin: 4px 0 8px 0;
+}
+.rock2-gen-tab {
+    padding: 5px 4px;
+    border-radius: 9px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.04);
+    color: #a9afb9;
+    font-size: 10px;
+    font-weight: 600;
+    text-align: center;
+    cursor: pointer;
+    transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.rock2-gen-tab:hover {
+    background: rgba(255, 255, 255, 0.09);
+    color: #ffffff;
+}
+.rock2-gen-tab.active {
+    background: rgba(239, 244, 207, 0.16);
+    border-color: rgba(239, 244, 207, 0.65);
+    color: #eff4cf;
 }
 .rock2-layer-actions {
     display: flex;

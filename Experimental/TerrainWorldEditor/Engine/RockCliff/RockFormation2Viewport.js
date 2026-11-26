@@ -196,24 +196,14 @@ void main() {
         float intraBlend = lm1.w;
 
         float dLyr = 1e9;
-        for (int k = 0; k < 64; k++) {
+        for (int k = 0; k < 128; k++) {
             if (k >= bCount) break;
             int bi = bStart + k;
             vec4 sph = texelFetch(uBlockTex, ivec2(0, bi), 0);
-            int primOp = int(texelFetch(uBlockTex, ivec2(6, bi), 0).w + 0.5);
             float lb = length(p - sph.xyz) - sph.w;
-
-            if (primOp == 0) {
-                if (lb > dLyr + intraBlend) continue;
-                float dP = evalPlainPrimitive(bi, p);
-                dLyr = (dLyr > 1e8) ? dP : (intraBlend > 1e-4 ? sminPoly(dLyr, dP, intraBlend) : min(dLyr, dP));
-            } else {
-                if (lb > abs(dLyr) + intraBlend + 0.25) continue;
-                float dP = evalPlainPrimitive(bi, p);
-                if (dLyr < 1e8) {
-                    dLyr = smaxPoly(dLyr, -dP, intraBlend);
-                }
-            }
+            if (lb > dLyr + intraBlend) continue;
+            float dP = evalPlainPrimitive(bi, p);
+            dLyr = (dLyr > 1e8) ? dP : (intraBlend > 1e-4 ? sminPoly(dLyr, dP, intraBlend) : min(dLyr, dP));
         }
 
         if (!hasBase) {

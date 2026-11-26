@@ -1,37 +1,27 @@
 /*==========================================================================================================================================
-                                                 ROCKFORMATIONSTACKENGINE.JS
+                                                ROCKFORMATIONSTACKENGINE.JS
 ==========================================================================================================================================*/
-// RockFormation 2.0 — Composable Layer-Stack Pure-SDF Plain Rock Shape Engine.
-//
-// Design Principles:
-//   1. 100% Layer-Stack Driven: Every rock formation is an ordered stack of Pure-SDF nodes combined via
-//      Union, Smooth Blend (smin), 45° Chamfer Seam, Boolean Subtract (Cutter), or Intersect.
-//   2. Foundation Stage — Pure Plain Rock Shapes Only: ZERO fractures, ZERO thermal crazing, ZERO onion-skin
-//      peeling, ZERO chemical tafoni/karren noise processing. Clean sculptural rock silhouettes ready to serve
-//      as foundational shape generators in the stack.
-//   3. Reuses Core Algorithms from Rock Formation 1.0: Strike/Dip half-space polyhedral clipping, C-infinity
-//      Log-Sum-Exp & 45° chamfer rounding, hexagonal basalt lattice prisms, 4^3 Sparse-Brick evaluation, and
-//      3x3 Tikhonov QEF Dual Contouring (.GLB / .OBJ / .STL) — with strictly 0 Mesh->SDF conversions!
+// Pure-SDF Composable Layer-Stack Engine for RockFormation 2.0:
+//   - 8 Atomic Plain Base Rock Shapes (`big_boulder`, `smooth_rock`, `small_rock`, `cliff_block`, `basalt_column`,
+//     `spire_pinnacle`, `rock_slab`, `custom_sculpt_rock`) — ZERO arches, ZERO hardcoded multi-rock scatters,
+//     ZERO fractures, ZERO thermal crazing, ZERO exfoliation, ZERO chemical/noise surface processing.
+//   - Composable Per-Layer Distribution Generators (`none`, `spline`, `array`, `splatter`, `scatter`) attachable to ANY
+//     layer so any plain Base Rock can be arrayed, splined, splattered, or scattered without hardcoding!
+//   - Ordered CSG Layer Stack (`union`, `smooth_union`, `chamfer_union`, `subtract`, `intersect`), Solo/Mute,
+//     GPU RGBA32F Buffer Packing (`< 2 ms` WebGL2 3D volume bake), and 4^3 Sparse-Brick QEF Dual-Contour Meshing.
 
 import {
-    DEG2RAD,
     clamp,
-    mix,
+    mix as lerp,
     smoothstep,
-    vdot,
+    DEG2RAD,
     vnorm,
-    buildStrikeDipFrame,
-    smin,
-    smax,
-    chamferMax,
-    createRng
+    smin as sminPoly,
+    smax as smaxPoly,
+    createRng,
+    buildStrikeDipFrame
 } from './Core/SpatialNoise3D.js';
-import {
-    createBoxPoly,
-    clipPolyByHalfSpace,
-    measurePoly,
-    sculptGeologicalParentPoly
-} from './PureSdfFractureEngine.js';
+
 import { evaluateSparseSdf } from './Core/SparseSdfBrickGrid.js';
 import {
     extractDualContourMesh,
@@ -40,8 +30,15 @@ import {
     buildGameReadyAttributes
 } from './Core/QefDualContour.js';
 
+import {
+    createBoxPoly,
+    clipPolyByHalfSpace,
+    measurePoly,
+    sculptGeologicalParentPoly
+} from './PureSdfFractureEngine.js';
+
 /*==========================================================================================================================================
-                                   1. LAYER COMBINE MODES, STONE TONES & NODE CATALOG
+                                      1. CSG COMBINE MODES & STUDIO STONE PALETTE
 ==========================================================================================================================================*/
 
 export const ROCK2_COMBINE_MODES = [
@@ -61,22 +58,21 @@ export const ROCK2_COMBINE_OP_CODE = {
 };
 
 export const ROCK2_STONE_TONES = {
-    clay:       { label: 'Studio Stone Grey',  hex: '#94918c', rgb: [0.58, 0.57, 0.55] },
-    basalt:     { label: 'Dark Basalt Slate',  hex: '#454a52', rgb: [0.27, 0.29, 0.32] },
-    granite:    { label: 'Pale Sierra Granite',hex: '#aea69c', rgb: [0.68, 0.65, 0.61] },
-    sandstone:  { label: 'Warm Desert Buff',   hex: '#b88f6b', rgb: [0.72, 0.56, 0.42] },
-    cobble:     { label: 'River Cobble Blue',  hex: '#757d85', rgb: [0.46, 0.49, 0.52] },
-    limestone:  { label: 'Karst Cream Stone',  hex: '#bab5a6', rgb: [0.73, 0.71, 0.65] },
-    redSlate:   { label: 'Red Canyon Slate',   hex: '#9e5e4d', rgb: [0.62, 0.37, 0.30] }
+    clay:       { label: 'Studio Stone Grey',   hex: '#94918c', rgb: [0.58, 0.57, 0.55] },
+    basalt:     { label: 'Dark Basalt Slate',   hex: '#454a52', rgb: [0.27, 0.29, 0.32] },
+    granite:    { label: 'Pale Sierra Granite', hex: '#aea69c', rgb: [0.68, 0.65, 0.61] },
+    sandstone:  { label: 'Warm Desert Buff',    hex: '#b88f6b', rgb: [0.72, 0.56, 0.42] },
+    cobble:     { label: 'River Cobble Blue',   hex: '#757d85', rgb: [0.46, 0.49, 0.52] },
+    limestone:  { label: 'Karst Cream Stone',   hex: '#bab5a6', rgb: [0.73, 0.71, 0.65] },
+    redSlate:   { label: 'Red Canyon Slate',    hex: '#9e5e4d', rgb: [0.62, 0.37, 0.30] }
 };
 
 export const ROCK2_STONE_TONE_OPTIONS = Object.entries(ROCK2_STONE_TONES).map(([k, v]) => [v.label, k]);
 
-/**
- * 9 Foundational Plain Rock Generator Node Types:
- * Capable of generating any plain rock or compound rock shape (Basalt, Small Rocks, Big Boulders,
- * Smooth Rocks, Cliffs, Spires/Hoodoos, Flat Slabs/Ledges, Natural Arches, and Custom Parametric Shapes).
- */
+/*==========================================================================================================================================
+                     2. 8 ATOMIC PLAIN BASE ROCK GENERATORS (SINGLE ROCK PER BASE NODE · ZERO ARCHES)
+==========================================================================================================================================*/
+
 export const ROCK2_NODE_CATALOG = [
     {
         type: 'big_boulder',
@@ -84,7 +80,7 @@ export const ROCK2_NODE_CATALOG = [
         shortBadge: 'BOULDER',
         glyph: 'Mountain',
         accent: '#e8c27a',
-        desc: 'Massive plain angular-to-subrounded boulder, erratic monolith, overhanging prow or pedestal block',
+        desc: 'Single plain angular erratic, sub-rounded granite boulder, overhanging prow, cuboid or pedestal block',
         defaults: {
             stoneTone: 'granite',
             seed: 2104,
@@ -104,9 +100,9 @@ export const ROCK2_NODE_CATALOG = [
         controlGroups: [
             {
                 title: 'Boulder Silhouette & Faceting',
-                badge: 'SHAPE',
+                badge: 'BASE ROCK',
                 glyph: 'Mountain',
-                hint: 'Control plain boulder style, facet count, corner rounding, angularity & overhanging prow.',
+                hint: 'Single plain boulder shape — attach Spline / Array / Splatter / Scatter above to place multiple rocks.',
                 controls: [
                     {
                         type: 'select', key: 'boulderStyle', label: 'Boulder Archetype',
@@ -136,29 +132,29 @@ export const ROCK2_NODE_CATALOG = [
         shortBadge: 'SMOOTH',
         glyph: 'Planet',
         accent: '#9bd1e5',
-        desc: 'Plain water-worn river cobble, smooth pebble, batholith dome, zen pillow stone or egg boulder',
+        desc: 'Single plain water-worn river cobble, smooth pebble, batholith dome, pillow stone or skipping lens',
         defaults: {
             stoneTone: 'cobble',
             seed: 3318,
             posX: 0.0, posY: 0.0, posZ: 0.0,
             yawDeg: 0, pitchDeg: 0, rollDeg: 0,
-            width: 4.4, height: 2.9, length: 3.6,
+            width: 4.2, height: 2.8, length: 3.5,
             smoothStyle: 'cobble',
             roundness: 0.86,
             squarenessHoriz: 0.95,
             squarenessVert: 0.92,
-            softFacets: 0.18,
+            softFacets: 0.16,
             taper: 0.10,
             bend: 0.0,
-            asymmetry: 0.08,
-            flatBottom: 0.75
+            asymmetry: 0.06,
+            flatBottom: 0.72
         },
         controlGroups: [
             {
                 title: 'Smooth Cobble & Dome Contour',
-                badge: 'SMOOTH SDF',
+                badge: 'BASE ROCK',
                 glyph: 'Planet',
-                hint: 'Morph smoothly between pure spheroidal river cobbles, pillowed zen stones, eggs & domes.',
+                hint: 'Single plain smooth rock — morph between spheroidal cobbles, domes, pillows, eggs & flat river lenses.',
                 controls: [
                     {
                         type: 'select', key: 'smoothStyle', label: 'Smooth Form Type',
@@ -167,177 +163,161 @@ export const ROCK2_NODE_CATALOG = [
                             ['Rounded Batholith Dome', 'dome'],
                             ['Pillowed Cushion Stone', 'pillow'],
                             ['Ovoid Egg / Glacial Stone', 'egg'],
-                            ['Multi-Lobe Smooth Mass', 'lobes']
+                            ['Flat Skipping Disc / Lens', 'lens']
                         ]
                     },
-                    { key: 'roundness', label: 'Overall Smoothness', min: 0.25, max: 1.00, step: 0.01, decimals: 2, unit: 'w' },
-                    { key: 'squarenessHoriz', label: 'Plan Roundness (Box↔Circle)', min: 0.35, max: 1.50, step: 0.02, decimals: 2, unit: 'e' },
-                    { key: 'squarenessVert', label: 'Profile Curve (Slab↔Sphere)', min: 0.35, max: 1.50, step: 0.02, decimals: 2, unit: 'e' },
-                    { key: 'softFacets', label: 'Subtle Plane Faceting', min: 0.0, max: 0.85, step: 0.02, decimals: 2, unit: 'w' },
-                    { key: 'taper', label: 'Egg / Dome Taper', min: -0.55, max: 0.75, step: 0.02, decimals: 2, unit: 'w' },
-                    { key: 'bend', label: 'Kidney / Bean Curvature', min: -0.50, max: 0.50, step: 0.02, decimals: 2, unit: 'w' },
-                    { key: 'asymmetry', label: 'Summit Skew', min: -0.60, max: 0.60, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'roundness', label: 'Surface Polish / Rounding', min: 0.25, max: 1.0, step: 0.01, decimals: 2, unit: 'w' },
+                    { key: 'squarenessHoriz', label: 'Plan Roundness (Box↔Circle)', min: 0.35, max: 1.65, step: 0.02, decimals: 2, unit: 'e' },
+                    { key: 'squarenessVert', label: 'Profile Roundness (Slab↔Dome)', min: 0.35, max: 1.65, step: 0.02, decimals: 2, unit: 'e' },
+                    { key: 'softFacets', label: 'Subtle Worn Faceting', min: 0.0, max: 0.75, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'taper', label: 'Crown Taper', min: -0.45, max: 0.65, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'bend', label: 'Bean / Kidney Curvature', min: -0.55, max: 0.55, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'asymmetry', label: 'Streamline Skew', min: -0.50, max: 0.50, step: 0.02, decimals: 2, unit: 'w' },
                     { key: 'flatBottom', label: 'Grounded Base Cut', min: 0.0, max: 1.0, step: 0.05, decimals: 2, unit: 'w' }
                 ]
             }
         ]
     },
     {
-        type: 'small_rocks',
-        name: 'Small Rocks',
-        shortBadge: 'SMALL ROCKS',
+        type: 'small_rock',
+        name: 'Small Rock',
+        shortBadge: 'SMALL ROCK',
         glyph: 'Sparkles',
         accent: '#c8d99b',
-        desc: 'Scatter or cluster of plain small rocks, pebbles, angular scree chunks or stepping stones (1–24 rocks)',
+        desc: 'Single plain small rock clast, angular scree shard, tumbled pebble or flat slate chip (ready to scatter/splatter)',
         defaults: {
             stoneTone: 'clay',
             seed: 5190,
             posX: 0.0, posY: 0.0, posZ: 0.0,
             yawDeg: 0, pitchDeg: 0, rollDeg: 0,
-            width: 5.6, height: 1.1, length: 5.2,
-            layoutPattern: 'cluster',
-            rockCount: 11,
-            sizeMin: 0.32,
-            sizeMax: 1.15,
-            heroCenterBoost: 0.45,
-            roundness: 0.35,
-            flatness: 0.38,
-            tiltRandomness: 0.35,
-            embedDepth: 0.18
+            width: 1.05, height: 0.68, length: 0.88,
+            clastStyle: 'angular',
+            facetCount: 9,
+            roundness: 0.26,
+            flatness: 0.22,
+            elongation: 0.10,
+            asymmetry: 0.12,
+            flatBottom: 0.65
         },
         controlGroups: [
             {
-                title: 'Small Rock Scatter & Shapes',
-                badge: 'SCATTER',
+                title: 'Small Rock Clast Shape',
+                badge: 'BASE ROCK',
                 glyph: 'Sparkles',
-                hint: 'Generate 1 to 24 plain small stones — from smooth river pebbles to sharp angular talus chunks.',
+                hint: 'Single plain small rock — attach Scatter, Splatter, Array, or Spline on this layer to distribute many stones.',
                 controls: [
                     {
-                        type: 'select', key: 'layoutPattern', label: 'Scatter Pattern',
+                        type: 'select', key: 'clastStyle', label: 'Small Rock Type',
                         options: [
-                            ['Natural Boulder + Satellites Cluster', 'cluster'],
-                            ['Perimeter Ring / Talus Apron', 'ring'],
-                            ['Stepping-Stone Trail / Ridge Line', 'line'],
-                            ['Even Cobble Field', 'grid']
+                            ['Angular Talus / Scree Clast', 'angular'],
+                            ['Tumbled Stream Pebble', 'pebble'],
+                            ['Sharp Wedge Shard', 'shard'],
+                            ['Flat Shale / Slate Chip', 'chip']
                         ]
                     },
-                    { key: 'rockCount', label: 'Number of Rocks', min: 1, max: 24, step: 1, decimals: 0, unit: 'rk' },
-                    { key: 'sizeMin', label: 'Smallest Rock Size', min: 0.15, max: 1.80, step: 0.02, decimals: 2, unit: 'm' },
-                    { key: 'sizeMax', label: 'Largest Rock Size', min: 0.25, max: 2.60, step: 0.02, decimals: 2, unit: 'm' },
-                    { key: 'heroCenterBoost', label: 'Center Hero Dominance', min: 0.0, max: 1.0, step: 0.02, decimals: 2, unit: 'w' },
-                    { key: 'roundness', label: 'Angular Scree ↔ Smooth Pebble', min: 0.04, max: 0.96, step: 0.02, decimals: 2, unit: 'w' },
-                    { key: 'flatness', label: 'Chunky ↔ Flat Slate Ratio', min: 0.0, max: 0.80, step: 0.02, decimals: 2, unit: 'w' },
-                    { key: 'tiltRandomness', label: 'Random Tumble Tilt', min: 0.0, max: 1.0, step: 0.02, decimals: 2, unit: 'w' },
-                    { key: 'embedDepth', label: 'Ground Embed Depth', min: 0.0, max: 0.65, step: 0.02, decimals: 2, unit: 'w' }
+                    { key: 'facetCount', label: 'Cleavage Facet Count', min: 5, max: 18, step: 1, decimals: 0, unit: 'pl' },
+                    { key: 'roundness', label: 'Sharp Scree ↔ Worn Pebble', min: 0.03, max: 0.95, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'flatness', label: 'Chunky ↔ Flat Slate', min: 0.0, max: 0.78, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'elongation', label: 'Compact ↔ Elongated', min: -0.40, max: 0.70, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'asymmetry', label: 'Wedge Asymmetry', min: -0.55, max: 0.55, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'flatBottom', label: 'Resting Base Contact', min: 0.0, max: 1.0, step: 0.05, decimals: 2, unit: 'w' }
                 ]
             }
         ]
     },
     {
-        type: 'cliff_face',
-        name: 'Cliff Escarpment',
+        type: 'cliff_block',
+        name: 'Cliff Block',
         shortBadge: 'CLIFF',
         glyph: 'Layers',
         accent: '#e09f6d',
-        desc: 'Plain vertical cliff wall, stepped canyon benches, overhanging headland brow or curved amphitheater',
+        desc: 'Single plain sheer cliff buttress, battered rampart, overhanging brow or mesa block (spline/array for long walls)',
         defaults: {
             stoneTone: 'sandstone',
             seed: 7042,
             posX: 0.0, posY: 0.0, posZ: 0.0,
             yawDeg: 0, pitchDeg: 0, rollDeg: 0,
-            width: 7.6, height: 5.4, length: 3.4,
-            cliffProfile: 'stepped',
-            buttressCount: 4,
-            buttressBlend: 0.22,
-            stepBenches: 3,
-            overhangLean: 0.08,
-            wallCurvature: 0.0,
+            width: 3.8, height: 5.4, length: 3.1,
+            cliffProfile: 'vertical',
+            facetCount: 10,
             roundness: 0.14,
-            crestSlope: 0.08
+            overhangLean: 0.08,
+            batterTaper: 0.14,
+            crestSlope: 0.08,
+            prowWedge: 0.15
         },
         controlGroups: [
             {
-                title: 'Cliff Wall Architecture',
-                badge: 'ESCARPMENT',
+                title: 'Cliff Buttress Monolith',
+                badge: 'BASE ROCK',
                 glyph: 'Layers',
-                hint: 'Sculpt plain cliff walls from interlocking structural buttresses, terrace benches, overhangs & curves.',
+                hint: 'Single plain cliff block — attach a Spline or Linear Array generator to fuse a full multi-buttress cliff wall.',
                 controls: [
                     {
-                        type: 'select', key: 'cliffProfile', label: 'Cliff Profile',
+                        type: 'select', key: 'cliffProfile', label: 'Cliff Block Profile',
                         options: [
-                            ['Stepped Canyon Escarpment', 'stepped'],
-                            ['Sheer Vertical Headwall', 'vertical'],
+                            ['Sheer Vertical Headwall Block', 'vertical'],
                             ['Overhanging Sea-Cliff Brow', 'overhang'],
-                            ['Slanted Cuesta Rampart', 'rampart'],
-                            ['Mesa Caprock Promontory', 'mesa']
+                            ['Battered Cuesta Rampart', 'rampart'],
+                            ['Flat-Capped Mesa Buttress', 'mesa'],
+                            ['Angular Promontory Prow', 'prow']
                         ]
                     },
-                    { key: 'buttressCount', label: 'Structural Buttresses', min: 1, max: 7, step: 1, decimals: 0, unit: 'bt' },
-                    { key: 'buttressBlend', label: 'Buttress Seam Fusion', min: 0.0, max: 0.90, step: 0.02, decimals: 2, unit: 'm' },
-                    { key: 'stepBenches', label: 'Terrace Bench Tiers', min: 0, max: 5, step: 1, decimals: 0, unit: 'tr' },
+                    { key: 'facetCount', label: 'Face Joint Planes', min: 6, max: 20, step: 1, decimals: 0, unit: 'pl' },
+                    { key: 'roundness', label: 'Cliff Arris Rounding', min: 0.02, max: 0.65, step: 0.01, decimals: 2, unit: 'w' },
                     { key: 'overhangLean', label: 'Slope Back ↔ Overhang Brow', min: -0.55, max: 0.65, step: 0.02, decimals: 2, unit: 'w' },
-                    { key: 'wallCurvature', label: 'Concave Cove ↔ Promontory', min: -0.80, max: 0.80, step: 0.02, decimals: 2, unit: 'w' },
-                    { key: 'roundness', label: 'Cliff Arris Rounding', min: 0.02, max: 0.70, step: 0.01, decimals: 2, unit: 'w' },
-                    { key: 'crestSlope', label: 'Rim Crest Tilt', min: -0.50, max: 0.50, step: 0.02, decimals: 2, unit: 'w' }
+                    { key: 'batterTaper', label: 'Base-to-Crest Taper', min: -0.45, max: 0.65, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'crestSlope', label: 'Rim Crest Tilt', min: -0.50, max: 0.50, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'prowWedge', label: 'Front Face Angularity', min: 0.0, max: 0.60, step: 0.02, decimals: 2, unit: 'w' }
                 ]
             }
         ]
     },
     {
-        type: 'columnar_basalt',
-        name: 'Columnar Basalt',
+        type: 'basalt_column',
+        name: 'Basalt Column',
         shortBadge: 'BASALT',
         glyph: 'Boxes',
         accent: '#9aa8bd',
-        desc: 'Plain polygonal 4/5/6/7-sided basalt columns — stepped colonnade, volcanic plug, causeway or splayed fan',
+        desc: 'Single plain 4/5/6/7/8-sided polygonal basalt prism — pair with Hexagonal Array or Splatter for colonnades',
         defaults: {
             stoneTone: 'basalt',
             seed: 5512,
             posX: 0.0, posY: 0.0, posZ: 0.0,
             yawDeg: 0, pitchDeg: 0, rollDeg: 0,
-            width: 5.8, height: 5.0, length: 4.8,
-            formationShape: 'cliff',
+            width: 1.15, height: 4.6, length: 1.15,
             polygonSides: 6,
-            columnDiameter: 0.95,
-            columnGap: 0.04,
-            heightSteps: 6,
-            edgeBevel: 0.08,
-            columnSplay: 0.06,
-            capTilt: 0.10
+            irregularity: 0.08,
+            edgeBevel: 0.09,
+            capTilt: 0.10,
+            taper: 0.02,
+            bendX: 0.0,
+            twistDeg: 0
         },
         controlGroups: [
             {
-                title: 'Polygonal Basalt Colonnade',
-                badge: 'HEX PRISMS',
+                title: 'Polygonal Basalt Prism',
+                badge: 'BASE ROCK',
                 glyph: 'Boxes',
-                hint: 'Pure plain polygonal basalt prisms with controllable side count, column diameter, terrace steps & splay.',
+                hint: 'Single plain polygonal basalt column — attach Array (Hexagonal Pack) to build stepped organ-pipe colonnades.',
                 controls: [
                     {
-                        type: 'select', key: 'formationShape', label: 'Colonnade Envelope',
-                        options: [
-                            ['Stepped Cliff Colonnade', 'cliff'],
-                            ['Volcanic Plug / Tower Mound', 'mound'],
-                            ['Giant’s Causeway Pavement', 'pavement'],
-                            ['Curved Cove Amphitheater', 'amphitheater'],
-                            ['Single Hero Basalt Column', 'single']
-                        ]
-                    },
-                    {
-                        type: 'select', key: 'polygonSides', label: 'Column Polygon Sides',
+                        type: 'select', key: 'polygonSides', label: 'Prism Polygon Sides',
                         options: [
                             ['6-Sided Classic Hexagonal', 6],
-                            ['Mixed 5 / 6 / 7 Natural Prisms', 0],
-                            ['5-Sided Pentagonal Prisms', 5],
-                            ['4-Sided Tetragonal Prisms', 4],
-                            ['8-Sided Octagonal Columns', 8]
+                            ['Seed-Varied 5 / 6 / 7 Natural', 0],
+                            ['5-Sided Pentagonal Prism', 5],
+                            ['4-Sided Tetragonal Prism', 4],
+                            ['7-Sided Heptagonal Prism', 7],
+                            ['8-Sided Octagonal Prism', 8]
                         ]
                     },
-                    { key: 'columnDiameter', label: 'Column Diameter', min: 0.42, max: 2.20, step: 0.02, decimals: 2, unit: 'm' },
-                    { key: 'columnGap', label: 'Inter-Column Spacing', min: 0.00, max: 0.35, step: 0.01, decimals: 2, unit: 'm' },
-                    { key: 'heightSteps', label: 'Terrace Step Quantization', min: 1, max: 12, step: 1, decimals: 0, unit: 'st' },
-                    { key: 'edgeBevel', label: 'Prism Edge Bevel', min: 0.01, max: 0.45, step: 0.01, decimals: 2, unit: 'w' },
-                    { key: 'columnSplay', label: 'Radial Fan / Splay Lean', min: -0.45, max: 0.55, step: 0.02, decimals: 2, unit: 'w' },
-                    { key: 'capTilt', label: 'Top Facet Slant', min: 0.0, max: 0.45, step: 0.01, decimals: 2, unit: 'w' }
+                    { key: 'irregularity', label: 'Side Face Irregularity', min: 0.0, max: 0.35, step: 0.01, decimals: 2, unit: 'w' },
+                    { key: 'edgeBevel', label: 'Prism Edge Bevel', min: 0.01, max: 0.55, step: 0.01, decimals: 2, unit: 'w' },
+                    { key: 'capTilt', label: 'Top Termination Tilt', min: 0.0, max: 0.55, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'taper', label: 'Shaft Taper', min: -0.30, max: 0.45, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'bendX', label: 'Column Curvature', min: -0.45, max: 0.45, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'twistDeg', label: 'Prism Twist', min: -60, max: 60, step: 1, decimals: 0, unit: '°' }
                 ]
             }
         ]
@@ -347,134 +327,89 @@ export const ROCK2_NODE_CATALOG = [
         name: 'Spire & Pinnacle',
         shortBadge: 'SPIRE',
         glyph: 'Activity',
-        accent: '#d9b4f0',
-        desc: 'Plain tapered rock needle, alpine horn, twisted spire, desert obelisk or waist-pinched hoodoo pillar',
+        accent: '#d9b8ff',
+        desc: 'Single plain rock spire, obelisk needle, desert hoodoo shaft, leaning fang or flat-topped pinnacle',
         defaults: {
             stoneTone: 'limestone',
-            seed: 8814,
+            seed: 8821,
             posX: 0.0, posY: 0.0, posZ: 0.0,
             yawDeg: 0, pitchDeg: 0, rollDeg: 0,
-            width: 2.8, height: 6.2, length: 2.6,
+            width: 2.3, height: 6.2, length: 2.1,
             spireStyle: 'horn',
             facetSides: 7,
             roundness: 0.16,
             taper: 0.58,
             waistPinch: 0.0,
             twistDeg: 14,
-            bendX: 0.12,
+            bendX: 0.10,
             flatCap: 0.08
         },
         controlGroups: [
             {
-                title: 'Spire, Horn & Hoodoo Geometry',
-                badge: 'PINNACLE',
+                title: 'Spire, Needle & Hoodoo Tower',
+                badge: 'BASE ROCK',
                 glyph: 'Activity',
-                hint: 'Sculpt plain needles, cantilevered alpine horns, obelisks & waist-pinched hoodoo pillars.',
+                hint: 'Single plain vertical rock spire — control taper, hoodoo waist pinch, helical twist & lean.',
                 controls: [
                     {
-                        type: 'select', key: 'spireStyle', label: 'Pinnacle Type',
+                        type: 'select', key: 'spireStyle', label: 'Spire Archetype',
                         options: [
-                            ['Curved Alpine Horn', 'horn'],
-                            ['Sharp Tapered Needle', 'needle'],
-                            ['Waist-Pinched Hoodoo Pillar', 'hoodoo'],
+                            ['Alpine Horn / Obelisk', 'horn'],
+                            ['Slender Sea-Stack Needle', 'needle'],
+                            ['Pinched Desert Hoodoo', 'hoodoo'],
                             ['Flat-Topped Butte Tower', 'butte']
                         ]
                     },
-                    { key: 'facetSides', label: 'Perimeter Facet Sides', min: 4, max: 14, step: 1, decimals: 0, unit: 'sd' },
-                    { key: 'roundness', label: 'Ridge Rounding', min: 0.02, max: 0.85, step: 0.01, decimals: 2, unit: 'w' },
-                    { key: 'taper', label: 'Summit Taper', min: -0.35, max: 0.90, step: 0.02, decimals: 2, unit: 'w' },
-                    { key: 'waistPinch', label: 'Stem Waist Pinch', min: -0.35, max: 0.68, step: 0.02, decimals: 2, unit: 'w' },
-                    { key: 'twistDeg', label: 'Helical Torsion Twist', min: -90, max: 90, step: 1, decimals: 0, unit: '°' },
-                    { key: 'bendX', label: 'Horn Cantilever Bend', min: -0.55, max: 0.55, step: 0.02, decimals: 2, unit: 'w' },
-                    { key: 'flatCap', label: 'Summit Cap Bevel', min: 0.0, max: 0.70, step: 0.02, decimals: 2, unit: 'w' }
+                    { key: 'facetSides', label: 'Perimeter Facet Sides', min: 4, max: 14, step: 1, decimals: 0, unit: 'pl' },
+                    { key: 'roundness', label: 'Ridge Rounding', min: 0.02, max: 0.80, step: 0.01, decimals: 2, unit: 'w' },
+                    { key: 'taper', label: 'Vertical Spire Taper', min: -0.35, max: 0.88, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'waistPinch', label: 'Pedestal / Hoodoo Pinch', min: -0.40, max: 0.68, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'twistDeg', label: 'Helical Spire Twist', min: -90, max: 90, step: 2, decimals: 0, unit: '°' },
+                    { key: 'bendX', label: 'Cantilever Spire Lean', min: -0.55, max: 0.55, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'flatCap', label: 'Summit Plateau Cut', min: 0.0, max: 0.80, step: 0.02, decimals: 2, unit: 'w' }
                 ]
             }
         ]
     },
     {
         type: 'rock_slab',
-        name: 'Slab & Flatiron',
+        name: 'Rock Slab',
         shortBadge: 'SLAB',
         glyph: 'Scan',
-        accent: '#f0b899',
-        desc: 'Plain tabular rock slab, tilted flatiron hogback, cantilevered cliff shelf ledge or flagstone plate',
+        accent: '#f0b67f',
+        desc: 'Single plain tabular rock slab, tilted flatiron hogback, cantilever ledge or flagstone plate',
         defaults: {
             stoneTone: 'redSlate',
-            seed: 4419,
+            seed: 4410,
             posX: 0.0, posY: 0.0, posZ: 0.0,
             yawDeg: 0, pitchDeg: 0, rollDeg: 0,
-            width: 5.8, height: 1.15, length: 4.4,
+            width: 5.4, height: 1.15, length: 4.0,
             planShape: 'plate',
-            dipAngleDeg: 18,
-            roundness: 0.12,
+            dipAngleDeg: 16,
+            roundness: 0.14,
             edgeTaper: 0.22,
             bend: 0.0
         },
         controlGroups: [
             {
-                title: 'Tabular Slab & Flatiron Controls',
-                badge: 'TABULAR',
+                title: 'Tabular Slab & Flatiron',
+                badge: 'BASE ROCK',
                 glyph: 'Scan',
-                hint: 'Plain tabular stone plates, tilted flatiron fins, triangular wedges & cantilevered ledges.',
+                hint: 'Single plain stone slab — pair with Linear Stepped Array to stack sedimentary strata benches.',
                 controls: [
                     {
                         type: 'select', key: 'planShape', label: 'Slab Plan Silhouette',
                         options: [
-                            ['Polygonal Stone Plate', 'plate'],
-                            ['Tilted Triangular Flatiron', 'wedge'],
-                            ['Elongated Shelf Ledge', 'ledge'],
-                            ['Smooth Rounded Flagstone', 'flagstone']
+                            ['Polygonal Bedrock Plate', 'plate'],
+                            ['Triangular Flatiron Wedge', 'wedge'],
+                            ['Elongated Cantilever Ledge', 'ledge'],
+                            ['Rounded Flagstone', 'flagstone']
                         ]
                     },
-                    { key: 'dipAngleDeg', label: 'Bedding Dip Tilt', min: -65, max: 65, step: 1, decimals: 0, unit: '°' },
+                    { key: 'dipAngleDeg', label: 'Geological Dip Tilt', min: -65, max: 65, step: 1, decimals: 0, unit: '°' },
                     { key: 'roundness', label: 'Rim Rounding', min: 0.02, max: 0.85, step: 0.01, decimals: 2, unit: 'w' },
                     { key: 'edgeTaper', label: 'Chisel Rim Bevel', min: -0.45, max: 0.65, step: 0.02, decimals: 2, unit: 'w' },
                     { key: 'bend', label: 'Slab Saddle Warp', min: -0.40, max: 0.40, step: 0.02, decimals: 2, unit: 'w' }
-                ]
-            }
-        ]
-    },
-    {
-        type: 'arch_formation',
-        name: 'Natural Rock Arch',
-        shortBadge: 'ARCH',
-        glyph: 'Arch',
-        accent: '#eff4cf',
-        desc: 'Plain sculptural rock arch, natural bridge or sea-cliff window with clean Pure-SDF span geometry',
-        defaults: {
-            stoneTone: 'sandstone',
-            seed: 6180,
-            posX: 0.0, posY: 0.0, posZ: 0.0,
-            yawDeg: 0, pitchDeg: 0, rollDeg: 0,
-            width: 7.4, height: 4.8, length: 2.6,
-            archProfile: 'vault',
-            openingWidth: 0.54,
-            openingHeight: 0.58,
-            roundness: 0.28,
-            buttressFlare: 0.25,
-            archSkew: 0.0
-        },
-        controlGroups: [
-            {
-                title: 'Natural Arch & Span Geometry',
-                badge: 'PURE ARCH',
-                glyph: 'Arch',
-                hint: 'Pure-SDF rock bridge sculpted from flared stone buttresses and a clean tunable arch vault.',
-                controls: [
-                    {
-                        type: 'select', key: 'archProfile', label: 'Arch Opening Style',
-                        options: [
-                            ['Rounded Desert Vault', 'vault'],
-                            ['Pointed Cathedral Arch', 'pointed'],
-                            ['Flat-Lintelled Stone Bridge', 'lintel'],
-                            ['Keyhole / Sea-Cave Window', 'keyhole']
-                        ]
-                    },
-                    { key: 'openingWidth', label: 'Arch Span Width', min: 0.22, max: 0.78, step: 0.01, decimals: 2, unit: 'w' },
-                    { key: 'openingHeight', label: 'Arch Clear Height', min: 0.22, max: 0.76, step: 0.01, decimals: 2, unit: 'w' },
-                    { key: 'roundness', label: 'Arch & Pier Rounding', min: 0.05, max: 0.80, step: 0.01, decimals: 2, unit: 'w' },
-                    { key: 'buttressFlare', label: 'Base Pier Flare', min: 0.0, max: 0.65, step: 0.02, decimals: 2, unit: 'w' },
-                    { key: 'archSkew', label: 'Span Asymmetry', min: -0.45, max: 0.45, step: 0.02, decimals: 2, unit: 'w' }
                 ]
             }
         ]
@@ -485,13 +420,13 @@ export const ROCK2_NODE_CATALOG = [
         shortBadge: 'CUSTOM',
         glyph: 'Sliders',
         accent: '#8ee5b8',
-        desc: 'Universal Pure-SDF rock shape generator — morph continuously across spheres, crystals, boxes, cylinders, tusks & custom rocks',
+        desc: 'Universal single-rock SDF generator — morph continuously across crystals, spheres, boxes, cylinders, tusks & custom rocks',
         defaults: {
             stoneTone: 'clay',
             seed: 9012,
             posX: 0.0, posY: 0.0, posZ: 0.0,
             yawDeg: 0, pitchDeg: 0, rollDeg: 0,
-            width: 4.5, height: 4.0, length: 4.0,
+            width: 4.4, height: 3.9, length: 3.9,
             analyticBlend: 0.50,
             expHoriz: 0.85,
             expVert: 0.85,
@@ -511,7 +446,7 @@ export const ROCK2_NODE_CATALOG = [
                 title: 'Universal Hybrid Shape Kernel',
                 badge: 'PARAMETRIC',
                 glyph: 'Sliders',
-                hint: 'Blend Faceted Half-Space Polyhedra with 3D Superquadrics + Taper, Pinch, Twist, Bend & Skew to make ANY shape.',
+                hint: 'Blend Faceted Half-Space Polyhedra with 3D Superquadrics + Taper, Pinch, Twist, Bend & Skew to make ANY single rock shape.',
                 controls: [
                     { key: 'analyticBlend', label: 'Faceted Poly ↔ Analytic Superquadric', min: 0.0, max: 1.0, step: 0.02, decimals: 2, unit: 'w' },
                     { key: 'expHoriz', label: 'Plan Exponent (Box↔Circle↔Diamond)', min: 0.25, max: 1.85, step: 0.02, decimals: 2, unit: 'e' },
@@ -537,18 +472,146 @@ export function getRock2NodeSpec(type)
     return ROCK2_NODE_CATALOG.find(n => n.type === type) || ROCK2_NODE_CATALOG[0];
 }
 
+/*==========================================================================================================================================
+               3. COMPOSABLE PER-LAYER DISTRIBUTION GENERATORS (SPLINE / ARRAY / SPLATTER / SCATTER)
+==========================================================================================================================================*/
+
+export const ROCK2_GENERATOR_OPTIONS = [
+    ['Single Rock (No Generator)', 'none'],
+    ['Spline Path Generator', 'spline'],
+    ['Array Generator (Linear / Grid / Hex / Radial)', 'array'],
+    ['Splatter Generator (Clump / Talus Fan)', 'splatter'],
+    ['Scatter Generator (Relaxed Area Field)', 'scatter']
+];
+
+export const ROCK2_GENERATOR_DEFAULTS = {
+    none: {
+        type: 'none'
+    },
+    spline: {
+        type: 'spline',
+        seed: 701,
+        splineShape: 'arc',     // 'arc' | 'scurve' | 'line' | 'ring' | 'custom'
+        count: 6,
+        pathLength: 9.0,
+        curveBend: 2.2,
+        ringRadius: 3.8,
+        elevationRise: 0.0,
+        startX: -4.5, startY: 0.0, startZ: 0.8,
+        midX: 0.0,    midY: 0.4,   midZ: -1.8,
+        endX: 4.5,    endY: 0.0,   endZ: 0.8,
+        alignToTangent: 1,
+        yawOffsetDeg: 0,
+        lateralJitter: 0.0,
+        scaleStart: 1.0,
+        scaleEnd: 1.0,
+        scaleVariation: 0.14,
+        heightVariation: 0.16,
+        yawVariationDeg: 10,
+        tiltVariationDeg: 4,
+        intraBlend: 0.20,
+        uniqueSeeds: 1
+    },
+    array: {
+        type: 'array',
+        seed: 809,
+        arrayMode: 'linear',    // 'linear' | 'grid2d' | 'grid3d' | 'hex' | 'radial'
+        countX: 5,
+        countY: 2,
+        countZ: 3,
+        stepX: 2.2,
+        stepY: 0.65,
+        stepZ: 2.2,
+        rowStagger: 0.0,
+        progressiveYawDeg: 0,
+        scaleDecay: 0.0,
+        hexRings: 2,            // 1->7, 2->19, 3->37, 4->61 columns
+        cellSpacing: 1.02,
+        terraceSteps: 5,
+        terraceDrop: 0.55,
+        radialLeanDeg: 3,
+        radialCount: 8,
+        ringRadius: 3.6,
+        arcAngleDeg: 360,
+        faceCenter: 1,
+        posJitter: 0.0,
+        heightVariation: 0.12,
+        scaleVariation: 0.10,
+        yawJitterDeg: 8,
+        tiltJitterDeg: 3,
+        intraBlend: 0.0,
+        uniqueSeeds: 1
+    },
+    splatter: {
+        type: 'splatter',
+        seed: 919,
+        splatterMode: 'burst',  // 'burst' | 'talus_fan' | 'clusters' | 'rings'
+        count: 14,
+        outerRadius: 3.8,
+        innerRadiusRatio: 0.0,
+        fanSpreadDeg: 110,
+        fanAzimuthDeg: 0,
+        pileHeight: 0.35,
+        radialScaleFalloff: 0.45,
+        scaleMin: 0.45,
+        scaleMax: 1.25,
+        yawRandom: 1.0,
+        tiltRandomDeg: 16,
+        embedDepth: 0.12,
+        intraBlend: 0.0,
+        uniqueSeeds: 1
+    },
+    scatter: {
+        type: 'scatter',
+        seed: 1031,
+        count: 16,
+        scatterWidth: 6.8,
+        scatterLength: 6.2,
+        minSpacing: 0.72,
+        moundHeight: 0.0,
+        scaleMin: 0.45,
+        scaleMax: 1.30,
+        sizeBias: 1.55,
+        yawRandom: 1.0,
+        tiltRandomDeg: 18,
+        embedDepth: 0.14,
+        intraBlend: 0.0,
+        uniqueSeeds: 1
+    }
+};
+
+export function createRock2Generator(type = 'none', overrides = {})
+{
+    const cleanType = ROCK2_GENERATOR_DEFAULTS[type] ? type : 'none';
+    return {
+        ...ROCK2_GENERATOR_DEFAULTS[cleanType],
+        ...overrides,
+        type: cleanType
+    };
+}
+
 let _nextRock2LayerSeq = 1;
 
 export function createRock2Layer(type = 'big_boulder', overrides = {})
 {
-    const spec = getRock2NodeSpec(type);
+    // Gracefully upgrade any legacy type IDs and never permit arches
+    let cleanType = type;
+    if (cleanType === 'small_rocks') cleanType = 'small_rock';
+    else if (cleanType === 'cliff_face') cleanType = 'cliff_block';
+    else if (cleanType === 'columnar_basalt') cleanType = 'basalt_column';
+    else if (cleanType === 'arch_formation') cleanType = 'big_boulder';
+
+    const spec = getRock2NodeSpec(cleanType);
     const seq = _nextRock2LayerSeq++;
     const params = { ...spec.defaults, ...(overrides.params || {}) };
-    // Allow flat overrides on top-level call for convenience: createRock2Layer('cliff_face', { width: 8, combineMode: 'union' })
     for (const k of Object.keys(spec.defaults))
     {
         if (overrides[k] !== undefined) params[k] = overrides[k];
     }
+
+    const genRaw = overrides.generator || { type: 'none' };
+    const generator = createRock2Generator(genRaw.type || 'none', genRaw);
+
     return {
         id: overrides.id || `r2_layer_${seq}_${Math.floor(1000 + Math.random() * 8999)}`,
         name: overrides.name || `${spec.name} ${String(seq).padStart(2, '0')}`,
@@ -557,7 +620,8 @@ export function createRock2Layer(type = 'big_boulder', overrides = {})
         solo: !!overrides.solo,
         combineMode: overrides.combineMode || 'union',
         blendRadius: overrides.blendRadius ?? 0.35,
-        params
+        params,
+        generator
     };
 }
 
@@ -572,70 +636,107 @@ export function cloneRock2Layer(layer)
         solo: false,
         combineMode: layer.combineMode,
         blendRadius: layer.blendRadius,
-        params: JSON.parse(JSON.stringify(layer.params))
+        params: JSON.parse(JSON.stringify(layer.params || {})),
+        generator: createRock2Generator(layer.generator?.type || 'none', JSON.parse(JSON.stringify(layer.generator || {})))
     };
 }
 
 /*==========================================================================================================================================
-                                     2. STARTER LAYER-STACK PRESETS (PLAIN ROCKS)
+                     4. STARTER LAYER-STACK PRESETS (BASE ROCKS + COMPOSABLE GENERATORS · ZERO ARCHES)
 ==========================================================================================================================================*/
 
 export const ROCK2_STARTER_STACKS = [
     {
         id: 'stack-cliff-outcrop',
-        name: '01 · Cliff + Boulders + Small Rocks Stack',
+        name: '01 · Cliff Spline + Boulder + Talus Splatter',
         badge: '3-LAYER STACK',
         buildLayers: () => [
-            createRock2Layer('cliff_face', {
-                name: 'Base Stepped Cliff Wall',
+            createRock2Layer('cliff_block', {
+                name: 'Curved Cliff Wall (Spline)',
                 combineMode: 'union',
                 stoneTone: 'sandstone',
                 seed: 7042,
-                posZ: -1.1,
-                width: 8.2, height: 5.6, length: 3.4,
-                cliffProfile: 'stepped', buttressCount: 4, stepBenches: 3, roundness: 0.14
+                posZ: -1.2,
+                width: 3.2, height: 5.4, length: 2.9,
+                cliffProfile: 'vertical', roundness: 0.14, batterTaper: 0.14,
+                generator: createRock2Generator('spline', {
+                    splineShape: 'arc',
+                    count: 5,
+                    pathLength: 8.6,
+                    curveBend: 1.6,
+                    alignToTangent: 1,
+                    heightVariation: 0.18,
+                    scaleVariation: 0.12,
+                    intraBlend: 0.24,
+                    uniqueSeeds: 1
+                })
             }),
             createRock2Layer('big_boulder', {
-                name: 'Fused Front Buttress Boulder',
+                name: 'Front Buttress Boulder',
                 combineMode: 'smooth_union',
-                blendRadius: 0.45,
+                blendRadius: 0.42,
                 stoneTone: 'sandstone',
                 seed: 2188,
-                posX: -1.6, posY: 0.0, posZ: 1.15,
+                posX: -1.5, posY: 0.0, posZ: 1.05,
                 yawDeg: 22,
-                width: 3.6, height: 2.8, length: 3.1,
+                width: 3.5, height: 2.7, length: 3.0,
                 boulderStyle: 'angular', roundness: 0.22
             }),
-            createRock2Layer('small_rocks', {
-                name: 'Basal Plain Small Rocks',
+            createRock2Layer('small_rock', {
+                name: 'Basal Talus Rocks (Splatter)',
                 combineMode: 'union',
                 stoneTone: 'clay',
                 seed: 5190,
-                posX: 1.2, posY: 0.0, posZ: 1.85,
-                width: 5.2, height: 0.95, length: 3.6,
-                layoutPattern: 'cluster', rockCount: 10, sizeMin: 0.28, sizeMax: 0.95, roundness: 0.28
+                posX: 0.9, posY: 0.0, posZ: 1.55,
+                width: 0.95, height: 0.62, length: 0.82,
+                clastStyle: 'angular', roundness: 0.24,
+                generator: createRock2Generator('splatter', {
+                    splatterMode: 'talus_fan',
+                    count: 12,
+                    outerRadius: 3.2,
+                    fanSpreadDeg: 115,
+                    fanAzimuthDeg: 0,
+                    pileHeight: 0.32,
+                    radialScaleFalloff: 0.45,
+                    scaleMin: 0.45,
+                    scaleMax: 1.20,
+                    uniqueSeeds: 1
+                })
             })
         ]
     },
     {
         id: 'stack-basalt',
-        name: '02 · Plain Columnar Basalt',
-        badge: 'BASALT',
+        name: '02 · Basalt Column + Hex Array',
+        badge: 'HEX ARRAY',
         buildLayers: () => [
-            createRock2Layer('columnar_basalt', {
+            createRock2Layer('basalt_column', {
                 name: 'Hexagonal Basalt Colonnade',
                 combineMode: 'union',
                 stoneTone: 'basalt',
                 seed: 5512,
-                width: 6.2, height: 5.2, length: 5.0,
-                formationShape: 'cliff', polygonSides: 6, columnDiameter: 0.95, columnGap: 0.04, heightSteps: 6, edgeBevel: 0.08
+                width: 1.02, height: 5.0, length: 1.02,
+                polygonSides: 6, edgeBevel: 0.08, capTilt: 0.10,
+                generator: createRock2Generator('array', {
+                    arrayMode: 'hex',
+                    hexRings: 2,
+                    cellSpacing: 0.94,
+                    terraceSteps: 6,
+                    terraceDrop: 0.62,
+                    radialLeanDeg: 2.5,
+                    heightVariation: 0.10,
+                    scaleVariation: 0.04,
+                    yawJitterDeg: 4,
+                    tiltJitterDeg: 1,
+                    uniqueSeeds: 1
+                })
             })
         ]
     },
     {
         id: 'stack-big-boulder',
         name: '03 · Plain Big Boulder',
-        badge: 'BIG BOULDER',
+        badge: 'SINGLE ROCK',
         buildLayers: () => [
             createRock2Layer('big_boulder', {
                 name: 'Granite Megalith Boulder',
@@ -650,7 +751,7 @@ export const ROCK2_STARTER_STACKS = [
     {
         id: 'stack-smooth-rock',
         name: '04 · Plain Smooth Cobble',
-        badge: 'SMOOTH ROCK',
+        badge: 'SINGLE ROCK',
         buildLayers: () => [
             createRock2Layer('smooth_rock', {
                 name: 'River Cobble Stone',
@@ -664,67 +765,81 @@ export const ROCK2_STARTER_STACKS = [
     },
     {
         id: 'stack-small-rocks',
-        name: '05 · Plain Small Rocks Cluster',
-        badge: 'SMALL ROCKS',
+        name: '05 · Small Rock + Scatter Field',
+        badge: 'SCATTER',
         buildLayers: () => [
-            createRock2Layer('small_rocks', {
-                name: 'Small Rocks Scatter',
+            createRock2Layer('small_rock', {
+                name: 'Scattered Small Rocks',
                 combineMode: 'union',
                 stoneTone: 'clay',
                 seed: 5190,
-                width: 6.0, height: 1.2, length: 5.6,
-                layoutPattern: 'cluster', rockCount: 14, sizeMin: 0.30, sizeMax: 1.20, roundness: 0.34
+                width: 1.0, height: 0.65, length: 0.85,
+                clastStyle: 'angular', roundness: 0.30,
+                generator: createRock2Generator('scatter', {
+                    count: 16,
+                    scatterWidth: 6.4,
+                    scatterLength: 5.8,
+                    minSpacing: 0.75,
+                    scaleMin: 0.45,
+                    scaleMax: 1.35,
+                    sizeBias: 1.5,
+                    uniqueSeeds: 1
+                })
             })
         ]
     },
     {
-        id: 'stack-cliff-wall',
-        name: '06 · Plain Cliff Escarpment',
-        badge: 'CLIFF',
+        id: 'stack-stepped-slabs',
+        name: '06 · Stepped Slabs (Linear Array)',
+        badge: 'LINEAR ARRAY',
         buildLayers: () => [
-            createRock2Layer('cliff_face', {
-                name: 'Overhanging Headland Cliff',
-                combineMode: 'union',
-                stoneTone: 'limestone',
-                seed: 7711,
-                width: 8.4, height: 5.8, length: 3.6,
-                cliffProfile: 'overhang', buttressCount: 5, stepBenches: 2, overhangLean: 0.28, wallCurvature: -0.25, roundness: 0.15
-            })
-        ]
-    },
-    {
-        id: 'stack-carved-arch',
-        name: '07 · Multi-Layer Carved Sea Arch',
-        badge: 'CSG SUBTRACT',
-        buildLayers: () => [
-            createRock2Layer('cliff_face', {
-                name: 'Promontory Cliff Fin',
-                combineMode: 'union',
-                stoneTone: 'sandstone',
-                seed: 4108,
-                width: 8.2, height: 5.2, length: 2.8,
-                cliffProfile: 'vertical', buttressCount: 4, stepBenches: 2, roundness: 0.20
-            }),
-            createRock2Layer('smooth_rock', {
-                name: 'Boolean Arch Tunnel Cutter',
-                combineMode: 'subtract',
-                blendRadius: 0.38,
-                stoneTone: 'sandstone',
-                seed: 1902,
-                posX: 0.1, posY: 0.0, posZ: 0.0,
-                width: 3.6, height: 3.1, length: 4.8,
-                smoothStyle: 'dome', roundness: 0.92, softFacets: 0.08, flatBottom: 1.0
-            }),
             createRock2Layer('rock_slab', {
-                name: 'BasalShore Ledge Slab',
-                combineMode: 'chamfer_union',
-                blendRadius: 0.24,
+                name: 'Stepped Sedimentary Benches',
+                combineMode: 'union',
                 stoneTone: 'redSlate',
-                seed: 4419,
-                posX: -2.4, posY: 0.0, posZ: 1.4,
-                yawDeg: -16,
-                width: 4.2, height: 0.85, length: 3.2,
-                dipAngleDeg: 8, roundness: 0.15
+                seed: 4410,
+                posZ: 1.8,
+                width: 5.6, height: 0.95, length: 2.8,
+                planShape: 'plate', dipAngleDeg: 8, roundness: 0.14,
+                generator: createRock2Generator('array', {
+                    arrayMode: 'linear',
+                    countX: 4,
+                    stepX: 0.15,
+                    stepY: 0.72,
+                    stepZ: -1.45,
+                    scaleDecay: 0.08,
+                    intraBlend: 0.14,
+                    uniqueSeeds: 1
+                })
+            })
+        ]
+    },
+    {
+        id: 'stack-cobble-spline',
+        name: '07 · Smooth Cobbles on S-Spline',
+        badge: 'SPLINE',
+        buildLayers: () => [
+            createRock2Layer('smooth_rock', {
+                name: 'S-Curve Riverbed Cobbles',
+                combineMode: 'union',
+                stoneTone: 'cobble',
+                seed: 3390,
+                width: 2.1, height: 1.35, length: 1.75,
+                smoothStyle: 'cobble', roundness: 0.88, flatBottom: 0.72,
+                generator: createRock2Generator('spline', {
+                    splineShape: 'scurve',
+                    count: 7,
+                    pathLength: 9.6,
+                    curveBend: 2.1,
+                    alignToTangent: 1,
+                    lateralJitter: 0.35,
+                    scaleStart: 1.15,
+                    scaleEnd: 0.68,
+                    scaleVariation: 0.18,
+                    yawVariationDeg: 28,
+                    intraBlend: 0.0,
+                    uniqueSeeds: 1
+                })
             })
         ]
     }
@@ -736,7 +851,7 @@ export function createDefaultRock2Document(starterId = 'stack-cliff-outcrop')
     const layers = starter.buildLayers();
     return {
         format: 'frontier-rockformation-2.0',
-        version: 1,
+        version: 2,
         starterId: starter.id,
         name: starter.name,
         meshResolution: 84,
@@ -750,7 +865,7 @@ export function serializeRock2Document(doc)
 {
     return {
         format: 'frontier-rockformation-2.0',
-        version: 1,
+        version: 2,
         starterId: doc.starterId || 'stack-cliff-outcrop',
         name: doc.name || 'RockFormation 2.0 Stack',
         meshResolution: doc.meshResolution ?? 84,
@@ -764,7 +879,8 @@ export function serializeRock2Document(doc)
             solo: !!l.solo,
             combineMode: l.combineMode || 'union',
             blendRadius: l.blendRadius ?? 0.35,
-            params: JSON.parse(JSON.stringify(l.params || {}))
+            params: JSON.parse(JSON.stringify(l.params || {})),
+            generator: createRock2Generator(l.generator?.type || 'none', JSON.parse(JSON.stringify(l.generator || {})))
         }))
     };
 }
@@ -775,18 +891,43 @@ export function deserializeRock2Document(raw)
     {
         return createDefaultRock2Document();
     }
-    const layers = raw.layers.map(l => createRock2Layer(l.type || 'big_boulder', {
-        id: l.id,
-        name: l.name,
-        enabled: l.enabled !== false,
-        solo: !!l.solo,
-        combineMode: l.combineMode || 'union',
-        blendRadius: Number.isFinite(l.blendRadius) ? l.blendRadius : 0.35,
-        params: l.params || {}
-    }));
+    const layers = raw.layers
+        .filter(l => l && l.type !== 'arch_formation')
+        .map(l =>
+        {
+            let gen = l.generator;
+            // Upgrade v1 multi-rock layers cleanly into Base Rock + Generator!
+            if (!gen)
+            {
+                if (l.type === 'small_rocks')
+                {
+                    gen = createRock2Generator('scatter', { count: l.params?.rockCount ?? 12 });
+                }
+                else if (l.type === 'columnar_basalt')
+                {
+                    gen = createRock2Generator('array', { arrayMode: 'hex', hexRings: 2 });
+                }
+                else
+                {
+                    gen = createRock2Generator('none');
+                }
+            }
+            return createRock2Layer(l.type || 'big_boulder', {
+                id: l.id,
+                name: l.name,
+                enabled: l.enabled !== false,
+                solo: !!l.solo,
+                combineMode: l.combineMode || 'union',
+                blendRadius: Number.isFinite(l.blendRadius) ? l.blendRadius : 0.35,
+                params: l.params || {},
+                generator: gen
+            });
+        });
+
+    if (layers.length === 0) return createDefaultRock2Document();
     return {
         format: 'frontier-rockformation-2.0',
-        version: 1,
+        version: 2,
         starterId: raw.starterId || 'stack-cliff-outcrop',
         name: raw.name || 'Imported Rock Stack',
         meshResolution: clamp(raw.meshResolution ?? 84, 36, 140),
@@ -797,7 +938,7 @@ export function deserializeRock2Document(raw)
 }
 
 /*==========================================================================================================================================
-                                3. RIGID EULER MATRICES & PRIMITIVE COMPILER (CPU + GPU)
+                            5. RIGID EULER MATRICES & GENERATOR INSTANCE EVALUATOR
 ==========================================================================================================================================*/
 
 function buildEulerMatrix3(yawDeg = 0, pitchDeg = 0, rollDeg = 0)
@@ -817,9 +958,25 @@ function buildEulerMatrix3(yawDeg = 0, pitchDeg = 0, rollDeg = 0)
     ];
 }
 
+function mulMat3(A, B)
+{
+    return [
+        A[0] * B[0] + A[1] * B[3] + A[2] * B[6],
+        A[0] * B[1] + A[1] * B[4] + A[2] * B[7],
+        A[0] * B[2] + A[1] * B[5] + A[2] * B[8],
+
+        A[3] * B[0] + A[4] * B[3] + A[5] * B[6],
+        A[3] * B[1] + A[4] * B[4] + A[5] * B[7],
+        A[3] * B[2] + A[4] * B[5] + A[5] * B[8],
+
+        A[6] * B[0] + A[7] * B[3] + A[8] * B[6],
+        A[6] * B[1] + A[7] * B[4] + A[8] * B[7],
+        A[6] * B[2] + A[7] * B[5] + A[8] * B[8]
+    ];
+}
+
 function invertRigidTransform(R, pivot)
 {
-    // invR = transpose(R)
     const invR = [
         R[0], R[3], R[6],
         R[1], R[4], R[7],
@@ -843,10 +1000,466 @@ function forwardPoint(R, pivot, lx, ly, lz)
     ];
 }
 
+function sampleSplinePointAndTangent(g, t)
+{
+    const shape = g.splineShape || 'arc';
+    const L = Math.max(0.5, g.pathLength ?? 9.0);
+    const bend = g.curveBend ?? 2.2;
+    const rise = g.elevationRise ?? 0.0;
+
+    if (shape === 'ring')
+    {
+        const R = Math.max(0.4, g.ringRadius ?? 3.8);
+        const ang = t * Math.PI * 2.0;
+        return {
+            x: Math.cos(ang) * R,
+            y: rise * Math.sin(ang * 0.5),
+            z: Math.sin(ang) * R,
+            tx: -Math.sin(ang),
+            tz: Math.cos(ang)
+        };
+    }
+
+    if (shape === 'line')
+    {
+        return {
+            x: (t - 0.5) * L,
+            y: t * rise,
+            z: 0.0,
+            tx: 1.0,
+            tz: 0.0
+        };
+    }
+
+    if (shape === 'scurve')
+    {
+        const x = (t - 0.5) * L;
+        const z = Math.sin((t - 0.5) * Math.PI * 2.0) * bend * 0.55;
+        const dzdt = Math.cos((t - 0.5) * Math.PI * 2.0) * Math.PI * 2.0 * bend * 0.55;
+        const tl = Math.hypot(L, dzdt) || 1;
+        return {
+            x,
+            y: t * rise,
+            z,
+            tx: L / tl,
+            tz: dzdt / tl
+        };
+    }
+
+    // Quadratic Bezier for 'arc' or 'custom'
+    let p0x = -L * 0.5, p0y = 0.0, p0z = bend * 0.25;
+    let p1x = 0.0,      p1y = rise * 0.5, p1z = -bend * 0.75;
+    let p2x = L * 0.5,  p2y = rise, p2z = bend * 0.25;
+
+    if (shape === 'custom')
+    {
+        p0x = g.startX ?? -4.5; p0y = g.startY ?? 0.0; p0z = g.startZ ?? 0.8;
+        p1x = g.midX ?? 0.0;    p1y = g.midY ?? 0.4;   p1z = g.midZ ?? -1.8;
+        p2x = g.endX ?? 4.5;    p2y = g.endY ?? 0.0;   p2z = g.endZ ?? 0.8;
+    }
+
+    const u = 1.0 - t;
+    const x = u * u * p0x + 2 * u * t * p1x + t * t * p2x;
+    const y = u * u * p0y + 2 * u * t * p1y + t * t * p2y;
+    const z = u * u * p0z + 2 * u * t * p1z + t * t * p2z;
+    const dx = 2 * u * (p1x - p0x) + 2 * t * (p2x - p1x);
+    const dz = 2 * u * (p1z - p0z) + 2 * t * (p2z - p1z);
+    const tl = Math.hypot(dx, dz) || 1;
+    return { x, y, z, tx: dx / tl, tz: dz / tl };
+}
+
 /**
- * Compiles a single Pure-SDF Plain Rock Primitive (Half-Space Polyhedron, Analytic Superellipsoid, or Hybrid).
- * Evaluated in exact local space `q = invR * w + invT` with optional continuous `taper`, `pinch`, `twist`, `bend` & `skew`!
+ * Evaluates a layer's placement generator (`none`, `spline`, `array`, `splatter`, `scatter`)
+ * into an ordered array of local rock instance descriptors + `intraBlend`.
  */
+export function evaluateRock2GeneratorInstances(generator, baseRockParams)
+{
+    const g = generator || { type: 'none' };
+    const type = g.type || 'none';
+
+    if (type === 'none')
+    {
+        return {
+            intraBlend: 0.0,
+            instances: [{
+                pos: [0, 0, 0],
+                yawDeg: 0, pitchDeg: 0, rollDeg: 0,
+                scaleX: 1, scaleY: 1, scaleZ: 1,
+                seedOffset: 0
+            }]
+        };
+    }
+
+    const rng = createRng((g.seed ?? 701) ^ ((baseRockParams?.seed ?? 101) * 31));
+    const unique = (g.uniqueSeeds ?? 1) > 0.5;
+    const instances = [];
+
+    if (type === 'spline')
+    {
+        const count = clamp(Math.round(g.count ?? 6), 2, 48);
+        const closed = g.splineShape === 'ring';
+        const sVar = clamp(g.scaleVariation ?? 0.14, 0.0, 0.85);
+        const hVar = clamp(g.heightVariation ?? 0.16, 0.0, 0.85);
+        const yawVar = g.yawVariationDeg ?? 10;
+        const tiltVar = g.tiltVariationDeg ?? 4;
+        const latJit = g.lateralJitter ?? 0.0;
+        const align = (g.alignToTangent ?? 1) > 0.5;
+        const yawOff = g.yawOffsetDeg ?? 0;
+
+        for (let i = 0; i < count; i++)
+        {
+            const t = closed ? (i / count) : (count === 1 ? 0.5 : i / (count - 1));
+            const sp = sampleSplinePointAndTangent(g, t);
+            const nx = -sp.tz, nz = sp.tx;
+            const lat = rng.signed() * latJit;
+
+            const rampS = Math.max(0.15, lerp(g.scaleStart ?? 1.0, g.scaleEnd ?? 1.0, t));
+            const sUni = Math.max(0.18, rampS * (1.0 + rng.signed() * sVar));
+            const sH = Math.max(0.18, rampS * (1.0 + rng.signed() * hVar));
+
+            // Tangent angle: rock +X aligns along spline tangent (`tx, tz`), so +Z cliff front faces outward normal!
+            const tangYawDeg = align ? (-Math.atan2(sp.tz, sp.tx) / DEG2RAD) : 0.0;
+
+            instances.push({
+                pos: [sp.x + nx * lat, sp.y, sp.z + nz * lat],
+                yawDeg: tangYawDeg + yawOff + rng.signed() * yawVar,
+                pitchDeg: rng.signed() * tiltVar,
+                rollDeg: rng.signed() * tiltVar,
+                scaleX: sUni,
+                scaleY: sH,
+                scaleZ: sUni,
+                seedOffset: unique ? i * 7919 : 0
+            });
+        }
+        return { intraBlend: clamp(g.intraBlend ?? 0.20, 0.0, 2.5), instances };
+    }
+
+    if (type === 'array')
+    {
+        const mode = g.arrayMode || 'linear';
+        const posJit = g.posJitter ?? 0.0;
+        const hVar = clamp(g.heightVariation ?? 0.12, 0.0, 0.85);
+        const sVar = clamp(g.scaleVariation ?? 0.10, 0.0, 0.85);
+        const yawJit = g.yawJitterDeg ?? 8;
+        const tiltJit = g.tiltJitterDeg ?? 3;
+
+        if (mode === 'linear')
+        {
+            const n = clamp(Math.round(g.countX ?? 5), 2, 48);
+            const sx = g.stepX ?? 2.2;
+            const sy = g.stepY ?? 0.0;
+            const sz = g.stepZ ?? 0.0;
+            const progYaw = g.progressiveYawDeg ?? 0;
+            const decay = clamp(g.scaleDecay ?? 0.0, -0.5, 0.85);
+            const mid = (n - 1) * 0.5;
+
+            for (let i = 0; i < n; i++)
+            {
+                const t = n > 1 ? i / (n - 1) : 0.0;
+                const baseS = Math.max(0.18, 1.0 - decay * t);
+                instances.push({
+                    pos: [
+                        (i - mid) * sx + rng.signed() * posJit,
+                        i * sy,
+                        (i - mid) * sz + rng.signed() * posJit
+                    ],
+                    yawDeg: i * progYaw + rng.signed() * yawJit,
+                    pitchDeg: rng.signed() * tiltJit,
+                    rollDeg: rng.signed() * tiltJit,
+                    scaleX: Math.max(0.18, baseS * (1.0 + rng.signed() * sVar)),
+                    scaleY: Math.max(0.18, baseS * (1.0 + rng.signed() * hVar)),
+                    scaleZ: Math.max(0.18, baseS * (1.0 + rng.signed() * sVar)),
+                    seedOffset: unique ? i * 7919 : 0
+                });
+            }
+        }
+        else if (mode === 'grid2d' || mode === 'grid3d')
+        {
+            const nx = clamp(Math.round(g.countX ?? 3), 1, 10);
+            const ny = mode === 'grid3d' ? clamp(Math.round(g.countY ?? 2), 1, 5) : 1;
+            const nz = clamp(Math.round(g.countZ ?? 3), 1, 10);
+            const dx = g.stepX ?? 2.2;
+            const dy = g.stepY ?? 1.8;
+            const dz = g.stepZ ?? 2.2;
+            const stag = g.rowStagger ?? 0.0;
+            let idx = 0;
+
+            for (let iy = 0; iy < ny; iy++)
+            {
+                for (let iz = 0; iz < nz; iz++)
+                {
+                    const rowOff = ((iz + iy) % 2) * stag * dx;
+                    for (let ix = 0; ix < nx; ix++)
+                    {
+                        if (instances.length >= 64) break;
+                        const s = Math.max(0.18, 1.0 + rng.signed() * sVar);
+                        instances.push({
+                            pos: [
+                                (ix - (nx - 1) * 0.5) * dx + rowOff + rng.signed() * posJit,
+                                iy * dy,
+                                (iz - (nz - 1) * 0.5) * dz + rng.signed() * posJit
+                            ],
+                            yawDeg: rng.signed() * yawJit,
+                            pitchDeg: rng.signed() * tiltJit,
+                            rollDeg: rng.signed() * tiltJit,
+                            scaleX: s,
+                            scaleY: Math.max(0.18, 1.0 + rng.signed() * hVar),
+                            scaleZ: s,
+                            seedOffset: unique ? (idx++) * 7919 : 0
+                        });
+                    }
+                }
+            }
+        }
+        else if (mode === 'hex')
+        {
+            // Axial hex lattice (q, r) with distance-based terrace steps (ideal for Basalt Columns or Cobble Causeways!)
+            const rings = clamp(Math.round(g.hexRings ?? 2), 1, 4);
+            const spacing = Math.max(0.25, g.cellSpacing ?? 1.02);
+            const steps = clamp(Math.round(g.terraceSteps ?? 5), 1, 14);
+            const drop = clamp(g.terraceDrop ?? 0.55, 0.0, 0.90);
+            const lean = g.radialLeanDeg ?? 2.5;
+            const maxRad = Math.max(1.0, rings * spacing);
+            let idx = 0;
+
+            for (let q = -rings; q <= rings; q++)
+            {
+                const r1 = Math.max(-rings, -q - rings);
+                const r2 = Math.min(rings, -q + rings);
+                for (let r = r1; r <= r2; r++)
+                {
+                    if (instances.length >= 64) break;
+                    const lx = spacing * (q + r * 0.5);
+                    const lz = spacing * (r * 0.8660254);
+                    const distNorm = clamp(Math.hypot(lx, lz) / maxRad, 0.0, 1.0);
+                    // Slight front-to-back cliff bias + radial mound falloff
+                    const frontBias = clamp((lz / maxRad) * 0.28, -0.25, 0.30);
+                    let hFrac = clamp(1.0 - drop * (distNorm * 0.72 + Math.max(0, frontBias)), 0.16, 1.0);
+                    if (steps > 1)
+                    {
+                        hFrac = Math.max(0.16, Math.round(hFrac * steps) / steps);
+                    }
+                    hFrac = Math.max(0.15, hFrac * (1.0 + rng.signed() * hVar));
+                    const s = Math.max(0.20, 1.0 + rng.signed() * sVar);
+
+                    const nx = maxRad > 1e-4 ? lx / maxRad : 0;
+                    const nz = maxRad > 1e-4 ? lz / maxRad : 0;
+
+                    instances.push({
+                        pos: [lx + rng.signed() * posJit, 0.0, lz + rng.signed() * posJit],
+                        yawDeg: rng.signed() * yawJit,
+                        pitchDeg: nz * lean + rng.signed() * tiltJit,
+                        rollDeg: -nx * lean + rng.signed() * tiltJit,
+                        scaleX: s,
+                        scaleY: hFrac,
+                        scaleZ: s,
+                        seedOffset: unique ? (idx++) * 7919 : 0
+                    });
+                }
+            }
+        }
+        else if (mode === 'radial')
+        {
+            const n = clamp(Math.round(g.radialCount ?? 8), 3, 40);
+            const rad = Math.max(0.3, g.ringRadius ?? 3.6);
+            const arc = clamp(g.arcAngleDeg ?? 360, 30, 360);
+            const fullCircle = arc >= 359.5;
+            const face = (g.faceCenter ?? 1) > 0.5;
+
+            for (let i = 0; i < n; i++)
+            {
+                const t = fullCircle ? (i / n) : (n > 1 ? i / (n - 1) : 0.5);
+                const deg = -arc * 0.5 + t * arc;
+                const a = deg * DEG2RAD;
+                const lx = Math.sin(a) * rad + rng.signed() * posJit;
+                const lz = Math.cos(a) * rad + rng.signed() * posJit;
+                const s = Math.max(0.18, 1.0 + rng.signed() * sVar);
+
+                instances.push({
+                    pos: [lx, 0.0, lz],
+                    yawDeg: (face ? deg : 0) + rng.signed() * yawJit,
+                    pitchDeg: rng.signed() * tiltJit,
+                    rollDeg: rng.signed() * tiltJit,
+                    scaleX: s,
+                    scaleY: Math.max(0.18, 1.0 + rng.signed() * hVar),
+                    scaleZ: s,
+                    seedOffset: unique ? i * 7919 : 0
+                });
+            }
+        }
+
+        return { intraBlend: clamp(g.intraBlend ?? 0.0, 0.0, 2.5), instances };
+    }
+
+    if (type === 'splatter')
+    {
+        const mode = g.splatterMode || 'burst';
+        const count = clamp(Math.round(g.count ?? 14), 2, 64);
+        const outerR = Math.max(0.3, g.outerRadius ?? 3.8);
+        const innerR = outerR * clamp(g.innerRadiusRatio ?? 0.0, 0.0, 0.90);
+        const sMin = Math.min(g.scaleMin ?? 0.45, g.scaleMax ?? 1.25);
+        const sMax = Math.max(g.scaleMin ?? 0.45, g.scaleMax ?? 1.25);
+        const falloff = clamp(g.radialScaleFalloff ?? 0.45, -0.85, 0.90);
+        const pileH = g.pileHeight ?? 0.35;
+        const yawRand = clamp(g.yawRandom ?? 1.0, 0.0, 1.0);
+        const tiltRand = g.tiltRandomDeg ?? 16;
+        const embed = clamp(g.embedDepth ?? 0.12, 0.0, 0.75);
+        const baseH = baseRockParams?.height ?? 1.0;
+
+        // Optional sub-cluster centers for 'clusters' mode
+        const clusterCenters = [];
+        if (mode === 'clusters')
+        {
+            const numC = 3;
+            for (let c = 0; c < numC; c++)
+            {
+                const ca = (c / numC) * Math.PI * 2 + rng.signed() * 0.45;
+                const cr = outerR * rng.range(0.32, 0.62);
+                clusterCenters.push([Math.cos(ca) * cr, Math.sin(ca) * cr]);
+            }
+        }
+
+        for (let i = 0; i < count; i++)
+        {
+            let lx = 0, lz = 0, radNorm = 0;
+
+            if (mode === 'talus_fan')
+            {
+                const az0 = (g.fanAzimuthDeg ?? 0) * DEG2RAD;
+                const halfSpread = ((g.fanSpreadDeg ?? 110) * 0.5) * DEG2RAD;
+                const u = Math.pow(rng.float(), 0.72);
+                const r = lerp(innerR, outerR, u);
+                const ang = az0 + rng.signed() * halfSpread;
+                lx = Math.sin(ang) * r;
+                lz = Math.cos(ang) * r;
+                radNorm = outerR > 1e-4 ? r / outerR : 0;
+            }
+            else if (mode === 'clusters')
+            {
+                const cc = clusterCenters[i % clusterCenters.length];
+                const subR = outerR * 0.38 * Math.sqrt(rng.float());
+                const subA = rng.float() * Math.PI * 2;
+                lx = cc[0] + Math.cos(subA) * subR;
+                lz = cc[1] + Math.sin(subA) * subR;
+                radNorm = clamp(Math.hypot(lx, lz) / outerR, 0, 1);
+            }
+            else if (mode === 'rings')
+            {
+                const ringCount = 2 + (count >= 16 ? 1 : 0);
+                const ringIdx = i % ringCount;
+                const r = lerp(Math.max(innerR, outerR * 0.28), outerR, ringCount > 1 ? ringIdx / (ringCount - 1) : 1.0)
+                        + rng.signed() * outerR * 0.06;
+                const ang = (i * 2.399963) + rng.signed() * 0.18;
+                lx = Math.cos(ang) * r;
+                lz = Math.sin(ang) * r;
+                radNorm = clamp(r / outerR, 0, 1);
+            }
+            else
+            {
+                // 'burst': golden-angle phyllotaxis + jitter so rocks never overlap identically at center
+                const u = i === 0 && innerR < 0.05 ? 0.0 : Math.pow((i + rng.float() * 0.65) / count, 0.62);
+                const r = lerp(innerR, outerR, clamp(u, 0, 1));
+                const ang = i * 2.3999632 + rng.signed() * 0.32;
+                lx = Math.cos(ang) * r;
+                lz = Math.sin(ang) * r;
+                radNorm = outerR > 1e-4 ? r / outerR : 0;
+            }
+
+            const envScale = clamp(1.0 - falloff * radNorm, 0.22, 1.85);
+            const randScale = lerp(sMin, sMax, Math.pow(rng.float(), 1.25));
+            const s = Math.max(0.15, randScale * envScale);
+            const sY = Math.max(0.15, s * rng.range(0.84, 1.16));
+            const ly = pileH * Math.max(0.0, 1.0 - radNorm * radNorm) - embed * baseH * sY;
+
+            instances.push({
+                pos: [lx, ly, lz],
+                yawDeg: rng.signed() * 180.0 * yawRand,
+                pitchDeg: rng.signed() * tiltRand,
+                rollDeg: rng.signed() * tiltRand,
+                scaleX: s * rng.range(0.88, 1.14),
+                scaleY: sY,
+                scaleZ: s * rng.range(0.88, 1.14),
+                seedOffset: unique ? i * 7919 : 0
+            });
+        }
+
+        return { intraBlend: clamp(g.intraBlend ?? 0.0, 0.0, 2.5), instances };
+    }
+
+    if (type === 'scatter')
+    {
+        const count = clamp(Math.round(g.count ?? 16), 2, 64);
+        const halfW = Math.max(0.25, (g.scatterWidth ?? 6.8) * 0.5);
+        const halfL = Math.max(0.25, (g.scatterLength ?? 6.2) * 0.5);
+        const relax = clamp(g.minSpacing ?? 0.72, 0.0, 1.0);
+        const moundH = g.moundHeight ?? 0.0;
+        const sMin = Math.min(g.scaleMin ?? 0.45, g.scaleMax ?? 1.30);
+        const sMax = Math.max(g.scaleMin ?? 0.45, g.scaleMax ?? 1.30);
+        const bias = clamp(g.sizeBias ?? 1.55, 0.25, 3.5);
+        const yawRand = clamp(g.yawRandom ?? 1.0, 0.0, 1.0);
+        const tiltRand = g.tiltRandomDeg ?? 18;
+        const embed = clamp(g.embedDepth ?? 0.14, 0.0, 0.75);
+        const baseFoot = Math.max(0.25, Math.hypot(baseRockParams?.width ?? 1.0, baseRockParams?.length ?? 1.0) * 0.45);
+        const baseH = baseRockParams?.height ?? 1.0;
+
+        const placed = [];
+        for (let i = 0; i < count; i++)
+        {
+            const s = lerp(sMin, sMax, Math.pow(rng.float(), bias));
+            const myFoot = baseFoot * s * relax;
+
+            let bestX = 0, bestZ = 0, bestClear = -1e9;
+            const candidates = relax > 0.05 ? 14 : 1;
+            for (let c = 0; c < candidates; c++)
+            {
+                const cx = rng.signed() * halfW;
+                const cz = rng.signed() * halfL;
+                let minClear = 1e9;
+                for (let pIdx = 0; pIdx < placed.length; pIdx++)
+                {
+                    const pl = placed[pIdx];
+                    const clear = Math.hypot(cx - pl.x, cz - pl.z) - (myFoot + pl.r);
+                    if (clear < minClear) minClear = clear;
+                }
+                if (placed.length === 0 || minClear > bestClear)
+                {
+                    bestClear = minClear;
+                    bestX = cx;
+                    bestZ = cz;
+                    if (minClear >= 0.05) break;
+                }
+            }
+            placed.push({ x: bestX, z: bestZ, r: myFoot });
+
+            const rNorm2 = clamp((bestX * bestX) / (halfW * halfW) + (bestZ * bestZ) / (halfL * halfL), 0, 1);
+            const sY = Math.max(0.15, s * rng.range(0.82, 1.18));
+            const ly = moundH * (1.0 - rNorm2) - embed * baseH * sY;
+
+            instances.push({
+                pos: [bestX, ly, bestZ],
+                yawDeg: rng.signed() * 180.0 * yawRand,
+                pitchDeg: rng.signed() * tiltRand,
+                rollDeg: rng.signed() * tiltRand,
+                scaleX: s * rng.range(0.88, 1.14),
+                scaleY: sY,
+                scaleZ: s * rng.range(0.88, 1.14),
+                seedOffset: unique ? i * 7919 : 0
+            });
+        }
+
+        return { intraBlend: clamp(g.intraBlend ?? 0.0, 0.0, 2.5), instances };
+    }
+
+    return {
+        intraBlend: 0.0,
+        instances: [{ pos: [0, 0, 0], yawDeg: 0, pitchDeg: 0, rollDeg: 0, scaleX: 1, scaleY: 1, scaleZ: 1, seedOffset: 0 }]
+    };
+}
+
+/*==========================================================================================================================================
+                               6. ATOMIC PLAIN PRIMITIVE COMPILER & 8 SINGLE-ROCK BUILDERS
+==========================================================================================================================================*/
+
 function compilePlainPrimitive(opts)
 {
     const poly = opts.poly || null;
@@ -911,7 +1524,6 @@ function compilePlainPrimitive(opts)
     const bendZ = clamp(opts.bendZ ?? 0.0, -0.75, 0.75);
     const skewX = clamp(opts.skewX ?? 0.0, -0.75, 0.75);
 
-    // Conservative expansion of local AABB for non-linear flare/bend/skew so culling is 100% watertight!
     const flareScale = (taper < 0 ? (1.0 + Math.abs(taper) * 0.85) : 1.08) * (pinch < 0 ? (1.0 + Math.abs(pinch) * 0.65) : 1.02);
     const shiftPadX = (Math.abs(bendX) + Math.abs(skewX) * 0.6) * refH;
     const shiftPadZ = Math.abs(bendZ) * refH;
@@ -925,7 +1537,6 @@ function compilePlainPrimitive(opts)
     const bMinZ = localMinZ * flareScale - shiftPadZ - rotPad;
     const bMaxZ = localMaxZ * flareScale + shiftPadZ + rotPad;
 
-    // Transform all 8 conservative local AABB corners into world space to get exact world AABB + bounding sphere!
     let wMinX = Infinity, wMinY = Infinity, wMinZ = Infinity;
     let wMaxX = -Infinity, wMaxY = -Infinity, wMaxZ = -Infinity;
     const xs = [bMinX, bMaxX], ys = [bMinY, bMaxY], zs = [bMinZ, bMaxZ];
@@ -943,76 +1554,70 @@ function compilePlainPrimitive(opts)
         }
     }
 
-    const wCx = 0.5 * (wMinX + wMaxX);
-    const wCy = 0.5 * (wMinY + wMaxY);
-    const wCz = 0.5 * (wMinZ + wMaxZ);
-    const boundRadius = 0.5 * Math.hypot(wMaxX - wMinX, wMaxY - wMinY, wMaxZ - wMinZ) + 0.08;
+    const cx = (wMinX + wMaxX) * 0.5;
+    const cy = (wMinY + wMaxY) * 0.5;
+    const cz = (wMinZ + wMaxZ) * 0.5;
+    const radius = 0.5 * Math.hypot(wMaxX - wMinX, wMaxY - wMinY, wMaxZ - wMinZ) + 0.08;
 
-    const avgSpan = Math.max(0.15, ((localMaxX - localMinX) + (localMaxY - localMinY) + (localMaxZ - localMinZ)) / 3.0);
-    const roundness = clamp(opts.roundness ?? 0.20, 0.005, 1.0);
-    const kLse = Math.max(0.0035, avgSpan * (0.004 + 0.24 * roundness * roundness));
-    const baseBevel = Math.max(0.003, avgSpan * (0.004 + 0.045 * roundness));
+    const minSpan = Math.max(0.08, Math.min(localMaxX - localMinX, localMaxY - localMinY, localMaxZ - localMinZ));
+    const roundness = clamp(opts.roundness ?? 0.20, 0.01, 1.0);
+    const kLse = clamp(minSpan * (0.012 + 0.24 * roundness * roundness), 0.004, minSpan * 0.34);
+    const baseBevel = clamp(minSpan * (0.015 + 0.14 * roundness), 0.005, 0.35);
 
-    // Conservative Lipschitz factor <= 1.0 for deformed local coordinates
-    const hasDeform = (Math.abs(taper) + Math.abs(pinch) + Math.abs(twistRad) + Math.abs(bendX) + Math.abs(bendZ) + Math.abs(skewX)) > 1e-4;
-    const deformPenalty = 1.0 / (1.0 + 0.36 * (Math.abs(taper) + Math.abs(pinch)) + 0.42 * (Math.abs(bendX) + Math.abs(bendZ) + Math.abs(skewX)) + 0.16 * Math.abs(twistRad));
+    const hasDeform = Math.abs(taper) > 1e-4 || Math.abs(pinch) > 1e-4 || Math.abs(twistRad) > 1e-4
+                   || Math.abs(bendX) > 1e-4 || Math.abs(bendZ) > 1e-4 || Math.abs(skewX) > 1e-4;
+    const deformStrength = Math.abs(taper) * 0.35 + Math.abs(pinch) * 0.45 + Math.abs(twistRad) * 0.20
+                         + (Math.abs(bendX) + Math.abs(bendZ) + Math.abs(skewX)) * 0.40;
+    const deformPenalty = hasDeform ? clamp(1.0 / (1.0 + deformStrength), 0.48, 1.0) : 1.0;
 
     return {
-        cx: wCx, cy: wCy, cz: wCz, radius: boundRadius,
+        cx, cy, cz, radius,
         minX: wMinX, minY: wMinY, minZ: wMinZ,
         maxX: wMaxX, maxY: wMaxY, maxZ: wMaxZ,
         invR, invT,
-        planes,
-        numPlanes,
-        kLse,
-        baseBevel,
-        sharpBase: opts.sharpBase !== false ? 1.0 : 0.0,
-        flatBaseCut: opts.flatBaseCut ?? 0.0,
-        sqWeight,
+        planes, numPlanes,
+        kLse, baseBevel,
         sqRx, sqRy, sqRz, sqCy,
-        sqExpH, sqExpV,
+        sqWeight, sqExpH, sqExpV,
+        primOp: 0,
+        sharpBase: opts.sharpBase ? 1.0 : 0.0,
+        flatBaseCut: clamp(opts.flatBaseCut ?? 0.0, 0.0, 1.0),
         baseY, refH,
         taper, pinch, twistRad, bendX, bendZ, skewX,
-        hasDeform,
-        deformPenalty,
-        primOp: opts.primOp ?? 0 // 0 = intra-layer union/smin, 1 = intra-layer subtract!
+        hasDeform, deformPenalty
     };
 }
 
-/*==========================================================================================================================================
-                             4. NINE ROBUST PLAIN ROCK SHAPE GENERATORS (ZERO NOISE PROCESSING)
-==========================================================================================================================================*/
-
-function buildBigBoulderPrimitives(p, layerR, layerPivot, rng)
+function buildSingleBigBoulder(p, worldR, worldPivot, rng)
 {
     const rx = p.width * 0.5;
     const ry = p.height * 0.5;
     const rz = p.length * 0.5;
     const style = p.boulderStyle || 'angular';
+    const facets = clamp(Math.round(p.facetCount ?? 12), 6, 24);
+    const extraCuts = Math.max(0, facets - 6);
 
     let roundness = p.roundness ?? 0.24;
     let disp = p.angularity ?? 0.22;
-    let extraCuts = Math.max(0, Math.round((p.facetCount ?? 12) - 8));
     let taper = p.taper ?? 0.08;
-    let prow = p.overhangProw ?? 0.0;
     let pinch = 0.0;
-    let strikeDip = 0.28;
+    let prow = p.overhangProw ?? 0.0;
+    let strikeDip = 0.22;
 
     if (style === 'subrounded')
     {
-        roundness = Math.max(roundness, 0.52);
-        extraCuts += 6;
-        disp *= 0.75;
+        roundness = Math.max(roundness, 0.58);
+        disp *= 0.65;
     }
     else if (style === 'prow')
     {
-        taper -= 0.26;
         prow += 0.34;
+        taper -= 0.14;
+        strikeDip = 0.48;
     }
     else if (style === 'blocky')
     {
-        disp *= 0.45;
-        extraCuts = Math.min(extraCuts, 2);
+        disp *= 0.35;
         strikeDip = 0.08;
     }
     else if (style === 'pedestal')
@@ -1049,10 +1654,10 @@ function buildBigBoulderPrimitives(p, layerR, layerPivot, rng)
         }
     }
 
-    const prim = compilePlainPrimitive({
+    return compilePlainPrimitive({
         poly,
-        R: layerR,
-        pivot: layerPivot,
+        R: worldR,
+        pivot: worldPivot,
         roundness,
         sharpBase: flatBottom,
         sqWeight: style === 'subrounded' ? 0.28 * roundness : 0.0,
@@ -1065,22 +1670,20 @@ function buildBigBoulderPrimitives(p, layerR, layerPivot, rng)
         bendZ: prow,
         skewX: p.asymmetry ?? 0.0
     });
-    return { primitives: prim ? [prim] : [], intraBlend: 0.0 };
 }
 
-function buildSmoothRockPrimitives(p, layerR, layerPivot, rng)
+function buildSingleSmoothRock(p, worldR, worldPivot, rng)
 {
     const rx = p.width * 0.5;
-    const ry = p.height * 0.5;
+    let ry = p.height * 0.5;
     const rz = p.length * 0.5;
     const style = p.smoothStyle || 'cobble';
-    const flatCut = clamp(p.flatBottom ?? 0.75, 0.0, 1.0);
-    const cy = flatCut > 0.02 ? ry * (1.0 - 0.22 * flatCut) : ry;
+    const flatCut = clamp(p.flatBottom ?? 0.72, 0.0, 1.0);
 
     let expH = p.squarenessHoriz ?? 0.95;
     let expV = p.squarenessVert ?? 0.92;
     let taper = p.taper ?? 0.10;
-    let softFacets = p.softFacets ?? 0.18;
+    const softFacets = p.softFacets ?? 0.16;
 
     if (style === 'dome')
     {
@@ -1097,42 +1700,13 @@ function buildSmoothRockPrimitives(p, layerR, layerPivot, rng)
         expH = 1.05; expV = 1.05;
         taper += 0.28;
     }
-
-    if (style === 'lobes')
+    else if (style === 'lens')
     {
-        // Multi-lobe smooth compound river rock (3 fused smooth superquadric stones!)
-        const prims = [];
-        const specs = [
-            [0.0, 0.0, 1.0, 1.0, 1.0, 0],
-            [-rx * 0.48, rz * 0.22, 0.68, 0.76, 0.74, 18],
-            [rx * 0.46, -rz * 0.20, 0.64, 0.68, 0.70, -24]
-        ];
-        for (let i = 0; i < specs.length; i++)
-        {
-            const [ox, oz, sx, sy, sz, yawOff] = specs[i];
-            const subPivot = forwardPoint(layerR, layerPivot, ox, 0, oz);
-            const subR = buildEulerMatrix3((p.yawDeg ?? 0) + yawOff, p.pitchDeg ?? 0, p.rollDeg ?? 0);
-            const pr = compilePlainPrimitive({
-                poly: null,
-                R: subR,
-                pivot: subPivot,
-                roundness: p.roundness ?? 0.88,
-                sharpBase: flatCut > 0.05,
-                flatBaseCut: flatCut,
-                sqWeight: 1.0,
-                sqRx: rx * sx, sqRy: ry * sy, sqRz: rz * sz,
-                sqCy: cy * sy,
-                sqExpH: expH, sqExpV: expV,
-                baseY: 0.0, refH: p.height * sy,
-                taper,
-                bendX: p.bend ?? 0.0,
-                skewX: p.asymmetry ?? 0.0
-            });
-            if (pr) prims.push(pr);
-        }
-        return { primitives: prims, intraBlend: Math.min(rx, ry, rz) * 0.48 };
+        ry *= 0.52;
+        expH = 1.02; expV = 0.96;
     }
 
+    const cy = flatCut > 0.02 ? ry * (1.0 - 0.22 * flatCut) : ry;
     let poly = null;
     if (softFacets > 0.02)
     {
@@ -1151,10 +1725,10 @@ function buildSmoothRockPrimitives(p, layerR, layerPivot, rng)
         );
     }
 
-    const prim = compilePlainPrimitive({
+    return compilePlainPrimitive({
         poly,
-        R: layerR,
-        pivot: layerPivot,
+        R: worldR,
+        pivot: worldPivot,
         roundness: p.roundness ?? 0.86,
         sharpBase: flatCut > 0.05,
         flatBaseCut: flatCut,
@@ -1163,400 +1737,182 @@ function buildSmoothRockPrimitives(p, layerR, layerPivot, rng)
         sqCy: cy,
         sqExpH: expH, sqExpV: expV,
         baseY: 0.0,
-        refH: p.height,
+        refH: ry * 2.0,
         taper,
         bendX: p.bend ?? 0.0,
         skewX: p.asymmetry ?? 0.0
     });
-    return { primitives: prim ? [prim] : [], intraBlend: 0.0 };
 }
 
-function buildSmallRocksPrimitives(p, layerR, layerPivot, rng)
+function buildSingleSmallRock(p, worldR, worldPivot, rng)
 {
-    const count = clamp(Math.round(p.rockCount ?? 11), 1, 24);
-    const halfW = p.width * 0.5;
-    const halfL = p.length * 0.5;
-    const sMin = Math.min(p.sizeMin ?? 0.32, p.sizeMax ?? 1.15);
-    const sMax = Math.max(p.sizeMin ?? 0.32, p.sizeMax ?? 1.15);
-    const heroBoost = p.heroCenterBoost ?? 0.45;
-    const roundness = p.roundness ?? 0.35;
-    const flatness = p.flatness ?? 0.38;
-    const tiltAmt = p.tiltRandomness ?? 0.35;
-    const embed = p.embedDepth ?? 0.18;
-    const pattern = p.layoutPattern || 'cluster';
+    const style = p.clastStyle || 'angular';
+    const flatRatio = clamp(p.flatness ?? 0.22, 0.0, 0.80);
+    const elong = clamp(p.elongation ?? 0.10, -0.45, 0.75);
+    const rx = p.width * 0.5 * (1.0 + elong * 0.35);
+    const ry = p.height * 0.5 * (1.0 - flatRatio * 0.52) * (style === 'chip' ? 0.52 : 1.0);
+    const rz = p.length * 0.5 * (1.0 - elong * 0.20);
 
-    const prims = [];
-    const placed = [];
+    let roundness = p.roundness ?? 0.26;
+    let facets = clamp(Math.round(p.facetCount ?? 9), 5, 18);
+    let disp = 0.24;
+    let taper = 0.10;
 
-    for (let i = 0; i < count; i++)
+    if (style === 'pebble')
     {
-        let lx = 0, lz = 0;
-        let sizeT = rng.float();
-
-        if (count === 1)
-        {
-            lx = 0; lz = 0; sizeT = 1.0;
-        }
-        else if (pattern === 'ring')
-        {
-            const ang = (i / count) * Math.PI * 2 + rng.signed() * 0.22;
-            const rad = rng.range(0.62, 0.96);
-            lx = Math.cos(ang) * halfW * rad;
-            lz = Math.sin(ang) * halfL * rad;
-        }
-        else if (pattern === 'line')
-        {
-            const u = (i / (count - 1)) * 2.0 - 1.0;
-            lx = u * halfW * 0.92 + rng.signed() * halfW * 0.08;
-            lz = Math.sin(u * 2.2) * halfL * 0.24 + rng.signed() * halfL * 0.16;
-            sizeT = mix(sizeT, 1.0 - Math.abs(u) * 0.65, heroBoost);
-        }
-        else if (pattern === 'grid')
-        {
-            const cols = Math.max(1, Math.ceil(Math.sqrt(count * (halfW / Math.max(0.2, halfL)))));
-            const rows = Math.max(1, Math.ceil(count / cols));
-            const c = i % cols, r = Math.floor(i / cols);
-            lx = (cols === 1 ? 0 : ((c / (cols - 1)) * 2 - 1) * halfW * 0.82) + rng.signed() * halfW * 0.12;
-            lz = (rows === 1 ? 0 : ((r / (rows - 1)) * 2 - 1) * halfL * 0.82) + rng.signed() * halfL * 0.12;
-        }
-        else
-        {
-            // Natural golden-angle cluster with non-overlapping relaxation!
-            if (i === 0 && heroBoost > 0.15)
-            {
-                lx = rng.signed() * halfW * 0.08;
-                lz = rng.signed() * halfL * 0.08;
-                sizeT = mix(sizeT, 1.0, heroBoost);
-            }
-            else
-            {
-                const ang = i * 2.399963 + rng.signed() * 0.28;
-                const rad = Math.sqrt(i / count) * rng.range(0.55, 0.98);
-                lx = Math.cos(ang) * halfW * rad;
-                lz = Math.sin(ang) * halfL * rad;
-                sizeT = mix(sizeT, 1.0 - rad * 0.72, heroBoost);
-            }
-        }
-
-        const diam = mix(sMin, sMax, clamp(sizeT, 0.0, 1.0));
-        const rx = diam * 0.5 * rng.range(0.82, 1.24);
-        const rz = diam * 0.5 * rng.range(0.80, 1.20);
-        const ry = diam * 0.5 * (1.0 - 0.62 * flatness) * clamp(p.height / 1.1, 0.35, 2.5) * rng.range(0.78, 1.12);
-
-        // Simple repulsion nudge so scattered small rocks don't awkwardly stack right on top of each other
-        for (let iter = 0; iter < 3; iter++)
-        {
-            for (let j = 0; j < placed.length; j++)
-            {
-                const q = placed[j];
-                const dx = lx - q.x, dz = lz - q.z;
-                const dist = Math.hypot(dx, dz);
-                const minSep = (Math.max(rx, rz) + q.r) * 0.88;
-                if (dist < minSep)
-                {
-                    const push = (minSep - dist) * 0.65;
-                    const nx = dist > 1e-4 ? dx / dist : Math.cos(i);
-                    const nz = dist > 1e-4 ? dz / dist : Math.sin(i);
-                    lx += nx * push;
-                    lz += nz * push;
-                }
-            }
-        }
-        placed.push({ x: lx, z: lz, r: Math.max(rx, rz) });
-
-        const rockYaw = (p.yawDeg ?? 0) + rng.float() * 360.0;
-        const rockPitch = (p.pitchDeg ?? 0) + rng.signed() * 26.0 * tiltAmt;
-        const rockRoll = (p.rollDeg ?? 0) + rng.signed() * 26.0 * tiltAmt;
-        const rockR = buildEulerMatrix3(rockYaw, rockPitch, rockRoll);
-        const ly = ry * (0.92 - 0.65 * embed);
-        const worldPos = forwardPoint(layerR, layerPivot, lx, ly, lz);
-
-        let poly = null;
-        if (roundness < 0.82)
-        {
-            const bf = buildStrikeDipFrame(rng.float() * Math.PI * 2, rng.range(0.10, 0.55));
-            poly = sculptGeologicalParentPoly(
-                [0, 0, 0],
-                [rx, ry, rz],
-                bf,
-                rng,
-                {
-                    jointDispersion: 0.26 * (1.0 - 0.5 * roundness),
-                    cornerBlunt: 0.68 + 0.28 * roundness,
-                    flatBaseY: null,
-                    extraBevelCuts: roundness > 0.45 ? 6 : 3
-                }
-            );
-        }
-
-        const pr = compilePlainPrimitive({
-            poly,
-            R: rockR,
-            pivot: worldPos,
-            roundness,
-            sharpBase: false,
-            sqWeight: roundness >= 0.82 ? 1.0 : smoothstep(0.35, 0.82, roundness),
-            sqRx: rx, sqRy: ry, sqRz: rz, sqCy: 0.0,
-            sqExpH: 0.85 + 0.25 * roundness,
-            sqExpV: 0.78 + 0.28 * roundness,
-            baseY: -ry,
-            refH: ry * 2.0,
-            taper: rng.signed() * 0.16
-        });
-        if (pr) prims.push(pr);
+        roundness = Math.max(roundness, 0.76);
+        disp = 0.12;
+    }
+    else if (style === 'shard')
+    {
+        roundness = Math.min(roundness, 0.12);
+        facets = Math.min(facets, 8);
+        disp = 0.34;
+        taper = 0.32;
+    }
+    else if (style === 'chip')
+    {
+        disp = 0.18;
     }
 
-    return { primitives: prims, intraBlend: 0.0 };
+    const flatCut = clamp(p.flatBottom ?? 0.65, 0.0, 1.0);
+    const cy = flatCut > 0.05 ? ry * (1.0 - 0.18 * flatCut) : ry;
+    const bf = buildStrikeDipFrame(rng.float() * Math.PI * 2, 0.24 + rng.signed() * 0.15);
+    const poly = sculptGeologicalParentPoly(
+        [0, cy, 0],
+        [rx, ry, rz],
+        bf,
+        rng,
+        {
+            jointDispersion: disp,
+            cornerBlunt: 0.68 + 0.28 * roundness,
+            flatBaseY: flatCut > 0.05 ? 0.0 : null,
+            extraBevelCuts: Math.max(0, facets - 6)
+        }
+    );
+
+    return compilePlainPrimitive({
+        poly,
+        R: worldR,
+        pivot: worldPivot,
+        roundness,
+        sharpBase: flatCut > 0.05,
+        flatBaseCut: flatCut,
+        sqWeight: style === 'pebble' ? clamp(roundness * 0.85, 0.35, 0.92) : (roundness > 0.55 ? (roundness - 0.55) * 1.6 : 0.0),
+        sqRx: rx, sqRy: ry, sqRz: rz,
+        sqCy: cy,
+        sqExpH: 0.94, sqExpV: 0.90,
+        baseY: 0.0,
+        refH: Math.max(0.15, ry * 2.0),
+        taper,
+        skewX: p.asymmetry ?? 0.12
+    });
 }
 
-function buildCliffFacePrimitives(p, layerR, layerPivot, rng)
+function buildSingleCliffBlock(p, worldR, worldPivot, rng)
 {
-    const count = clamp(Math.round(p.buttressCount ?? 4), 1, 7);
-    const totalW = p.width;
-    const totalH = p.height;
-    const totalL = p.length;
-    const profile = p.cliffProfile || 'stepped';
-    const benches = clamp(Math.round(p.stepBenches ?? 3), 0, 5);
+    const rx = p.width * 0.5;
+    const h = p.height;
+    const rz = p.length * 0.5;
+    const profile = p.cliffProfile || 'vertical';
+    const facets = clamp(Math.round(p.facetCount ?? 10), 6, 20);
     const roundness = p.roundness ?? 0.14;
-    const curv = p.wallCurvature ?? 0.0;
-    const crestSlope = p.crestSlope ?? 0.08;
+    const prow = clamp(p.prowWedge ?? 0.15, 0.0, 0.65);
 
     let overhang = p.overhangLean ?? 0.08;
-    let taper = 0.10;
-    if (profile === 'overhang') { overhang += 0.32; taper = -0.22; }
-    else if (profile === 'rampart') { overhang -= 0.30; taper = 0.34; }
-    else if (profile === 'vertical') { taper = 0.03; }
-    else if (profile === 'mesa') { taper = 0.06; }
+    let taper = p.batterTaper ?? 0.14;
 
-    const prims = [];
-    const segW = totalW / count;
-
-    for (let i = 0; i < count; i++)
+    if (profile === 'overhang')
     {
-        const u = count === 1 ? 0.0 : (i / (count - 1)) * 2.0 - 1.0;
-        const bx = u * (totalW * 0.5 - segW * 0.42);
-        const bz = -curv * (1.0 - u * u) * totalL * 0.48 + rng.signed() * totalL * 0.06;
-
-        const hMod = clamp(1.0 + crestSlope * u - 0.10 * u * u + rng.signed() * 0.07, 0.52, 1.25);
-        const bH = totalH * hMod;
-        const rx = segW * rng.range(0.58, 0.76);
-        const rz = totalL * 0.5 * rng.range(0.84, 1.08);
-
-        const bf = buildStrikeDipFrame(0.08 + rng.signed() * 0.12, 0.12 + rng.signed() * 0.08);
-        let poly = sculptGeologicalParentPoly(
-            [0, bH * 0.5, 0],
-            [rx, bH * 0.52, rz],
-            bf,
-            rng,
-            {
-                jointDispersion: 0.12,
-                cornerBlunt: 0.62 + 0.28 * roundness,
-                flatBaseY: 0.0,
-                extraBevelCuts: 4
-            }
-        );
-
-        if (poly && profile === 'mesa')
-        {
-            const capN = vnorm([-crestSlope * 0.25, 1.0, 0.0]);
-            const next = clipPolyByHalfSpace(poly, capN, bH * 0.92, 0);
-            if (next) poly = next;
-        }
-
-        const subYaw = (p.yawDeg ?? 0) + (-curv * u * 28.0);
-        const subR = buildEulerMatrix3(subYaw, p.pitchDeg ?? 0, p.rollDeg ?? 0);
-        const subPivot = forwardPoint(layerR, layerPivot, bx, 0.0, bz);
-
-        const mainB = compilePlainPrimitive({
-            poly,
-            R: subR,
-            pivot: subPivot,
-            roundness,
-            sharpBase: true,
-            baseY: 0.0,
-            refH: bH,
-            taper,
-            bendZ: overhang
-        });
-        if (mainB) prims.push(mainB);
-
-        // Stepped forward canyon terrace benches when `stepBenches > 0`!
-        if (benches > 0 && (profile === 'stepped' || profile === 'mesa' || profile === 'rampart'))
-        {
-            const tierCount = (i % 2 === 0) ? Math.min(2, benches) : 1;
-            for (let t = 0; t < tierCount; t++)
-            {
-                const fracH = (t + 1) / (benches + 1);
-                const benchH = bH * fracH * rng.range(0.88, 1.04);
-                const benchOutZ = rz * (0.45 + 0.42 * (1.0 - fracH));
-                const benchPoly = sculptGeologicalParentPoly(
-                    [0, benchH * 0.5, 0],
-                    [rx * 0.92, benchH * 0.52, rz * 0.62],
-                    bf,
-                    rng,
-                    { jointDispersion: 0.09, cornerBlunt: 0.58 + 0.25 * roundness, flatBaseY: 0.0, extraBevelCuts: 2 }
-                );
-                const flatBench = benchPoly
-                    ? (clipPolyByHalfSpace(benchPoly, vnorm([0, 1, 0.04]), benchH * 0.94, 0) || benchPoly)
-                    : null;
-                const benchPivot = forwardPoint(layerR, layerPivot, bx + rng.signed() * rx * 0.1, 0.0, bz + benchOutZ);
-                const benchPrim = compilePlainPrimitive({
-                    poly: flatBench,
-                    R: subR,
-                    pivot: benchPivot,
-                    roundness,
-                    sharpBase: true,
-                    baseY: 0.0,
-                    refH: benchH,
-                    taper: 0.06
-                });
-                if (benchPrim) prims.push(benchPrim);
-            }
-        }
+        overhang = Math.max(overhang, 0.32);
+        taper = Math.min(taper, -0.14);
+    }
+    else if (profile === 'rampart')
+    {
+        overhang = Math.min(overhang, -0.24);
+        taper = Math.max(taper, 0.30);
+    }
+    else if (profile === 'prow')
+    {
+        overhang += 0.18;
     }
 
-    return { primitives: prims, intraBlend: p.buttressBlend ?? 0.22 };
+    const bf = buildStrikeDipFrame(rng.signed() * 0.25, 0.10 + prow * 0.32);
+    let poly = sculptGeologicalParentPoly(
+        [0, h * 0.5, 0],
+        [rx, h * 0.53, rz],
+        bf,
+        rng,
+        {
+            jointDispersion: 0.11 + prow * 0.20,
+            cornerBlunt: 0.62 + 0.26 * roundness,
+            flatBaseY: 0.0,
+            extraBevelCuts: Math.max(0, facets - 6)
+        }
+    );
+
+    if (poly && (profile === 'mesa' || Math.abs(p.crestSlope ?? 0) > 0.02))
+    {
+        const capN = vnorm([-(p.crestSlope ?? 0.08) * 0.35, 1.0, rng.signed() * 0.04]);
+        const next = clipPolyByHalfSpace(poly, capN, capN[1] * h * (profile === 'mesa' ? 0.90 : 0.96), 0);
+        if (next) poly = next;
+    }
+
+    return compilePlainPrimitive({
+        poly,
+        R: worldR,
+        pivot: worldPivot,
+        roundness,
+        sharpBase: true,
+        baseY: 0.0,
+        refH: h,
+        taper,
+        bendZ: overhang
+    });
 }
 
-function buildColumnarBasaltPrimitives(p, layerR, layerPivot, rng)
+function buildSingleBasaltColumn(p, worldR, worldPivot, rng)
 {
-    const shape = p.formationShape || 'cliff';
     const fixedSides = Number(p.polygonSides ?? 6);
-    const colDiam = Math.max(0.35, p.columnDiameter ?? 0.95);
-    const colRadius = colDiam * 0.5;
-    const gap = clamp(p.columnGap ?? 0.04, 0.0, colDiam * 0.45);
-    const steps = clamp(Math.round(p.heightSteps ?? 6), 1, 16);
-    const bevelWeight = clamp(p.edgeBevel ?? 0.08, 0.01, 0.55);
-    const splay = p.columnSplay ?? 0.06;
+    const sides = fixedSides > 0 ? fixedSides : (5 + (rng.int(0, 3)));
+    const rx = Math.max(0.10, p.width * 0.5);
+    const rz = Math.max(0.10, p.length * 0.5);
+    const h = p.height;
+    const irreg = clamp(p.irregularity ?? 0.08, 0.0, 0.38);
+    const bevelWeight = clamp(p.edgeBevel ?? 0.09, 0.01, 0.55);
     const capTilt = p.capTilt ?? 0.10;
 
-    if (shape === 'single')
+    const bound = Math.max(rx, rz) * 1.5;
+    let poly = createBoxPoly(-bound, 0.0, -bound, bound, h + bound, bound, 0);
+    const rot0 = 0.26 + rng.signed() * 0.08;
+
+    for (let s = 0; s < sides; s++)
     {
-        const sides = fixedSides > 0 ? fixedSides : 6;
-        const r = Math.max(0.15, Math.min(p.width, p.length) * 0.48);
-        const h = p.height;
-        let poly = createBoxPoly(-r * 1.35, 0, -r * 1.35, r * 1.35, h + r, r * 1.35, 0);
-        for (let s = 0; s < sides; s++)
-        {
-            const ang = 0.26 + (s * Math.PI * 2) / sides + rng.signed() * 0.03;
-            const n = vnorm([Math.cos(ang), 0.0, Math.sin(ang)]);
-            poly = clipPolyByHalfSpace(poly, n, r * rng.range(0.96, 1.03), 0);
-        }
-        const capN = vnorm([rng.signed() * capTilt, 1.0, rng.signed() * capTilt]);
-        poly = clipPolyByHalfSpace(poly, capN, capN[1] * h, 0);
-        const pr = compilePlainPrimitive({
-            poly, R: layerR, pivot: layerPivot,
-            roundness: bevelWeight * 0.55,
-            sharpBase: true,
-            baseY: 0.0, refH: h
-        });
-        return { primitives: pr ? [pr] : [], intraBlend: 0.0 };
+        const ang = rot0 + (s * Math.PI * 2) / sides + rng.signed() * irreg * 0.35;
+        const dx = Math.cos(ang), dz = Math.sin(ang);
+        const rad = Math.hypot(rx * dx, rz * dz) * (1.0 + rng.signed() * irreg * 0.45);
+        const n = vnorm([dx, 0.0, dz]);
+        poly = clipPolyByHalfSpace(poly, n, rad, 0);
     }
 
-    const spacingX = colRadius * 1.80;
-    const spacingZ = colRadius * 1.56;
-    const halfW = p.width * 0.5;
-    const halfL = p.length * 0.5;
-    const maxColsX = Math.max(1, Math.min(6, Math.round(halfW / spacingX)));
-    const maxRowsZ = Math.max(1, Math.min(5, Math.round(halfL / spacingZ)));
+    const capN = vnorm([rng.signed() * capTilt, 1.0, rng.signed() * capTilt]);
+    poly = clipPolyByHalfSpace(poly, capN, capN[1] * h, 0);
 
-    const candidates = [];
-    for (let rIdx = -maxRowsZ; rIdx <= maxRowsZ; rIdx++)
-    {
-        const shift = (Math.abs(rIdx) % 2 === 1) ? 0.5 : 0.0;
-        for (let qIdx = Math.floor(-maxColsX - shift); qIdx <= Math.ceil(maxColsX - shift); qIdx++)
-        {
-            const gx = qIdx + shift;
-            const gz = rIdx;
-            const lx = gx * spacingX;
-            const lz = gz * spacingZ;
-            const nx = lx / Math.max(0.25, halfW * 1.12);
-            const nz = lz / Math.max(0.25, halfL * 1.12);
-
-            let hFrac = 0.0;
-            if (shape === 'mound')
-            {
-                const rad = Math.hypot(nx, nz);
-                if (rad > 1.06) continue;
-                hFrac = 0.16 + 0.84 * Math.pow(Math.max(0, 1.0 - rad * rad), 0.85);
-            }
-            else if (shape === 'pavement')
-            {
-                const rad = Math.hypot(nx * 0.94, nz * 0.94);
-                if (rad > 1.08) continue;
-                hFrac = 0.22 + 0.36 * (0.5 - 0.5 * nz) + rng.signed() * 0.08;
-            }
-            else if (shape === 'amphitheater')
-            {
-                const rad = Math.hypot(nx * 0.92, (nz - 0.34) * 0.95);
-                if (Math.abs(nx) > 1.10 || Math.abs(nz) > 1.08) continue;
-                if (rad < 0.42 && nz > -0.10) continue;
-                hFrac = clamp((rad - 0.28) * 1.05 + clamp((0.35 - nz) * 0.28, 0, 0.25), 0.20, 1.0);
-            }
-            else
-            {
-                const rad = Math.hypot(nx * 0.92, nz * 0.95);
-                if (rad > 1.12) continue;
-                const tFront = clamp((nz + 0.95) * 0.52, 0.0, 1.0);
-                hFrac = clamp(0.98 * (1.0 - 0.65 * tFront) - 0.12 * nx * nx, 0.18, 1.0);
-            }
-
-            if (steps > 1)
-            {
-                hFrac = Math.max(0.16, Math.round(hFrac * steps) / steps);
-            }
-            hFrac *= rng.range(0.95, 1.04);
-            candidates.push({ lx, lz, nx, nz, hFrac });
-        }
-    }
-
-    if (candidates.length > 48)
-    {
-        candidates.sort((a, b) => b.hFrac - a.hFrac);
-        candidates.length = 48;
-    }
-
-    const prims = [];
-    for (let i = 0; i < candidates.length; i++)
-    {
-        const c = candidates[i];
-        const colH = Math.max(0.25, p.height * c.hFrac);
-        const r = Math.max(0.10, colRadius - gap * 0.5);
-        const sides = fixedSides > 0 ? fixedSides : (i % 5 === 0 ? 5 : (i % 7 === 0 ? 7 : 6));
-        const rot0 = 0.26 + rng.signed() * 0.05;
-
-        let poly = createBoxPoly(-r * 1.35, 0, -r * 1.35, r * 1.35, colH + r, r * 1.35, 0);
-        for (let s = 0; s < sides; s++)
-        {
-            const ang = rot0 + (s * Math.PI * 2) / sides + rng.signed() * 0.035;
-            const n = vnorm([Math.cos(ang), 0.0, Math.sin(ang)]);
-            poly = clipPolyByHalfSpace(poly, n, r * rng.range(0.96, 1.03), 0);
-        }
-        const capN = vnorm([rng.signed() * capTilt, 1.0, rng.signed() * capTilt]);
-        poly = clipPolyByHalfSpace(poly, capN, capN[1] * colH, 0);
-        if (!poly) continue;
-
-        const pitchSplay = (p.pitchDeg ?? 0) + c.nz * splay * 22.0;
-        const rollSplay = (p.rollDeg ?? 0) - c.nx * splay * 22.0;
-        const colR = buildEulerMatrix3(p.yawDeg ?? 0, pitchSplay, rollSplay);
-        const colPivot = forwardPoint(layerR, layerPivot, c.lx, 0.0, c.lz);
-
-        const pr = compilePlainPrimitive({
-            poly,
-            R: colR,
-            pivot: colPivot,
-            roundness: bevelWeight * 0.52,
-            sharpBase: true,
-            baseY: 0.0,
-            refH: colH
-        });
-        if (pr) prims.push(pr);
-    }
-
-    return { primitives: prims, intraBlend: gap <= 0.005 ? 0.03 : 0.0 };
+    return compilePlainPrimitive({
+        poly,
+        R: worldR,
+        pivot: worldPivot,
+        roundness: bevelWeight * 0.55,
+        sharpBase: true,
+        baseY: 0.0,
+        refH: h,
+        taper: p.taper ?? 0.02,
+        bendX: p.bendX ?? 0.0,
+        twistDeg: p.twistDeg ?? 0.0
+    });
 }
 
-function buildSpirePinnaclePrimitives(p, layerR, layerPivot, rng)
+function buildSingleSpirePinnacle(p, worldR, worldPivot, rng)
 {
     const rx = p.width * 0.5;
     const h = p.height;
@@ -1568,7 +1924,7 @@ function buildSpirePinnaclePrimitives(p, layerR, layerPivot, rng)
     let taper = p.taper ?? 0.58;
     let pinch = p.waistPinch ?? 0.0;
     let flatCap = p.flatCap ?? 0.08;
-    let bendX = p.bendX ?? 0.12;
+    let bendX = p.bendX ?? 0.10;
 
     if (style === 'needle') { taper = Math.max(taper, 0.72); flatCap = Math.min(flatCap, 0.04); }
     else if (style === 'hoodoo') { pinch = Math.max(pinch, 0.42); taper = Math.min(taper, 0.05); flatCap = Math.max(flatCap, 0.22); }
@@ -1586,7 +1942,6 @@ function buildSpirePinnaclePrimitives(p, layerR, layerPivot, rng)
         poly = clipPolyByHalfSpace(poly, n, rad, 0);
     }
 
-    // Crown termination planes
     if (flatCap > 0.12)
     {
         const capN = vnorm([rng.signed() * 0.12, 1.0, rng.signed() * 0.12]);
@@ -1602,10 +1957,10 @@ function buildSpirePinnaclePrimitives(p, layerR, layerPivot, rng)
         }
     }
 
-    const prim = compilePlainPrimitive({
+    return compilePlainPrimitive({
         poly,
-        R: layerR,
-        pivot: layerPivot,
+        R: worldR,
+        pivot: worldPivot,
         roundness,
         sharpBase: true,
         sqWeight: style === 'hoodoo' ? 0.35 * roundness : 0.0,
@@ -1618,22 +1973,20 @@ function buildSpirePinnaclePrimitives(p, layerR, layerPivot, rng)
         twistDeg: p.twistDeg ?? 14,
         bendX
     });
-    return { primitives: prim ? [prim] : [], intraBlend: 0.0 };
 }
 
-function buildRockSlabPrimitives(p, layerR, layerPivot, rng)
+function buildSingleRockSlab(p, worldR, worldPivot, rng)
 {
     const rx = p.width * 0.5;
     const ry = p.height * 0.5;
     const rz = p.length * 0.5;
     const shape = p.planShape || 'plate';
-    const roundness = p.roundness ?? 0.12;
-    const dipDeg = p.dipAngleDeg ?? 18;
+    const roundness = p.roundness ?? 0.14;
+    const dipDeg = p.dipAngleDeg ?? 16;
 
     let poly = null;
     if (shape === 'wedge')
     {
-        // Clean triangular flatiron hogback wedge!
         const bound = Math.max(rx, ry, rz) * 2.2;
         poly = createBoxPoly(-bound, -bound, -bound, bound, bound, bound, 0);
         poly = clipPolyByHalfSpace(poly, [0, 1, 0], ry, 0);
@@ -1664,13 +2017,13 @@ function buildRockSlabPrimitives(p, layerR, layerPivot, rng)
         );
     }
 
-    const slabR = buildEulerMatrix3(p.yawDeg ?? 0, (p.pitchDeg ?? 0) + dipDeg, p.rollDeg ?? 0);
+    const dipR = mulMat3(worldR, buildEulerMatrix3(0, dipDeg, 0));
     const liftY = ry + Math.abs(Math.sin(dipDeg * DEG2RAD)) * rz * 0.45;
-    const slabPivot = forwardPoint(layerR, layerPivot, 0, liftY, 0);
+    const slabPivot = forwardPoint(worldR, worldPivot, 0, liftY, 0);
 
-    const prim = compilePlainPrimitive({
+    return compilePlainPrimitive({
         poly,
-        R: slabR,
+        R: dipR,
         pivot: slabPivot,
         roundness: shape === 'flagstone' ? Math.max(roundness, 0.45) : roundness,
         sharpBase: false,
@@ -1682,110 +2035,41 @@ function buildRockSlabPrimitives(p, layerR, layerPivot, rng)
         taper: p.edgeTaper ?? 0.22,
         bendX: p.bend ?? 0.0
     });
-    return { primitives: prim ? [prim] : [], intraBlend: 0.0 };
 }
 
-function buildRockArchPrimitives(p, layerR, layerPivot, rng)
-{
-    const rx = p.width * 0.5;
-    const h = p.height;
-    const rz = p.length * 0.5;
-    const profile = p.archProfile || 'vault';
-    const openW = clamp(p.openingWidth ?? 0.54, 0.18, 0.82);
-    const openH = clamp(p.openingHeight ?? 0.58, 0.18, 0.80);
-    const roundness = p.roundness ?? 0.28;
-    const flare = p.buttressFlare ?? 0.25;
-    const skew = p.archSkew ?? 0.0;
-
-    // 1. Solid outer bridge / fin body
-    const bf = buildStrikeDipFrame(0.12, 0.08);
-    const bodyPoly = sculptGeologicalParentPoly(
-        [0, h * 0.5, 0],
-        [rx, h * 0.52, rz],
-        bf,
-        rng,
-        { jointDispersion: 0.12, cornerBlunt: 0.78 + 0.18 * roundness, flatBaseY: 0.0, extraBevelCuts: 6 }
-    );
-    const outerPrim = compilePlainPrimitive({
-        poly: bodyPoly,
-        R: layerR,
-        pivot: layerPivot,
-        roundness,
-        sharpBase: true,
-        baseY: 0.0,
-        refH: h,
-        taper: flare * 0.55,
-        skewX: skew * 0.35,
-        primOp: 0
-    });
-
-    // 2. Clean Pure-SDF arch tunnel boolean cutter (`primOp: 1` = intra-layer subtract!)
-    const holeRx = rx * openW;
-    const holeH = h * openH;
-    const holeRz = rz * 1.85; // Cleanly pierces front-to-back through the entire bridge thickness!
-    const holePivot = forwardPoint(layerR, layerPivot, skew * rx * 0.22, 0.0, 0.0);
-
-    let expH = 0.95, expV = 0.95;
-    let holeCy = holeH * 0.35;
-    let holeRy = holeH * 0.68;
-    let holeTaper = 0.0;
-
-    if (profile === 'pointed') { expV = 1.45; holeTaper = 0.38; }
-    else if (profile === 'lintel') { expH = 0.42; expV = 0.38; holeCy = holeH * 0.42; holeRy = holeH * 0.58; }
-    else if (profile === 'keyhole') { holeCy = holeH * 0.62; holeRy = holeH * 0.52; }
-
-    const cutterPrim = compilePlainPrimitive({
-        poly: null,
-        R: layerR,
-        pivot: holePivot,
-        roundness: 0.65,
-        sharpBase: false,
-        sqWeight: 1.0,
-        sqRx: holeRx, sqRy: holeRy, sqRz: holeRz, sqCy: holeCy,
-        sqExpH: expH, sqExpV: expV,
-        baseY: 0.0, refH: holeH,
-        taper: holeTaper,
-        primOp: 1
-    });
-
-    const prims = [];
-    if (outerPrim) prims.push(outerPrim);
-    if (cutterPrim) prims.push(cutterPrim);
-    return { primitives: prims, intraBlend: Math.min(rx, h, rz) * (0.08 + 0.22 * roundness) };
-}
-
-function buildCustomSculptRockPrimitives(p, layerR, layerPivot, rng)
+function buildSingleCustomSculptRock(p, worldR, worldPivot, rng)
 {
     const rx = p.width * 0.5;
     const ry = p.height * 0.5;
     const rz = p.length * 0.5;
     const sqWeight = clamp(p.analyticBlend ?? 0.50, 0.0, 1.0);
     const flatCut = clamp(p.flatBottom ?? 0.85, 0.0, 1.0);
-    const cy = flatCut > 0.05 ? ry * (1.0 - 0.16 * flatCut) : ry;
+    const cy = flatCut > 0.02 ? ry * (1.0 - 0.18 * flatCut) : ry;
 
     let poly = null;
     if (sqWeight < 0.99)
     {
-        const extraCuts = Math.max(0, Math.round((p.facetCount ?? 14) - 8));
+        const facets = clamp(Math.round(p.facetCount ?? 14), 6, 26);
+        const extraCuts = Math.max(0, facets - 6);
         const bf = buildStrikeDipFrame(rng.float() * Math.PI * 2, 0.22);
         poly = sculptGeologicalParentPoly(
             [0, cy, 0],
-            [rx, ry * (flatCut > 0.05 ? 1.04 : 1.0), rz],
+            [rx, ry, rz],
             bf,
             rng,
             {
                 jointDispersion: p.angularity ?? 0.18,
-                cornerBlunt: 0.68 + 0.26 * (p.roundness ?? 0.32),
+                cornerBlunt: 0.65 + 0.30 * (p.roundness ?? 0.32),
                 flatBaseY: flatCut > 0.05 ? 0.0 : null,
                 extraBevelCuts: extraCuts
             }
         );
     }
 
-    const prim = compilePlainPrimitive({
+    return compilePlainPrimitive({
         poly,
-        R: layerR,
-        pivot: layerPivot,
+        R: worldR,
+        pivot: worldPivot,
         roundness: p.roundness ?? 0.32,
         sharpBase: flatCut > 0.05,
         flatBaseCut: flatCut,
@@ -1802,11 +2086,27 @@ function buildCustomSculptRockPrimitives(p, layerR, layerPivot, rng)
         bendZ: p.bendZ ?? 0.0,
         skewX: p.skewX ?? 0.0
     });
-    return { primitives: prim ? [prim] : [], intraBlend: 0.0 };
+}
+
+function buildAtomicBaseRockPrimitive(type, p, worldR, worldPivot)
+{
+    const rng = createRng(p.seed ?? 2104);
+    switch (type)
+    {
+        case 'smooth_rock':        return buildSingleSmoothRock(p, worldR, worldPivot, rng);
+        case 'small_rock':         return buildSingleSmallRock(p, worldR, worldPivot, rng);
+        case 'cliff_block':        return buildSingleCliffBlock(p, worldR, worldPivot, rng);
+        case 'basalt_column':      return buildSingleBasaltColumn(p, worldR, worldPivot, rng);
+        case 'spire_pinnacle':     return buildSingleSpirePinnacle(p, worldR, worldPivot, rng);
+        case 'rock_slab':          return buildSingleRockSlab(p, worldR, worldPivot, rng);
+        case 'custom_sculpt_rock': return buildSingleCustomSculptRock(p, worldR, worldPivot, rng);
+        case 'big_boulder':
+        default:                   return buildSingleBigBoulder(p, worldR, worldPivot, rng);
+    }
 }
 
 /*==========================================================================================================================================
-                               5. LAYER-STACK COMPILER & EXACT CPU PURE-SDF EVALUATOR
+                               7. LAYER-STACK COMPILER & EXACT CPU PURE-SDF EVALUATOR
 ==========================================================================================================================================*/
 
 export function compileRock2Stack(doc)
@@ -1821,6 +2121,8 @@ export function compileRock2Stack(doc)
     let minX = Infinity, minY = 0.0, minZ = Infinity;
     let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
 
+    const MAX_STACK_PRIMITIVES = 160;
+
     for (let li = 0; li < layers.length; li++)
     {
         const lyr = layers[li];
@@ -1829,51 +2131,50 @@ export function compileRock2Stack(doc)
 
         const spec = getRock2NodeSpec(lyr.type);
         const p = { ...spec.defaults, ...(lyr.params || {}) };
-        const rng = createRng(p.seed ?? 2104);
         const layerR = buildEulerMatrix3(p.yawDeg ?? 0, p.pitchDeg ?? 0, p.rollDeg ?? 0);
         const layerPivot = [p.posX ?? 0.0, p.posY ?? 0.0, p.posZ ?? 0.0];
 
-        let built;
-        switch (lyr.type)
+        const { intraBlend, instances } = evaluateRock2GeneratorInstances(lyr.generator, p);
+        const room = Math.max(0, MAX_STACK_PRIMITIVES - allPrimitives.length);
+        if (room <= 0) break;
+
+        const layerPrims = [];
+        for (let k = 0; k < instances.length && layerPrims.length < room; k++)
         {
-            case 'smooth_rock':        built = buildSmoothRockPrimitives(p, layerR, layerPivot, rng); break;
-            case 'small_rocks':        built = buildSmallRocksPrimitives(p, layerR, layerPivot, rng); break;
-            case 'cliff_face':         built = buildCliffFacePrimitives(p, layerR, layerPivot, rng); break;
-            case 'columnar_basalt':    built = buildColumnarBasaltPrimitives(p, layerR, layerPivot, rng); break;
-            case 'spire_pinnacle':     built = buildSpirePinnaclePrimitives(p, layerR, layerPivot, rng); break;
-            case 'rock_slab':          built = buildRockSlabPrimitives(p, layerR, layerPivot, rng); break;
-            case 'arch_formation':     built = buildRockArchPrimitives(p, layerR, layerPivot, rng); break;
-            case 'custom_sculpt_rock': built = buildCustomSculptRockPrimitives(p, layerR, layerPivot, rng); break;
-            case 'big_boulder':
-            default:                   built = buildBigBoulderPrimitives(p, layerR, layerPivot, rng); break;
+            const inst = instances[k];
+            const localInstR = buildEulerMatrix3(inst.yawDeg, inst.pitchDeg, inst.rollDeg);
+            const worldR = mulMat3(layerR, localInstR);
+            const worldPivot = forwardPoint(layerR, layerPivot, inst.pos[0], inst.pos[1], inst.pos[2]);
+
+            const instParams = {
+                ...p,
+                width: Math.max(0.08, (p.width ?? 4.0) * inst.scaleX),
+                height: Math.max(0.08, (p.height ?? 3.5) * inst.scaleY),
+                length: Math.max(0.08, (p.length ?? 4.0) * inst.scaleZ),
+                seed: ((p.seed ?? 2104) + inst.seedOffset) >>> 0
+            };
+
+            const pr = buildAtomicBaseRockPrimitive(spec.type, instParams, worldR, worldPivot);
+            if (pr) layerPrims.push(pr);
         }
 
-        if (!built || built.primitives.length === 0) continue;
-
-        // Enforce GPU primitive budget (<= 128 total primitives across the entire stack)
-        const room = Math.max(0, 128 - allPrimitives.length);
-        if (room <= 0) break;
-        const primSlice = built.primitives.slice(0, room);
+        if (layerPrims.length === 0) continue;
 
         const blockStart = allPrimitives.length;
-        for (let k = 0; k < primSlice.length; k++)
+        for (let k = 0; k < layerPrims.length; k++)
         {
-            const pr = primSlice[k];
+            const pr = layerPrims[k];
             allPrimitives.push(pr);
             totalPlanes += pr.numPlanes;
 
-            // Subtract / Intersect layers do not expand outer positive solid bounds beyond additive rock layers
             if (lyr.combineMode !== 'subtract' || compiledLayers.length === 0)
             {
-                if (pr.primOp === 0)
-                {
-                    if (pr.minX < minX) minX = pr.minX;
-                    if (pr.maxX > maxX) maxX = pr.maxX;
-                    if (pr.minY < minY) minY = pr.minY;
-                    if (pr.maxY > maxY) maxY = pr.maxY;
-                    if (pr.minZ < minZ) minZ = pr.minZ;
-                    if (pr.maxZ > maxZ) maxZ = pr.maxZ;
-                }
+                if (pr.minX < minX) minX = pr.minX;
+                if (pr.maxX > maxX) maxX = pr.maxX;
+                if (pr.minY < minY) minY = pr.minY;
+                if (pr.maxY > maxY) maxY = pr.maxY;
+                if (pr.minZ < minZ) minZ = pr.minZ;
+                if (pr.maxZ > maxZ) maxZ = pr.maxZ;
             }
         }
 
@@ -1881,20 +2182,23 @@ export function compileRock2Stack(doc)
         compiledLayers.push({
             id: lyr.id,
             name: lyr.name,
-            type: lyr.type,
+            type: spec.type,
+            generatorType: lyr.generator?.type || 'none',
+            instanceCount: layerPrims.length,
             combineOp: ROCK2_COMBINE_OP_CODE[lyr.combineMode] ?? 0,
-            combineMode: lyr.combineMode || 'union',
-            blendRadius: Math.max(0.0, lyr.blendRadius ?? 0.35),
-            intraBlend: Math.max(0.0, built.intraBlend ?? 0.0),
+            blendRadius: clamp(lyr.blendRadius ?? 0.35, 0.0, 4.0),
+            intraBlend: clamp(intraBlend ?? 0.0, 0.0, 3.0),
             color: tone.rgb,
             blockStart,
-            blockCount: primSlice.length
+            blockCount: layerPrims.length
         });
     }
 
     if (!Number.isFinite(minX))
     {
-        minX = -2.5; maxX = 2.5; minY = 0.0; maxY = 3.5; minZ = -2.5; maxZ = 2.5;
+        minX = -3.0; maxX = 3.0;
+        minY = 0.0;  maxY = 4.0;
+        minZ = -3.0; maxZ = 3.0;
     }
 
     const span = Math.max(2.0, maxX - minX, maxY - minY, maxZ - minZ);
@@ -1977,54 +2281,52 @@ export function evalRock2PrimitiveSdf(prim, wx, wy, wz)
     if (prim.numPlanes > 0)
     {
         const planes = prim.planes;
-        const kLse = prim.kLse;
-        const invKLse = 1.0 / kLse;
+        const invK = 1.0 / Math.max(1e-4, prim.kLse);
         let dFloor = -1e9;
         let bestPd = -1e9;
         let sumExp = 0.0;
 
-        for (let i = 0, p = 0; i < prim.numPlanes; i++, p += 4)
+        for (let j = 0; j < prim.numPlanes; j++)
         {
-            const pny = planes[p + 1];
-            const pd = planes[p] * qx + pny * qy + planes[p + 2] * qz - planes[p + 3];
+            const off = j * 4;
+            const nx = planes[off], ny = planes[off + 1], nz = planes[off + 2], d = planes[off + 3];
+            const pd = nx * qx + ny * qy + nz * qz - d;
 
-            if (prim.sharpBase > 0.5 && pny <= -0.92)
+            if (prim.sharpBase > 0.5 && ny <= -0.92)
             {
                 if (pd > dFloor) dFloor = pd;
             }
             else if (pd > bestPd)
             {
-                sumExp = bestPd > -1e8 ? sumExp * Math.exp(Math.max(-24.0, (bestPd - pd) * invKLse)) + 1.0 : 1.0;
+                sumExp = bestPd > -1e8 ? sumExp * Math.exp(Math.max(-24.0, (bestPd - pd) * invK)) + 1.0 : 1.0;
                 bestPd = pd;
             }
             else
             {
-                sumExp += Math.exp(Math.max(-24.0, (pd - bestPd) * invKLse));
+                sumExp += Math.exp(Math.max(-24.0, (pd - bestPd) * invK));
             }
         }
 
-        dPoly = bestPd > -1e8 ? (bestPd + kLse * Math.log(Math.max(1.0, sumExp))) : dFloor;
+        dPoly = bestPd > -1e8 ? (bestPd + prim.kLse * Math.log(Math.max(1.0, sumExp))) : dFloor;
         if (dFloor > -1e8 && bestPd > -1e8)
         {
-            dPoly = smax(dPoly, dFloor, prim.baseBevel);
+            dPoly = smaxPoly(dPoly, dFloor, prim.baseBevel);
         }
     }
 
     let dSq = 1e9;
     if (prim.sqWeight > 0.001 || prim.numPlanes === 0)
     {
-        const p1 = 2.0 / prim.sqExpH;
-        const p2 = 2.0 / prim.sqExpV;
+        const p1 = 2.0 / Math.max(0.22, prim.sqExpH);
+        const p2 = 2.0 / Math.max(0.22, prim.sqExpV);
         const m12 = p2 / p1;
 
-        const ux = Math.abs(qx) / prim.sqRx + 1e-5;
-        const uy = Math.abs(qy - prim.sqCy) / prim.sqRy + 1e-5;
-        const uz = Math.abs(qz) / prim.sqRz + 1e-5;
+        const ux = Math.max(1e-5, Math.abs(qx) / Math.max(0.04, prim.sqRx) + 1e-5);
+        const uy = Math.max(1e-5, Math.abs(qy - prim.sqCy) / Math.max(0.04, prim.sqRy) + 1e-5);
+        const uz = Math.max(1e-5, Math.abs(qz) / Math.max(0.04, prim.sqRz) + 1e-5);
 
-        const uxP = Math.pow(ux, p1);
-        const uzP = Math.pow(uz, p1);
-        const A = uxP + uzP;
-        const B = Math.pow(A, m12) + Math.pow(uy, p2);
+        const A = Math.max(1e-6, Math.pow(ux, p1) + Math.pow(uz, p1));
+        const B = Math.max(1e-6, Math.pow(A, m12) + Math.pow(uy, p2));
 
         if (B < 1e-5)
         {
@@ -2032,8 +2334,7 @@ export function evalRock2PrimitiveSdf(prim, wx, wy, wz)
         }
         else
         {
-            const rootB = Math.pow(B, 1.0 / p2);
-            const F = rootB - 1.0;
+            const F = Math.pow(B, 1.0 / p2) - 1.0;
             const bTerm = Math.pow(B, 1.0 / p2 - 1.0);
             const aTerm = Math.pow(A, m12 - 1.0);
             const gx = (bTerm * aTerm * Math.pow(ux, p1 - 1.0)) / prim.sqRx;
@@ -2045,21 +2346,17 @@ export function evalRock2PrimitiveSdf(prim, wx, wy, wz)
 
         if (prim.flatBaseCut > 0.02)
         {
-            dSq = smax(dSq, -qy, prim.baseBevel);
+            dSq = smaxPoly(dSq, -qy, prim.baseBevel);
         }
     }
 
-    let dLocal;
-    if (prim.numPlanes === 0) dLocal = dSq;
-    else if (prim.sqWeight <= 0.001) dLocal = dPoly;
-    else dLocal = mix(dPoly, dSq, prim.sqWeight);
-
+    const dLocal = prim.numPlanes === 0 ? dSq : (prim.sqWeight <= 0.001 ? dPoly : lerp(dPoly, dSq, prim.sqWeight));
     return dLocal * scaleFactor;
 }
 
 /**
- * Evaluates the complete RockFormation 2.0 Layer Stack at `(wx, wy, wz)`.
- * Optionally writes blended stone layer color `(r, g, b)` to `outColor`.
+ * Evaluates the full ordered Layer Stack at world `(wx, wy, wz)`.
+ * Optionally writes blended stone RGB tone into `outColor = { r, g, b }`.
  */
 export function evalRock2StackSdf(compiledStack, wx, wy, wz, outColor = null)
 {
@@ -2067,117 +2364,84 @@ export function evalRock2StackSdf(compiledStack, wx, wy, wz, outColor = null)
     if (compiledLayers.length === 0)
     {
         if (outColor) { outColor.r = 0.58; outColor.g = 0.57; outColor.b = 0.55; }
-        return 1e6;
+        return 10.0;
     }
 
     let dAcc = 1e9;
-    let colR = compiledLayers[0].color[0];
-    let colG = compiledLayers[0].color[1];
-    let colB = compiledLayers[0].color[2];
+    let cr = 0.58, cg = 0.57, cb = 0.55;
     let hasBase = false;
 
     for (let li = 0; li < compiledLayers.length; li++)
     {
         const lyr = compiledLayers[li];
         let dLyr = 1e9;
-        const end = lyr.blockStart + lyr.blockCount;
+        const ib = lyr.intraBlend;
 
-        for (let bi = lyr.blockStart; bi < end; bi++)
+        for (let k = 0; k < lyr.blockCount; k++)
         {
-            const pr = primitives[bi];
-            const lb = Math.hypot(wx - pr.cx, wy - pr.cy, wz - pr.cz) - pr.radius;
-
-            if (pr.primOp === 0)
-            {
-                if (lb > dLyr + lyr.intraBlend) continue;
-                const dP = evalRock2PrimitiveSdf(pr, wx, wy, wz);
-                dLyr = dLyr > 1e8 ? dP : (lyr.intraBlend > 1e-4 ? smin(dLyr, dP, lyr.intraBlend) : Math.min(dLyr, dP));
-            }
-            else
-            {
-                // Intra-layer subtraction (e.g. Rock Arch vault cutter!)
-                if (lb > Math.abs(dLyr) + lyr.intraBlend + 0.2) continue;
-                const dP = evalRock2PrimitiveSdf(pr, wx, wy, wz);
-                if (dLyr < 1e8)
-                {
-                    dLyr = smax(dLyr, -dP, lyr.intraBlend);
-                }
-            }
+            const prim = primitives[lyr.blockStart + k];
+            const lb = Math.hypot(wx - prim.cx, wy - prim.cy, wz - prim.cz) - prim.radius;
+            if (lb > dLyr + ib) continue;
+            const dP = evalRock2PrimitiveSdf(prim, wx, wy, wz);
+            dLyr = dLyr > 1e8 ? dP : (ib > 1e-4 ? sminPoly(dLyr, dP, ib) : Math.min(dLyr, dP));
         }
+
+        const lr = lyr.color[0], lg = lyr.color[1], lbCol = lyr.color[2];
+        const op = lyr.combineOp;
+        const br = lyr.blendRadius;
 
         if (!hasBase)
         {
-            if (lyr.combineOp === 3) continue; // Skip leading subtract if nothing exists below it
+            if (op === 3) continue;
             dAcc = dLyr;
-            colR = lyr.color[0]; colG = lyr.color[1]; colB = lyr.color[2];
+            cr = lr; cg = lg; cb = lbCol;
             hasBase = true;
             continue;
         }
 
-        const k = lyr.blendRadius;
-        const op = lyr.combineOp;
-        if (op === 0) // Union
+        if (op === 0)
         {
             if (dLyr < dAcc)
             {
                 dAcc = dLyr;
-                colR = lyr.color[0]; colG = lyr.color[1]; colB = lyr.color[2];
+                cr = lr; cg = lg; cb = lbCol;
             }
         }
-        else if (op === 1) // Smooth Blend (smin)
+        else if (op === 1)
         {
-            const w = k > 1e-4 ? clamp(0.5 + 0.5 * (dAcc - dLyr) / k, 0.0, 1.0) : (dLyr < dAcc ? 1.0 : 0.0);
-            dAcc = smin(dAcc, dLyr, k);
-            colR = mix(colR, lyr.color[0], w);
-            colG = mix(colG, lyr.color[1], w);
-            colB = mix(colB, lyr.color[2], w);
+            const w = br > 1e-4 ? clamp(0.5 + 0.5 * (dAcc - dLyr) / br, 0.0, 1.0) : (dLyr < dAcc ? 1.0 : 0.0);
+            dAcc = sminPoly(dAcc, dLyr, br);
+            cr = lerp(cr, lr, w); cg = lerp(cg, lg, w); cb = lerp(cb, lbCol, w);
         }
-        else if (op === 2) // 45° Chamfer Seam
+        else if (op === 2)
         {
-            const w = k > 1e-4 ? clamp(0.5 + 0.5 * (dAcc - dLyr) / k, 0.0, 1.0) : (dLyr < dAcc ? 1.0 : 0.0);
-            dAcc = chamferMin(dAcc, dLyr, k);
-            colR = mix(colR, lyr.color[0], w);
-            colG = mix(colG, lyr.color[1], w);
-            colB = mix(colB, lyr.color[2], w);
+            const w = br > 1e-4 ? clamp(0.5 + 0.5 * (dAcc - dLyr) / br, 0.0, 1.0) : (dLyr < dAcc ? 1.0 : 0.0);
+            dAcc = chamferMin(dAcc, dLyr, br);
+            cr = lerp(cr, lr, w); cg = lerp(cg, lg, w); cb = lerp(cb, lbCol, w);
         }
-        else if (op === 3) // Subtract (Cutter)
+        else if (op === 3)
         {
             const prev = dAcc;
-            dAcc = smax(dAcc, -dLyr, k);
-            const cutW = smoothstep(0.0, Math.max(0.02, k + 0.04), dAcc - prev);
-            colR = mix(colR, lyr.color[0], cutW * 0.65);
-            colG = mix(colG, lyr.color[1], cutW * 0.65);
-            colB = mix(colB, lyr.color[2], cutW * 0.65);
+            dAcc = smaxPoly(dAcc, -dLyr, br);
+            const cutW = smoothstep(0.0, Math.max(0.02, br + 0.04), dAcc - prev);
+            cr = lerp(cr, lr, cutW * 0.65); cg = lerp(cg, lg, cutW * 0.65); cb = lerp(cb, lbCol, cutW * 0.65);
         }
-        else if (op === 4) // Intersect
+        else if (op === 4)
         {
             const w = dLyr > dAcc ? 1.0 : 0.0;
-            dAcc = smax(dAcc, dLyr, k);
-            colR = mix(colR, lyr.color[0], w * 0.5);
-            colG = mix(colG, lyr.color[1], w * 0.5);
-            colB = mix(colB, lyr.color[2], w * 0.5);
+            dAcc = smaxPoly(dAcc, dLyr, br);
+            cr = lerp(cr, lr, w * 0.5); cg = lerp(cg, lg, w * 0.5); cb = lerp(cb, lbCol, w * 0.5);
         }
     }
 
-    if (outColor)
-    {
-        outColor.r = colR;
-        outColor.g = colG;
-        outColor.b = colB;
-    }
+    if (outColor) { outColor.r = cr; outColor.g = cg; outColor.b = cb; }
     return dAcc;
 }
 
 /*==========================================================================================================================================
-                               6. GPU TEXTURE PACKER & QEF DUAL-CONTOUR MESH BAKER
+                               8. GPU TEXTURE PACKER & QEF DUAL-CONTOUR MESH BAKER
 ==========================================================================================================================================*/
 
-/**
- * Packs `compiledStack` into three compact RGBA32F 2D textures for instant (< 1.5 ms) 60 FPS WebGL2 GPU Volume Baking:
- *   - `layerTexData`: width = 2, height = numLayers
- *   - `blockTexData`: width = 9, height = numPrimitives
- *   - `planeTexData`: width = 1, height = totalPlanes
- */
 export function packRock2StackGpuBuffers(compiledStack)
 {
     const { compiledLayers, primitives } = compiledStack;
@@ -2186,19 +2450,17 @@ export function packRock2StackGpuBuffers(compiledStack)
     const totalPlanes = Math.max(1, compiledStack.totalPlanes);
 
     const layerTexData = new Float32Array(numLayers * 2 * 4);
-    const blockTexData = new Float32Array(numBlocks * 9 * 4);
+    const blockTexData = new Float32Array(numBlocks * 10 * 4);
     const planeTexData = new Float32Array(totalPlanes * 4);
 
     for (let li = 0; li < compiledLayers.length; li++)
     {
         const lyr = compiledLayers[li];
         const off = li * 8;
-        // Col 0: (blockStart, blockCount, combineOp, blendRadius)
         layerTexData[off + 0] = lyr.blockStart;
         layerTexData[off + 1] = lyr.blockCount;
         layerTexData[off + 2] = lyr.combineOp;
         layerTexData[off + 3] = lyr.blendRadius;
-        // Col 1: (colR, colG, colB, intraBlend)
         layerTexData[off + 4] = lyr.color[0];
         layerTexData[off + 5] = lyr.color[1];
         layerTexData[off + 6] = lyr.color[2];
@@ -2209,7 +2471,7 @@ export function packRock2StackGpuBuffers(compiledStack)
     for (let i = 0; i < primitives.length; i++)
     {
         const b = primitives[i];
-        const off = i * 36;
+        const off = i * 40;
 
         // Col 0: (cx, cy, cz, radius)
         blockTexData[off + 0] = b.cx;
@@ -2234,7 +2496,7 @@ export function packRock2StackGpuBuffers(compiledStack)
         blockTexData[off + 22] = b.sqRz;
         blockTexData[off + 23] = b.sqCy;
 
-        // Col 6: (sqWeight, sqExpH, sqExpV, sharpBase + flatBaseCut*2 + primOp*8)
+        // Col 6: (sqWeight, sqExpH, sqExpV, primOp)
         blockTexData[off + 24] = b.sqWeight;
         blockTexData[off + 25] = b.sqExpH;
         blockTexData[off + 26] = b.sqExpV;
@@ -2246,11 +2508,17 @@ export function packRock2StackGpuBuffers(compiledStack)
         blockTexData[off + 30] = b.taper;
         blockTexData[off + 31] = b.pinch;
 
-        // Col 8: (twistRad, bendX, bendZ, skewX) + Col 9 packed via deformPenalty/flags? Keep width = 10 for total clarity!
+        // Col 8: (twistRad, bendX, bendZ, skewX)
         blockTexData[off + 32] = b.twistRad;
         blockTexData[off + 33] = b.bendX;
         blockTexData[off + 34] = b.bendZ;
         blockTexData[off + 35] = b.skewX;
+
+        // Col 9: (sharpBase, flatBaseCut, hasDeform, deformPenalty)
+        blockTexData[off + 36] = b.sharpBase;
+        blockTexData[off + 37] = b.flatBaseCut;
+        blockTexData[off + 38] = b.hasDeform ? 1.0 : 0.0;
+        blockTexData[off + 39] = b.deformPenalty;
 
         for (let p = 0; p < b.numPlanes; p++)
         {
@@ -2263,19 +2531,6 @@ export function packRock2StackGpuBuffers(compiledStack)
         planeCursor += b.numPlanes;
     }
 
-    // Also pack auxiliary flags (sharpBase, flatBaseCut, hasDeform, deformPenalty) in a 3rd column of block meta -> let's use width = 10!
-    const blockTexData10 = new Float32Array(numBlocks * 10 * 4);
-    for (let i = 0; i < primitives.length; i++)
-    {
-        const b = primitives[i];
-        blockTexData10.set(blockTexData.subarray(i * 36, i * 36 + 36), i * 40);
-        const off10 = i * 40 + 36;
-        blockTexData10[off10 + 0] = b.sharpBase;
-        blockTexData10[off10 + 1] = b.flatBaseCut;
-        blockTexData10[off10 + 2] = b.hasDeform ? 1.0 : 0.0;
-        blockTexData10[off10 + 3] = b.deformPenalty;
-    }
-
     return {
         numLayers: compiledLayers.length,
         numBlocks: primitives.length,
@@ -2285,17 +2540,13 @@ export function packRock2StackGpuBuffers(compiledStack)
         layerTexData,
         blockTexWidth: 10,
         blockTexHeight: numBlocks,
-        blockTexData: blockTexData10,
+        blockTexData,
         planeTexWidth: 1,
         planeTexHeight: totalPlanes,
         planeTexData
     };
 }
 
-/**
- * Extracts a sharp-creased manifold triangle mesh of the entire RockFormation 2.0 Layer Stack
- * via 4^3 Sparse Narrow-Band Bricks + 3x3 Tikhonov QEF Dual Contouring (`0` Mesh->SDF!).
- */
 export function bakeRock2StackQefMesh(compiledStack, options = {})
 {
     const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now();
@@ -2345,7 +2596,6 @@ export function bakeRock2StackQefMesh(compiledStack, options = {})
         evalMaterial: (px, py, pz, _nx, _ny, _nz, ao, cav, edg, outMat) =>
         {
             evalRock2StackSdf(compiledStack, px, py, pz, tmpCol);
-            // Clean plain stone shading: gentle edge bevel highlight + subtle cavity AO, ZERO noisy stain!
             const shade = (0.86 + 0.14 * ao) * (1.0 - 0.12 * cav) + 0.05 * edg;
             outMat.r = clamp(tmpCol.r * shade, 0.04, 1.0);
             outMat.g = clamp(tmpCol.g * shade, 0.04, 1.0);

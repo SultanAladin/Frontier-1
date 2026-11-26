@@ -4,6 +4,7 @@
 // Comprehensive Headless Validation Suite for Frontier Open-World SDF Terrain Studio
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { WorldMask2D, ComputeRegionMaskSdf2D } from './Engine/WorldMask2D.js';
 import {
     EvaluateBoundaryFalloff,
@@ -39,9 +40,11 @@ import {
 import {
     ROCK2_NODE_CATALOG,
     ROCK2_STARTER_STACKS,
+    createRock2Generator,
     createRock2Layer,
     cloneRock2Layer,
     createDefaultRock2Document,
+    evaluateRock2GeneratorInstances,
     compileRock2Stack,
     evalRock2StackSdf,
     packRock2StackGpuBuffers,
@@ -1274,23 +1277,48 @@ Suite('27. Controllable Split System & Base Rock Form Generator reshape proporti
     assert.ok(BasaltQef.sdfStats.triangles > 2000, 'Custom-formed Sea-Gorge Columnar Basalt must QEF-bake cleanly');
 });
 
-// 28. RockFormation 2.0: Composable Pure-SDF Plain Rock Layer Stack (9 Basic Rock Generators + CSG Stack + QEF Mesh + JSON)
-Suite('28. RockFormation 2.0: all 9 plain basic rock nodes, 5 CSG combine modes, solo/mute, GPU buffers, QEF mesh & JSON round-trip', () =>
+// 28. RockFormation 2.0: 8 Atomic Single Base Rocks + Composable Per-Layer Spline/Array/Splatter/Scatter Generators + Single Viewport CSS
+Suite('28. RockFormation 2.0: 8 atomic single base rocks (zero arches), per-layer Spline/Array/Splatter/Scatter generators, CSG stack, QEF mesh & viewport CSS', () =>
 {
-    assert.equal(ROCK2_NODE_CATALOG.length, 9, 'RockFormation 2.0 must expose all 9 plain basic rock generator nodes');
+    // 0. Assert zero arches in base catalog or starter stacks, and assert CSS pane exclusivity (no split viewport!)
+    assert.equal(ROCK2_NODE_CATALOG.length, 8, 'RockFormation 2.0 must expose 8 atomic plain base rock nodes (zero arches)');
+    assert.equal(ROCK2_NODE_CATALOG.some(N => N.type.includes('arch') || N.name.toLowerCase().includes('arch')), false,
+        'RockFormation 2.0 catalog must contain zero arch nodes');
+    assert.equal(ROCK2_STARTER_STACKS.some(S => S.id.includes('arch') || S.name.toLowerCase().includes('arch')), false,
+        'RockFormation 2.0 starter stacks must contain zero arch presets');
 
-    // 1. Validate every single foundational Plain Rock Generator Node Type individually
+    const CssText = readFileSync(new URL('./TerrainWorldEditor.css', import.meta.url), 'utf8');
+    const PaneFracBlock = CssText.match(/#PaneFracture,\s*#CanvasFracture\s*\{[^}]*\}/);
+    const PaneRock2Block = CssText.match(/#PaneRock2,\s*#CanvasRock2\s*\{[^}]*\}/);
+    assert.ok(PaneFracBlock && !/display\s*:\s*block/.test(PaneFracBlock[0]),
+        '#PaneFracture must NOT set display:block on #ID selector (prevents split viewport bug)');
+    assert.ok(PaneRock2Block && !/display\s*:\s*block/.test(PaneRock2Block[0]),
+        '#PaneRock2 must NOT set display:block on #ID selector (prevents split viewport bug)');
+    assert.ok(/\.terrain-stage-grid\.mode-rock2[\s\S]*?\.stage-pane-fracture\s*\{\s*display:\s*none\s*!important/.test(CssText),
+        'mode-rock2 must hide .stage-pane-fracture with !important');
+
+    // 1. Validate every Base Rock Node is a SINGLE atomic plain rock when generator='none' (zero hardcoded multi-rock loops!)
     for (const Node of ROCK2_NODE_CATALOG)
     {
         const Doc = {
             name: `Test ${Node.name}`,
-            layers: [createRock2Layer(Node.type, { seed: 4242 })]
+            layers: [createRock2Layer(Node.type, { seed: 4242, generator: createRock2Generator('none') })]
         };
         const Compiled = compileRock2Stack(Doc);
         assert.equal(Compiled.compiledLayers.length, 1, `${Node.type}: must compile 1 active layer`);
-        assert.ok(Compiled.primitives.length >= 1, `${Node.type}: must emit >= 1 plain SDF primitive`);
+        assert.equal(Compiled.primitives.length, 1, `${Node.type}: base rock without generator must emit EXACTLY 1 plain rock primitive`);
 
-        // Sample grid inside bounds to verify genuine solid interior (< -0.05) and clean exterior (> +0.25) with zero NaN
+        // Verify all UI controls in Node.controlGroups map to real defaults (zero dead controls!)
+        for (const Grp of Node.controlGroups)
+        {
+            for (const Ctrl of Grp.controls)
+            {
+                assert.ok(Object.prototype.hasOwnProperty.call(Node.defaults, Ctrl.key),
+                    `${Node.type} control "${Ctrl.key}" must exist in defaults`);
+            }
+        }
+
+        // Sample grid inside bounds to verify genuine solid interior (< -0.04) and clean exterior (> +0.25) with zero NaN
         const B = Compiled.bounds;
         let MinD = 1e9, MaxD = -1e9;
         for (let iz = 0; iz < 11; iz++)
@@ -1312,18 +1340,40 @@ Suite('28. RockFormation 2.0: all 9 plain basic rock nodes, 5 CSG combine modes,
         assert.ok(MinD < -0.04, `${Node.type}: must contain solid negative SDF interior (minD=${MinD.toFixed(4)})`);
         assert.ok(MaxD > 0.25, `${Node.type}: must have positive exterior SDF field (maxD=${MaxD.toFixed(4)})`);
 
-        // Verify GPU texture buffer packing has zero NaN/Infinity and matches exact layout dimensions
         const Packed = packRock2StackGpuBuffers(Compiled);
-        assert.equal(Packed.layerTexWidth, 2);
-        assert.equal(Packed.blockTexWidth, 10);
-        assert.equal(Packed.planeTexWidth, 1);
+        assert.equal(Packed.numBlocks, 1);
         for (let k = 0; k < Packed.blockTexData.length; k++)
         {
             assert.ok(Number.isFinite(Packed.blockTexData[k]), `${Node.type}: packed blockTexData must be finite`);
         }
     }
 
-    // 2. Validate Composable CSG Layer Stack Operations: union, smooth_union, chamfer_union, subtract, intersect + Solo/Mute
+    // 2. Validate Composable Per-Layer Generators (`spline`, `array`, `splatter`, `scatter`) on arbitrary Base Rocks!
+    const GenTests = [
+        ['cliff_block', createRock2Generator('spline', { splineShape: 'arc', count: 6, intraBlend: 0.24 }), 6],
+        ['smooth_rock', createRock2Generator('spline', { splineShape: 'scurve', count: 7, intraBlend: 0.0 }), 7],
+        ['spire_pinnacle', createRock2Generator('spline', { splineShape: 'ring', count: 8, ringRadius: 4.0 }), 8],
+        ['big_boulder', createRock2Generator('spline', { splineShape: 'custom', count: 5 }), 5],
+        ['rock_slab', createRock2Generator('array', { arrayMode: 'linear', countX: 4, stepY: 0.7, stepZ: -1.4 }), 4],
+        ['small_rock', createRock2Generator('array', { arrayMode: 'grid2d', countX: 3, countZ: 4 }), 12],
+        ['cliff_block', createRock2Generator('array', { arrayMode: 'grid3d', countX: 2, countY: 2, countZ: 2 }), 8],
+        ['basalt_column', createRock2Generator('array', { arrayMode: 'hex', hexRings: 2 }), 19],
+        ['spire_pinnacle', createRock2Generator('array', { arrayMode: 'radial', radialCount: 9 }), 9],
+        ['small_rock', createRock2Generator('splatter', { splatterMode: 'burst', count: 14 }), 14],
+        ['small_rock', createRock2Generator('splatter', { splatterMode: 'talus_fan', count: 12 }), 12],
+        ['smooth_rock', createRock2Generator('splatter', { splatterMode: 'clusters', count: 15 }), 15],
+        ['basalt_column', createRock2Generator('splatter', { splatterMode: 'rings', count: 10 }), 10],
+        ['small_rock', createRock2Generator('scatter', { count: 18, scatterWidth: 7.0, scatterLength: 6.0 }), 18]
+    ];
+    for (const [BaseType, Gen, ExpectedCount] of GenTests)
+    {
+        const Eval = evaluateRock2GeneratorInstances(Gen, { seed: 101, width: 1.2, height: 1.0, length: 1.2 });
+        assert.equal(Eval.instances.length, ExpectedCount, `${BaseType} + ${Gen.type}: expected ${ExpectedCount} instances`);
+        const Comp = compileRock2Stack({ layers: [createRock2Layer(BaseType, { generator: Gen })] });
+        assert.equal(Comp.primitives.length, ExpectedCount, `${BaseType} + ${Gen.type}: must compile ${ExpectedCount} SDF primitives`);
+    }
+
+    // 3. Validate Composable CSG Layer Stack Operations: union, smooth_union, chamfer_union, subtract, intersect + Solo/Mute
     const BaseBoulder = createRock2Layer('big_boulder', {
         name: 'Base Boulder',
         combineMode: 'union',
@@ -1346,17 +1396,14 @@ Suite('28. RockFormation 2.0: all 9 plain basic rock nodes, 5 CSG combine modes,
     });
 
     const StackSub = compileRock2Stack({ name: 'CSG Stack', layers: [BaseBoulder, CutterCobble, TopSpire] });
-    // Center of CutterCobble at (0, 1.8, 0) must be carved open (> 0) by Subtract!
     const DCarved = evalRock2StackSdf(StackSub, 0.0, 1.8, 0.0);
     assert.ok(DCarved > 0.05, `Subtract layer must carve open cavity inside base boulder (got d=${DCarved.toFixed(3)})`);
 
-    // Muting CutterCobble restores solid rock at (0, 1.8, 0)!
     CutterCobble.enabled = false;
     const StackMuted = compileRock2Stack({ name: 'Muted Cutter', layers: [BaseBoulder, CutterCobble, TopSpire] });
     assert.ok(evalRock2StackSdf(StackMuted, 0.0, 1.8, 0.0) < -0.25, 'Muting subtract layer must restore solid base boulder');
     CutterCobble.enabled = true;
 
-    // Soloing TopSpire isolates only TopSpire (x = -1.6 inside BaseBoulder becomes air > 0, x = +1.8 inside TopSpire is solid < 0)
     TopSpire.solo = true;
     const StackSolo = compileRock2Stack({ name: 'Solo Spire', layers: [BaseBoulder, CutterCobble, TopSpire] });
     assert.equal(StackSolo.compiledLayers.length, 1, 'Solo flag must compile only the soloed layer');
@@ -1364,17 +1411,20 @@ Suite('28. RockFormation 2.0: all 9 plain basic rock nodes, 5 CSG combine modes,
     assert.ok(evalRock2StackSdf(StackSolo, 1.8, 1.5, 0.0) < -0.15, 'Soloed spire must remain solid stone');
     TopSpire.solo = false;
 
-    // Chamfer Union & Intersect modes also evaluate cleanly
     const ChamferLayer = cloneRock2Layer(TopSpire);
     ChamferLayer.combineMode = 'chamfer_union';
     const IntersectLayer = createRock2Layer('rock_slab', { combineMode: 'intersect', blendRadius: 0.1, width: 6, height: 2.5, length: 6 });
     const StackAllOps = compileRock2Stack({ name: 'All Ops', layers: [BaseBoulder, ChamferLayer, IntersectLayer] });
     assert.ok(Number.isFinite(evalRock2StackSdf(StackAllOps, 0.2, 1.0, 0.1)), 'Chamfer & Intersect stack modes must evaluate finite SDF');
 
-    // 3. Validate Starter Stacks, Pure-SDF QEF Dual-Contour Mesh Extraction (0 Mesh->SDF), GLB/OBJ/STL export & JSON round-trip
-    assert.ok(ROCK2_STARTER_STACKS.length >= 7, 'Must provide >= 7 starter plain-rock stacks');
+    // 4. Validate Starter Stacks, Pure-SDF QEF Dual-Contour Mesh Extraction (0 Mesh->SDF), GLB/OBJ/STL export & JSON round-trip
+    assert.equal(ROCK2_STARTER_STACKS.length, 7, 'Must provide 7 starter stacks (single rocks + Spline/Array/Splatter/Scatter)');
     const OutcropDoc = createDefaultRock2Document('stack-cliff-outcrop');
     const OutcropCompiled = compileRock2Stack(OutcropDoc);
+    assert.equal(OutcropCompiled.compiledLayers[0].generatorType, 'spline');
+    assert.equal(OutcropCompiled.compiledLayers[1].generatorType, 'none');
+    assert.equal(OutcropCompiled.compiledLayers[2].generatorType, 'splatter');
+
     const { mesh, sdfStats } = bakeRock2StackQefMesh(OutcropCompiled, { resolution: 54 });
     assert.equal(sdfStats.meshToSdfCount, 0, 'RockFormation 2.0 must perform 0 Mesh->SDF conversions');
     assert.ok(sdfStats.triangles > 1200, `Multi-layer plain rock stack must extract clean QEF mesh (got ${sdfStats.triangles} tris)`);
@@ -1387,8 +1437,8 @@ Suite('28. RockFormation 2.0: all 9 plain basic rock nodes, 5 CSG combine modes,
 
     const JsonRoundTrip = deserializeRock2Document(JSON.parse(JSON.stringify(serializeRock2Document(OutcropDoc))));
     assert.equal(JsonRoundTrip.layers.length, OutcropDoc.layers.length, 'JSON round-trip must preserve layer count');
-    assert.equal(JsonRoundTrip.layers[1].combineMode, 'smooth_union', 'JSON round-trip must preserve layer combineMode');
-    assert.equal(JsonRoundTrip.layers[0].params.cliffProfile, 'stepped', 'JSON round-trip must preserve node params');
+    assert.equal(JsonRoundTrip.layers[0].generator.type, 'spline', 'JSON round-trip must preserve Spline generator');
+    assert.equal(JsonRoundTrip.layers[2].generator.type, 'splatter', 'JSON round-trip must preserve Splatter generator');
 });
 
 console.log(`\nAll ${Passed}/28 Open-World SDF Terrain & Pure-SDF Rock Formation 1.0 + 2.0 Studio validation suites passed!`);
