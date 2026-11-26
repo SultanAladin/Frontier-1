@@ -51,13 +51,13 @@ import {
     createDefaultFractureParams,
     buildFracturedFormation,
     bakeFracturedFormationQefMesh
-} from './Engine/RockCliff/PureSdfFractureEngine.js';
+} from './Engine/RockCliff/PureSdfFractureEngine.js?v=20261126c';
 import {
     exportFractureMeshObj,
     exportFractureMeshBinaryStl,
     exportFractureMeshGlb
-} from './Engine/RockCliff/Core/QefDualContour.js';
-import { FractureLabViewport } from './Engine/RockCliff/FractureLabViewport.js';
+} from './Engine/RockCliff/Core/QefDualContour.js?v=20261126c';
+import { FractureLabViewport } from './Engine/RockCliff/FractureLabViewport.js?v=20261126c';
 
 const MASK_PALETTE = ['#58b982', '#5ac8fa', '#a3d977', '#e8c27a', '#f0935b', '#d6a2e8'];
 
@@ -2735,7 +2735,7 @@ class TerrainWorldStudioApp
     /*======================================================================================================================================
                              PURE-SDF BRITTLE FRACTURE, THERMAL CRAZING & QEF DUAL-CONTOUR LAB CONTROLLER
     ======================================================================================================================================*/
-    _rebuildFractureFormationNow(Reframe = false, StructuralChanged = true)
+    _rebuildFractureFormationNow(Reframe = false, StructuralChanged = true, CutawayOnly = false)
     {
         if (!this.fracture) return;
         let F = this.fracture.formation;
@@ -2746,7 +2746,6 @@ class TerrainWorldStudioApp
         }
         else
         {
-            // Fast path: update params & sunDir in place without rebuilding polyhedral blocks or 3D GPU volumes!
             F.params = { ...F.params, ...this.fracture.params };
             const Az = (F.params.sunAzimuthDeg ?? 48) * (Math.PI / 180);
             const El = (F.params.sunElevationDeg ?? 40) * (Math.PI / 180);
@@ -2756,7 +2755,7 @@ class TerrainWorldStudioApp
 
         if (this.fractureView)
         {
-            this.fractureView.setFormation(F, StructuralChanged);
+            this.fractureView.setFormation(F, StructuralChanged, CutawayOnly);
             if (Reframe) this.fractureView.frameFormation();
         }
 
@@ -2882,7 +2881,7 @@ class TerrainWorldStudioApp
         document.getElementById('frac-cutaway-btn')?.addEventListener('click', () =>
         {
             this.fracture.params.cutawayEnabled = !this.fracture.params.cutawayEnabled;
-            this._rebuildFractureFormationNow(false, false);
+            this._rebuildFractureFormationNow(false, false, true);
             this._syncFractureToolbarButtons();
             this.rebuildInspector();
         });
@@ -3187,7 +3186,7 @@ class TerrainWorldStudioApp
             if (Val === 'off') P.cutawayEnabled = false;
             else { P.cutawayEnabled = true; P.cutawayAxis = Val === 'x' ? 0 : 2; }
             this._syncFractureToolbarButtons();
-            OnChangeShader();
+            this._rebuildFractureFormationNow(false, false, true);
             this.rebuildInspector();
         }));
         ExfolGroup.Body.appendChild(MakeSliderPillRow('Cutaway Slice Offset', -2.6, 2.6, 0.02, P.cutawayOffset, 2, 'm', V =>
@@ -3198,7 +3197,7 @@ class TerrainWorldStudioApp
                 P.cutawayEnabled = true;
                 this._syncFractureToolbarButtons();
             }
-            OnChangeShader();
+            this._rebuildFractureFormationNow(false, false, true);
         }, OnCommit));
         Content.appendChild(ExfolGroup.Group);
 

@@ -3,7 +3,8 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta http-equiv="refresh" content="0; url=./TerrainWorldEditor/" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="refresh" content="0; url=./TerrainWorldEditor/?v=20261126c" />
     <title>Frontier Experimental Studios</title>
     <style>
         body {
@@ -30,7 +31,8 @@
     </style>
     <script>
         if (!window.location.search.includes('hub')) {
-            window.location.replace('./TerrainWorldEditor/' + window.location.search);
+            const sep = window.location.search ? (window.location.search + '&v=20261126c') : '?v=20261126c';
+            window.location.replace('./TerrainWorldEditor/' + sep);
         }
     </script>
 </head>

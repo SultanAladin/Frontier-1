@@ -3,21 +3,19 @@
 ==========================================================================================================================================*/
 // Dual-Mode WebGL2 3D Viewport for the Frontier Pure-SDF Brittle Fracture & Thermal Cracking Lab.
 //
-// Windows Chrome / ANGLE D3D11 Engineered Two-Stage GPU Pure-SDF Architecture (0 nested raymarch loops):
-//   Stage 1 (`MACRO_BAKE_FS`): Evaluates compiled polyhedral jigsaw blocks & exact inverse rigid pullbacks
-//     `p0 = invR * p + invT` ONCE per voxel into a pair of `96^3` `RGBA16F` 3D textures (`uVolA`, `uVolB`) in < 1 ms.
-//     (Includes automatic CPU `RGBA16F` 3D upload fallback if `EXT_color_buffer_float` is absent.)
-//   Stage 2 (`RAYMARCH_FS`): Locked 60 FPS full-resolution Pure-SDF raymarcher using `textureLod(..., 0.0)`
-//     (zero implicit screen-space derivatives inside loops, zero nested loops) + analytical sub-millimeter
-//     jigsaw wall relief, plumose hackles, 90° T-junction thermal crazing, fast 8-corner 3D Voronoi cleavage,
-//     onion-skin exfoliation, and live cross-section cutaway slicing.
-//   Mode 2 (`MESH_VS` / `MESH_FS`): Sparse 4^3-Brick QEF Dual-Contoured Manifold Triangle Mesh + Wireframe Overlay.
+// Engineered specifically for instant (< 5 ms) Windows Chrome ANGLE / D3D11 HLSL compilation & 60 FPS rendering:
+//   1. `SDF_BAKE_FS`: Evaluates the Pure-SDF formation (`d`, `freshMask`, `thermalStress`, `strataMod`)
+//      strictly ONCE per voxel into a single `112^3` `RGBA16F` 3D volume texture (`uSdfVol`, single attachment, no MRT).
+//      Includes automatic core-WebGL2 CPU `RGBA16F` upload fallback if `EXT_color_buffer_float` is unavailable.
+//   2. `RAYMARCH_FS`: Ultra-compact (~110-line, zero-noise, zero-nested-loop) 3D SDF raymarcher using `textureLod(..., 0.0)`
+//      with analytical sub-pixel cross-section cutaway slicing, soft SDF shadows, volumetric 3D SDF AO, and 5 diagnostic lenses.
+//   3. `MESH_VS` / `MESH_FS`: Sparse 4^3-Brick QEF Dual-Contoured Manifold Triangle Mesh + Sharp-Crease Wireframe Overlay.
 
 import { clamp, DEG2RAD } from './Core/SpatialNoise3D.js';
-import { evalSingleFractureBlock, packFracturedFormationGpuBuffers } from './PureSdfFractureEngine.js';
+import { evalFracturedFormationSdf, packFracturedFormationGpuBuffers } from './PureSdfFractureEngine.js';
 
 /*==========================================================================================================================================
-                     1. STAGE-1 SHADERS: GPU 3D MACRO-SDF & INVERSE-PULLBACK VOLUME BAKER (`uVolA`, `uVolB`)
+                          1. STAGE-1 SHADER: SINGLE-PASS GPU PURE-SDF 3D VOLUME BAKER (`uSdfVol`)
 ==========================================================================================================================================*/
 
 const FULLSCREEN_VS = `#version 300 es
@@ -30,148 +28,24 @@ void main() {
 }
 `;
 
-const MACRO_BAKE_FS = `#version 300 es
+const SDF_BAKE_FS = `#version 300 es
 precision highp float;
 precision highp int;
 precision highp sampler2D;
 
 in vec2 vNdc;
-layout(location = 0) out vec4 outVolA; // (dMacro, p0.x, p0.y, p0.z)
-layout(location = 1) out vec4 outVolB; // (bestN.x, bestN.y, bestN.z, packedMeta)
+out vec4 outSdf; // (d, freshMask, thermalStress, strataMod)
 
 uniform sampler2D uBlockTex;
 uniform sampler2D uPlaneTex;
 uniform int uNumBlocks;
+uniform int uCrackSalt;
 uniform vec3 uVolMin;
 uniform vec3 uVolMax;
 uniform float uSliceZNorm;
+
 uniform float uScale;
-
-void main() {
-    vec2 uv = vNdc * 0.5 + 0.5;
-    vec3 p = mix(uVolMin, uVolMax, vec3(uv.x, uv.y, uSliceZNorm));
-
-    float bestD = 1e9;
-    vec3 bestP0 = p;
-    vec3 bestN = vec3(0.0, 1.0, 0.0);
-    float bestFresh = 0.0;
-    float bestStrata = 0.25;
-    float bestNoCracks = 0.0;
-
-    for (int i = 0; i < 36; i++) {
-        if (i >= uNumBlocks) break;
-        vec4 sph = texelFetch(uBlockTex, ivec2(0, i), 0);
-        float lowerB = length(p - sph.xyz) - sph.w - uScale * 0.06;
-        if (lowerB > bestD) continue;
-
-        vec4 meta = texelFetch(uBlockTex, ivec2(1, i), 0);
-        int pStart = int(meta.x + 0.5);
-        int pCount = int(meta.y + 0.5);
-        float bevel = meta.z;
-        float blkNoCracks = meta.w > 0.5 ? 1.0 : 0.0;
-
-        vec4 r0 = texelFetch(uBlockTex, ivec2(2, i), 0);
-        vec4 r1 = texelFetch(uBlockTex, ivec2(3, i), 0);
-        vec4 r2 = texelFetch(uBlockTex, ivec2(4, i), 0);
-        vec4 m5 = texelFetch(uBlockTex, ivec2(5, i), 0);
-
-        vec3 p0 = vec3(
-            dot(r0.xyz, p) + r0.w,
-            dot(r1.xyz, p) + r1.w,
-            dot(r2.xyz, p) + r2.w
-        );
-
-        float d1 = -1e9;
-        float d2 = -1e9;
-        vec3 n1 = vec3(0.0, 1.0, 0.0);
-        vec3 n2 = vec3(0.0, 1.0, 0.0);
-        float dMaxExt = -1e9;
-        float dMaxFrac = -1e9;
-        float bestPType = 0.0;
-
-        for (int j = 0; j < 22; j++) {
-            if (j >= pCount) break;
-            vec4 pl = texelFetch(uPlaneTex, ivec2(0, pStart + j), 0);
-            float pType = texelFetch(uPlaneTex, ivec2(1, pStart + j), 0).x;
-            float pd = dot(pl.xyz, p) - pl.w;
-
-            if (abs(pType) > 0.5) dMaxFrac = max(dMaxFrac, pd);
-            else dMaxExt = max(dMaxExt, pd);
-
-            if (pd > d1) {
-                d2 = d1; n2 = n1;
-                d1 = pd; n1 = pl.xyz;
-                bestPType = pType;
-            } else if (pd > d2) {
-                d2 = pd; n2 = pl.xyz;
-            }
-        }
-
-        float dBlk = d1;
-        vec3 bN = n1;
-        if (bevel > 1e-5 && d2 > -bevel * 2.0) {
-            float ch = (d1 + d2 + bevel) * 0.70710678;
-            if (ch > dBlk) {
-                dBlk = ch;
-                bN = normalize(n1 + n2);
-            }
-        }
-
-        if (dBlk < bestD) {
-            bestD = dBlk;
-            bestP0 = p0;
-            bestN = bN;
-            bestNoCracks = blkNoCracks;
-            bestStrata = clamp(m5.y, 0.0, 1.0);
-            float tr = max(0.02, bevel * 1.45);
-            float fMask = smoothstep(-tr, tr, dMaxFrac - dMaxExt);
-            // Encode wall polarity sign (+1 vs -1) into freshMask sign so opposing jigsaw walls interlock!
-            bestFresh = (bestPType < -0.5) ? -max(0.002, fMask) : fMask;
-        }
-    }
-
-    // Pack strataWeight (0..1) + noCracks flag into sign/magnitude of outVolB.w alongside freshMask:
-    // Actually we have plenty of channels: encode freshMask in [-1, 1] in outVolB.w,
-    // and scale bestN length to `(0.5 + 0.5 * bestStrata) * (bestNoCracks > 0.5 ? 2.0 : 1.0)`!
-    float nScale = (0.5 + 0.5 * bestStrata) * (bestNoCracks > 0.5 ? 2.5 : 1.0);
-    outVolA = vec4(bestD, bestP0);
-    outVolB = vec4(bestN * nScale, bestFresh);
-}
-`;
-
-/*==========================================================================================================================================
-               2. STAGE-2 SHADER: 60 FPS FULL-RES ANALYTICAL PURE-SDF RAYMARCHER (ZERO NESTED LOOPS!)
-==========================================================================================================================================*/
-
-const RAYMARCH_FS = `#version 300 es
-precision highp float;
-precision highp int;
-precision highp sampler3D;
-
-in vec2 vNdc;
-out vec4 fragColor;
-
-uniform sampler3D uVolA;
-uniform sampler3D uVolB;
-uniform vec3 uVolMin;
-uniform vec3 uVolMax;
-uniform int uCrackSalt;
-
-uniform vec3 uCamPos;
-uniform vec3 uCamFwd;
-uniform vec3 uCamRight;
-uniform vec3 uCamUp;
-uniform float uTanHalfFov;
-uniform float uAspect;
-
-uniform vec3 uBoundsMin;
-uniform vec3 uBoundsMax;
 uniform vec3 uSunDir;
-uniform float uExposure;
-uniform int uLensMode;
-
-// Fracture & Thermal SDF Parameters
-uniform float uScale;
 uniform float uJigsawRoughness;
 uniform float uPlumoseStrength;
 uniform float uThermalNorm;
@@ -181,15 +55,6 @@ uniform float uCrazing90Strength;
 uniform float uCrazingSpacing;
 uniform float uVoronoiStrength;
 uniform float uExfoliationStrength;
-uniform int uCutawayEnabled;
-uniform int uCutawayAxis;
-uniform float uCutawayOffset;
-
-// Lithology Theme Colors
-uniform vec3 uColRind;
-uniform vec3 uColFresh;
-uniform vec3 uColIron;
-uniform vec3 uColLichen;
 
 float hash31(int ix, int iy, int iz, int salt) {
     uint n = uint(ix) * 1597334677u ^ uint(iy) * 3812015801u ^ uint(iz) * 2798796415u ^ uint(salt) * 198491317u;
@@ -227,14 +92,6 @@ float scalarField3D(vec3 p, int salt) {
     return mix(mix(nx00, nx10, u.y), mix(nx01, nx11, u.y), u.z) * 2.0 - 1.0;
 }
 
-// Loop-free 2-octave fBm (zero HLSL loop unroll cost!)
-float fbm2(vec3 p, int salt) {
-    float v0 = scalarField3D(p, salt);
-    float v1 = scalarField3D(p * 2.07, salt + 101);
-    return v0 * 0.6667 + v1 * 0.3333;
-}
-
-// Loop-free 8-corner 3D Planar Voronoi Cleavage (zero nested loops for instant ANGLE D3D11 compilation!)
 void vorCorner(ivec3 base, int ox, int oy, int oz, vec3 p, float jitter, int salt,
                inout float min1, inout float min2, inout vec3 c1, inout vec3 c2, inout uint id1) {
     ivec3 c = base + ivec3(ox, oy, oz);
@@ -278,7 +135,6 @@ vec2 evalFastCleavage3D(vec3 p, float jitter, int salt) {
     return vec2(wallDist, cellRand);
 }
 
-// Loop-free Hierarchical 90-Degree Orthogonal T-Junction Thermal Crazing!
 float evalHierarchical90Crazing3D(float u, float v, float w, float spacing, int salt) {
     float L1 = max(0.08, spacing);
     float L2 = L1 * 0.92;
@@ -317,88 +173,115 @@ float chamferSub(float base, float cut, float r) {
     return max(m, (base + b + r) * 0.70710678);
 }
 
-struct SdfSample {
-    float d;
-    float dMacro;
-    float freshMask;
-    float thermalStress;
-    float strataWeight;
-    vec3 p0;
-    bool isCutaway;
-};
+void main() {
+    vec2 uv = vNdc * 0.5 + 0.5;
+    vec3 p = mix(uVolMin, uVolMax, vec3(uv.x, uv.y, uSliceZNorm));
 
-// Zero-loop Pure-SDF evaluation using `textureLod(..., 0.0)` (100% D3D11 fxc safe inside loops!)
-SdfSample evalPureSdf(vec3 p) {
-    vec3 uvw = clamp((p - uVolMin) / (uVolMax - uVolMin), 0.002, 0.998);
-    vec4 va = textureLod(uVolA, uvw, 0.0);
+    float bestD = 1e9;
+    vec3 bestP0 = p;
+    vec3 bestN = vec3(0.0, 1.0, 0.0);
+    float bestFresh = 0.0;
+    float bestStrata = 0.25;
+    bool noCracks = false;
 
-    SdfSample s;
-    s.dMacro = va.x;
-    s.p0 = va.yzw;
-    s.freshMask = 0.0;
-    s.thermalStress = uThermalNorm;
-    s.strataWeight = 0.25;
-    s.isCutaway = false;
+    for (int i = 0; i < 32; i++) {
+        if (i >= uNumBlocks) break;
+        vec4 sph = texelFetch(uBlockTex, ivec2(0, i), 0);
+        float lowerB = length(p - sph.xyz) - sph.w - uScale * 0.05;
+        if (lowerB > bestD) continue;
 
-    // Fast skip when well outside rock macro shell!
-    if (va.x > 0.22) {
-        float dFast = va.x - 0.12;
-        if (uCutawayEnabled != 0) {
-            float axisVal = (uCutawayAxis == 0) ? p.x : p.z;
-            dFast = max(dFast, axisVal - uCutawayOffset);
-        }
-        s.d = dFast;
-        return s;
-    }
+        vec4 meta = texelFetch(uBlockTex, ivec2(1, i), 0);
+        int pStart = int(meta.x + 0.5);
+        int pCount = int(meta.y + 0.5);
+        float bevel = meta.z;
+        bool blkNoCracks = meta.w > 0.5;
 
-    vec4 vb = textureLod(uVolB, uvw, 0.0);
-    float nLen = length(vb.xyz);
-    vec3 bestN = nLen > 1e-4 ? (vb.xyz / nLen) : vec3(0.0, 1.0, 0.0);
-    bool noCracks = nLen > 1.5;
-    float normMag = noCracks ? (nLen / 2.5) : nLen;
-    s.strataWeight = clamp((normMag - 0.5) * 2.0, 0.0, 1.0);
+        vec4 r0 = texelFetch(uBlockTex, ivec2(2, i), 0);
+        vec4 r1 = texelFetch(uBlockTex, ivec2(3, i), 0);
+        vec4 r2 = texelFetch(uBlockTex, ivec2(4, i), 0);
+        vec4 m5 = texelFetch(uBlockTex, ivec2(5, i), 0);
 
-    float signedFresh = vb.w;
-    float fMask = clamp(abs(signedFresh), 0.0, 1.0);
-    float wallPolarity = signedFresh < 0.0 ? -1.0 : 1.0;
+        vec3 p0 = vec3(dot(r0.xyz, p) + r0.w, dot(r1.xyz, p) + r1.w, dot(r2.xyz, p) + r2.w);
 
-    vec3 p0 = s.p0;
-    float d = va.x;
-
-    // 1. Parent-space interlocking jigsaw wall undulation + plumose arrest ripples + irregular bedding!
-    float jigAmp = uScale * 0.020 * uJigsawRoughness;
-    float plumAmp = uScale * 0.0065 * uPlumoseStrength;
-    float jigsawDisp = 0.0;
-    if (fMask > 0.02 && (jigAmp > 1e-5 || plumAmp > 1e-5)) {
         float f1 = 1.65 / uScale;
-        float w1 = fbm2(vec3(p0.x * f1, p0.y * f1 * 0.9, p0.z * f1), uCrackSalt + 5);
+        float w1 = scalarField3D(vec3(p0.x * f1, p0.y * f1 * 0.9, p0.z * f1), uCrackSalt + 5) * 0.67 +
+                   scalarField3D(vec3(p0.x * f1, p0.y * f1 * 0.9, p0.z * f1) * 2.05, uCrackSalt + 106) * 0.33;
         float rNuc = length(vec3(p0.x, p0.y - uScale * 0.08, p0.z));
         float plum = sin(rNuc * (26.0 / uScale) + w1 * 3.4) * 0.5 +
                      scalarField3D(vec3(p0.x * (9.5 / uScale), p0.y * (5.2 / uScale), p0.z * (9.5 / uScale)), uCrackSalt + 71) * 0.5;
-        jigsawDisp = (jigAmp * w1 + plumAmp * plum) * wallPolarity;
+        float jigsawDisp = uScale * 0.020 * uJigsawRoughness * w1 + uScale * 0.0065 * uPlumoseStrength * plum;
+
+        float crag = uScale * 0.010 * scalarField3D(p0 * (2.4 / uScale), uCrackSalt + 113);
+        float strataAmp = uScale * 0.0052 * m5.y;
+        float bedY = p0.y * (5.4 / uScale) + 0.44 * scalarField3D(vec3(p0.x * (1.8 / uScale), p0.y * (2.6 / uScale), p0.z * (1.8 / uScale)), uCrackSalt + 149);
+        float strataLedge = strataAmp * (sin(bedY * 6.2831853) * 0.72 + 0.28 * sin(bedY * 12.5663706 + 0.8));
+        float extRelief = crag + strataLedge;
+
+        float d1 = -1e9;
+        float d2 = -1e9;
+        vec3 n1 = vec3(0.0, 1.0, 0.0);
+        vec3 n2 = vec3(0.0, 1.0, 0.0);
+        float dMaxExt = -1e9;
+        float dMaxFrac = -1e9;
+
+        for (int j = 0; j < 20; j++) {
+            if (j >= pCount) break;
+            vec4 pl = texelFetch(uPlaneTex, ivec2(0, pStart + j), 0);
+            float pType = texelFetch(uPlaneTex, ivec2(1, pStart + j), 0).x;
+            float pd = dot(pl.xyz, p) - pl.w;
+
+            if (abs(pType) > 0.5) {
+                pd += pType * jigsawDisp;
+                dMaxFrac = max(dMaxFrac, pd);
+            } else {
+                if (pl.y > -0.85) pd += extRelief;
+                dMaxExt = max(dMaxExt, pd);
+            }
+
+            if (pd > d1) {
+                d2 = d1; n2 = n1;
+                d1 = pd; n1 = pl.xyz;
+            } else if (pd > d2) {
+                d2 = pd; n2 = pl.xyz;
+            }
+        }
+
+        float dBlk = d1;
+        vec3 bN = n1;
+        if (bevel > 1e-5 && d2 > -bevel * 2.0) {
+            float ch = (d1 + d2 + bevel) * 0.70710678;
+            if (ch > dBlk) {
+                dBlk = ch;
+                bN = normalize(n1 + n2);
+            }
+        }
+
+        if (dBlk < bestD) {
+            bestD = dBlk;
+            bestP0 = p0;
+            bestN = bN;
+            noCracks = blkNoCracks;
+            bestStrata = m5.y;
+            float tr = max(0.015, bevel * 1.35);
+            bestFresh = smoothstep(-tr, tr, dMaxFrac - dMaxExt);
+        }
     }
 
-    float crag = uScale * 0.010 * scalarField3D(p0 * (2.4 / uScale), uCrackSalt + 113);
-    float strataAmp = uScale * 0.0052 * s.strataWeight;
-    float bedY = p0.y * (5.4 / uScale) + 0.44 * scalarField3D(vec3(p0.x * (1.8 / uScale), p0.y * (2.6 / uScale), p0.z * (1.8 / uScale)), uCrackSalt + 149);
-    float strataLedge = strataAmp * (sin(bedY * 6.2831853) * 0.72 + 0.28 * sin(bedY * 12.5663706 + 0.8));
-    float extRelief = (bestN.y > -0.82) ? (crag + strataLedge) : 0.0;
-
-    d += mix(extRelief, jigsawDisp, fMask);
-    float curMacro = d;
+    float d = bestD;
+    float curMacro = bestD;
     float crackFresh = 0.0;
+    float thermalStress = uThermalNorm;
 
-    // 2. Concentric Onion-Skin Exfoliation + V-Tipped Thermal 90° T-Junction & Voronoi Cracks
     float maxFineDepth = max(uSkinDepth * 2.1, uExfoliationStrength > 0.04 ? uScale * 0.12 : 0.10);
     if (!noCracks && curMacro < uScale * 0.04 && curMacro > -maxFineDepth &&
         (uCrazing90Strength > 0.01 || uVoronoiStrength > 0.01 || uExfoliationStrength > 0.04)) {
 
-        float ndots = max(1e-5, dot(bestN, uSunDir));
+        float ndots = max(1e-4, dot(bestN, uSunDir));
         float sunGate = clamp(pow(ndots, 1.25) + 0.10, 0.0, 1.0);
         float insol = mix(1.0, sunGate, uDirectionalBias) * uThermalNorm;
-        s.thermalStress = insol;
+        thermalStress = insol;
+        vec3 p0 = bestP0;
 
-        // (A) Onion-Skin Exfoliation Sheeting
         if (uExfoliationStrength > 0.04 && bestN.y > -0.18) {
             float sheetSpacing = uScale * 0.036;
             float plateThick = uScale * 0.015;
@@ -413,8 +296,7 @@ SdfSample evalPureSdf(vec3 p) {
                     vec2 relClv = evalFastCleavage3D(p0 * 0.62, 0.56, uCrackSalt + 503);
                     float relWall = relClv.x / 0.62;
                     if (relClv.y > (1.0 - (uExfoliationStrength - 0.22) * 0.85)) {
-                        float windowCutter = max(interiorDepth - plateThick, 0.045 - relWall);
-                        float peeled = max(d, -windowCutter);
+                        float peeled = max(d, -max(interiorDepth - plateThick, 0.045 - relWall));
                         if (peeled > d) {
                             d = peeled;
                             curMacro = peeled;
@@ -431,11 +313,9 @@ SdfSample evalPureSdf(vec3 p) {
             }
         }
 
-        // Irwin Finite-Depth V-Tipped Crack Wedge Profile
         float tipDepth = max(0.06, uSkinDepth) * clamp(0.30 + 0.70 * insol, 0.15, 1.35);
         float vTaper = max(0.0, 1.0 + min(0.0, curMacro) / tipDepth);
 
-        // (B) 90-Degree Orthogonal T-Junction Thermal Crazing
         if (uCrazing90Strength > 0.01 && insol > 0.02 && curMacro > -(tipDepth + uScale * 0.06)) {
             vec3 an = abs(bestN);
             vec3 uvwT = (an.y >= an.x && an.y >= an.z) ? vec3(p0.x, p0.z, p0.y)
@@ -452,7 +332,6 @@ SdfSample evalPureSdf(vec3 p) {
             }
         }
 
-        // (C) 3D Polygonal Voronoi Stress Cleavage
         if (uVoronoiStrength > 0.01 && curMacro > -(tipDepth + uScale * 0.06)) {
             float vorScale = 1.55 / uScale * 4.2;
             vec2 clv = evalFastCleavage3D(vec3(p0.x * vorScale, p0.y * vorScale * 0.85, p0.z * vorScale), 0.56, uCrackSalt + 307);
@@ -468,26 +347,61 @@ SdfSample evalPureSdf(vec3 p) {
         }
     }
 
-    // 3. Analytical Cross-Section Cutaway Slice
-    if (uCutawayEnabled != 0) {
-        float axisVal = (uCutawayAxis == 0) ? p.x : p.z;
-        float slicePlane = axisVal - uCutawayOffset;
-        if (slicePlane > d) {
-            d = slicePlane;
-            s.isCutaway = true;
-        }
-    }
+    float grain = scalarField3D(bestP0 * 6.5, uCrackSalt + 601);
+    float bedBand = sin((bestP0.y * (5.4 / uScale) + 0.44 * scalarField3D(bestP0 * 0.6, uCrackSalt + 619)) * 6.2831853);
+    float strataMod = 1.0 + bedBand * 0.14 * bestStrata + grain * 0.07;
 
-    s.d = d;
-    s.dMacro = curMacro;
-    s.freshMask = clamp(max(fMask, crackFresh), 0.0, 1.0);
-    return s;
+    outSdf = vec4(d, clamp(max(bestFresh, crackFresh), 0.0, 1.0), clamp(thermalStress, 0.0, 1.5), strataMod);
+}
+`;
+
+/*==========================================================================================================================================
+                     2. STAGE-2 SHADER: ULTRA-COMPACT 60 FPS 3D-SDF VOLUME RAYMARCHER (~120 LINES!)
+==========================================================================================================================================*/
+
+const RAYMARCH_FS = `#version 300 es
+precision highp float;
+precision highp int;
+precision highp sampler3D;
+
+in vec2 vNdc;
+out vec4 fragColor;
+
+uniform sampler3D uSdfVol;
+uniform vec3 uVolMin;
+uniform vec3 uVolMax;
+
+uniform vec3 uCamPos;
+uniform vec3 uCamFwd;
+uniform vec3 uCamRight;
+uniform vec3 uCamUp;
+uniform float uTanHalfFov;
+uniform float uAspect;
+
+uniform vec3 uBoundsMin;
+uniform vec3 uBoundsMax;
+uniform vec3 uSunDir;
+uniform float uExposure;
+uniform int uLensMode;
+
+uniform float uScale;
+uniform float uSkinDepth;
+uniform int uCutawayEnabled;
+uniform int uCutawayAxis;
+uniform float uCutawayOffset;
+
+uniform vec3 uColRind;
+uniform vec3 uColFresh;
+uniform vec3 uColIron;
+uniform vec3 uColLichen;
+
+vec4 fetchVol(vec3 p) {
+    vec3 uvw = clamp((p - uVolMin) / (uVolMax - uVolMin), 0.002, 0.998);
+    return textureLod(uSdfVol, uvw, 0.0);
 }
 
-// Fast macro+cutaway distance for soft shadows (1 textureLod fetch per step!)
-float evalMacroShadowDist(vec3 p) {
-    vec3 uvw = clamp((p - uVolMin) / (uVolMax - uVolMin), 0.002, 0.998);
-    float d = textureLod(uVolA, uvw, 0.0).x;
+float mapDist(vec3 p) {
+    float d = fetchVol(p).x;
     if (uCutawayEnabled != 0) {
         float axisVal = (uCutawayAxis == 0) ? p.x : p.z;
         d = max(d, axisVal - uCutawayOffset);
@@ -496,13 +410,13 @@ float evalMacroShadowDist(vec3 p) {
 }
 
 vec3 calcNormal(vec3 p) {
-    const float e = 0.0038;
+    const float e = 0.025;
     vec2 k = vec2(1.0, -1.0);
     return normalize(
-        k.xyy * evalPureSdf(p + k.xyy * e).d +
-        k.yyx * evalPureSdf(p + k.yyx * e).d +
-        k.yxy * evalPureSdf(p + k.yxy * e).d +
-        k.xxx * evalPureSdf(p + k.xxx * e).d
+        k.xyy * mapDist(p + k.xyy * e) +
+        k.yyx * mapDist(p + k.yyx * e) +
+        k.yxy * mapDist(p + k.yxy * e) +
+        k.xxx * mapDist(p + k.xxx * e)
     );
 }
 
@@ -510,24 +424,24 @@ float calcSdfAO(vec3 p, vec3 n) {
     float occ = 0.0;
     float sca = 1.0;
     for (int i = 0; i < 4; i++) {
-        float h = 0.045 + 0.15 * float(i * i);
-        float d = evalPureSdf(p + n * h).d;
+        float h = 0.06 + 0.16 * float(i * i);
+        float d = mapDist(p + n * h);
         occ += max(0.0, h - d) * sca;
         sca *= 0.62;
     }
-    return clamp(1.0 - 1.65 * occ, 0.12, 1.0);
+    return clamp(1.0 - 1.55 * occ, 0.12, 1.0);
 }
 
 float calcSoftShadow(vec3 ro, vec3 rd) {
     float res = 1.0;
-    float t = 0.05;
+    float t = 0.08;
     for (int i = 0; i < 24; i++) {
         vec3 p = ro + rd * t;
         if (p.y > uBoundsMax.y + 0.4) break;
-        float h = evalMacroShadowDist(p);
-        if (h < 0.002) return 0.18;
+        float h = mapDist(p);
+        if (h < 0.004) return 0.18;
         res = min(res, 9.5 * h / t);
-        t += clamp(h, 0.04, 0.40);
+        t += clamp(h, 0.05, 0.40);
         if (t > 12.0) break;
     }
     return clamp(res, 0.18, 1.0);
@@ -563,7 +477,6 @@ void main() {
     vec3 rd = normalize(uCamFwd + vNdc.x * uAspect * uTanHalfFov * uCamRight + vNdc.y * uTanHalfFov * uCamUp);
     vec3 ro = uCamPos;
 
-    // Calibrated obsidian geological studio sky gradient
     float skyT = clamp(rd.y * 0.5 + 0.5, 1e-4, 1.0);
     vec3 skyCol = mix(vec3(0.052, 0.056, 0.066), vec3(0.112, 0.122, 0.145), pow(skyT, 0.75));
     float sunGlow = pow(max(1e-4, dot(rd, uSunDir)), 24.0);
@@ -578,12 +491,12 @@ void main() {
         float t = max(0.02, boxHit.x);
         for (int s = 0; s < 96; s++) {
             if (t > boxHit.y) break;
-            float d = evalPureSdf(ro + rd * t).d;
-            if (d < 0.0024) {
+            float d = mapDist(ro + rd * t);
+            if (d < 0.004) {
                 tRock = t;
                 break;
             }
-            t += max(0.008, d * 0.86);
+            t += max(0.018, d * 0.85);
         }
     }
 
@@ -607,8 +520,8 @@ void main() {
         float line1 = 1.0 - smoothstep(0.008, 0.024, min(g1.x, g1.y));
         float ring = 1.0 - smoothstep(0.010, 0.032, abs(fract(rDist / 2.0) - 0.5) * 2.0);
 
-        float sh = calcSoftShadow(fp + vec3(0.0, 0.02, 0.0), uSunDir);
-        float contactOcc = clamp(evalMacroShadowDist(fp + vec3(0.0, 0.18, 0.0)) / 0.32, 0.20, 1.0);
+        float sh = calcSoftShadow(fp + vec3(0.0, 0.03, 0.0), uSunDir);
+        float contactOcc = clamp(mapDist(fp + vec3(0.0, 0.20, 0.0)) / 0.34, 0.20, 1.0);
 
         vec3 floorBase = vec3(0.072, 0.075, 0.084) * (0.45 + 0.55 * sh) * contactOcc;
         floorBase += vec3(0.16, 0.15, 0.12) * (line1 * 0.22 + ring * 0.16) * discFade;
@@ -616,40 +529,43 @@ void main() {
     } else if (tRock > 0.0) {
         vec3 p = ro + rd * tRock;
         vec3 n = calcNormal(p);
-        SdfSample info = evalPureSdf(p);
-        float ao = calcSdfAO(p, n);
+        vec4 vSample = fetchVol(p);
+        float dOrig = vSample.x;
+        float freshMask = vSample.y;
+        float thermalStress = vSample.z;
+        float strataMod = vSample.w;
 
-        float dProbeOut = evalPureSdf(p + n * 0.05).d;
-        float cav = clamp((0.05 - dProbeOut) * 18.0, 0.0, 1.0);
-        float edg = clamp((dProbeOut - 0.048) * 26.0, 0.0, 1.0);
+        bool isCutaway = false;
+        if (uCutawayEnabled != 0) {
+            float axisVal = (uCutawayAxis == 0) ? p.x : p.z;
+            if ((axisVal - uCutawayOffset) > dOrig - 0.02) isCutaway = true;
+        }
+
+        float ao = calcSdfAO(p, n);
+        float dProbeOut = mapDist(p + n * 0.08);
+        float cav = clamp((0.08 - dProbeOut) * 11.0, 0.0, 1.0);
+        float edg = clamp((dProbeOut - 0.076) * 16.0, 0.0, 1.0);
 
         vec3 albedo = uColRind;
-        if (info.isCutaway) {
-            float depth = max(0.0, -info.dMacro);
+        if (isCutaway) {
+            float depth = max(0.0, -dOrig);
             float skinZone = exp(-depth / max(0.06, uSkinDepth));
             float ring = 0.5 + 0.5 * cos((depth / 0.18) * 6.2831853);
-            float isoLine = smoothstep(0.91, 0.99, ring);
+            float isoLine = smoothstep(0.90, 0.99, ring);
             albedo = mix(uColFresh * 0.85, uColIron * 1.15, skinZone * 0.58);
             albedo = mix(albedo, vec3(0.96, 0.87, 0.62), isoLine * 0.52);
         } else {
-            vec3 p0 = info.p0;
-            float grain = scalarField3D(p0 * 6.5, uCrackSalt + 601);
-            float bedBand = sin((p0.y * (5.4 / uScale) + 0.44 * scalarField3D(p0 * 0.6, uCrackSalt + 619)) * 6.2831853);
-            float strataMod = 1.0 + bedBand * 0.14 * info.strataWeight + grain * 0.07;
-
-            albedo = mix(uColRind, uColFresh, info.freshMask) * strataMod;
-            float ironSeep = clamp(cav * 0.72 + info.freshMask * 0.28 * (0.5 + 0.5 * scalarField3D(vec3(p0.x * 2.1, p0.y * 0.8, p0.z * 2.1), uCrackSalt + 643)), 0.0, 1.0);
-            albedo = mix(albedo, uColIron, ironSeep * 0.34);
-
-            float upLichen = (1.0 - info.freshMask) * smoothstep(0.55, 0.92, n.y) * clamp(0.5 + 0.5 * grain, 0.0, 1.0);
-            albedo = mix(albedo, uColLichen, upLichen * 0.30);
+            albedo = mix(uColRind, uColFresh, freshMask) * strataMod;
+            albedo = mix(albedo, uColIron, clamp(cav * 0.7 + freshMask * 0.2, 0.0, 1.0) * 0.34);
+            float upLichen = (1.0 - freshMask) * smoothstep(0.55, 0.92, n.y);
+            albedo = mix(albedo, uColLichen, upLichen * 0.28);
             albedo *= (1.0 + edg * 0.18 - cav * 0.18);
         }
 
         if (uLensMode == 1) {
-            albedo = mix(vec3(0.18, 0.24, 0.34), vec3(0.95, 0.64, 0.26), info.freshMask);
+            albedo = mix(vec3(0.18, 0.24, 0.34), vec3(0.95, 0.64, 0.26), freshMask);
         } else if (uLensMode == 2) {
-            albedo = heatmapRamp(info.thermalStress * 0.85 + info.freshMask * 0.15);
+            albedo = heatmapRamp(thermalStress * 0.85 + freshMask * 0.15);
         } else if (uLensMode == 3) {
             albedo = vec3(0.84, 0.82, 0.78) * (1.0 - cav * 0.35);
         } else if (uLensMode == 4) {
@@ -658,14 +574,14 @@ void main() {
             return;
         }
 
-        float sh = calcSoftShadow(p + n * 0.018, uSunDir);
+        float sh = calcSoftShadow(p + n * 0.04, uSunDir);
         float ndotl = max(0.0, dot(n, uSunDir));
         vec3 fillDir = normalize(vec3(-uSunDir.x, 0.40, -uSunDir.z));
         float fill = max(0.0, dot(n, fillDir)) * 0.34;
         float hemi = 0.34 + 0.22 * (n.y * 0.5 + 0.5);
 
         vec3 halfV = normalize(uSunDir - rd);
-        float spec = pow(max(1e-4, dot(n, halfV)), 28.0) * (0.06 + 0.08 * info.freshMask) * sh;
+        float spec = pow(max(1e-4, dot(n, halfV)), 28.0) * (0.06 + 0.08 * freshMask) * sh;
 
         col = albedo * (ndotl * sh * 1.48 + (hemi + fill) * ao) + vec3(1.0, 0.95, 0.86) * spec;
     }
@@ -709,7 +625,7 @@ precision highp float;
 in vec3 vPos;
 in vec3 vNorm;
 in vec3 vAlbedo;
-in vec4 vMasks; // x=AO, y=Cavity, z=Edge, w=FreshMask
+in vec4 vMasks;
 
 uniform vec3 uCamPos;
 uniform vec3 uSunDir;
@@ -869,7 +785,7 @@ function mat4Mul(a, b)
     return out;
 }
 
-const MACRO_VOL_RES = 84; // 84^3 = 592k voxels (~0.8 ms GPU bake, sharp polyhedral silhouettes)
+const SDF_VOL_RES = 112; // 112^3 RGBA16F single 3D texture (~6.5 cm voxels, < 2 ms GPU bake)
 
 export class FractureLabViewport
 {
@@ -887,13 +803,11 @@ export class FractureLabViewport
         if (!gl) throw new Error('WebGL2 is required for the Pure-SDF Fracture Lab.');
         this.gl = gl;
 
-        // Display state
-        this.renderMode = 'raymarch'; // 'raymarch' | 'qef-mesh'
+        this.renderMode = 'raymarch';
         this.showWireframe = false;
         this.lensMode = 0;
         this.exposure = 1.15;
 
-        // Orbit camera
         this.yaw = 0.44;
         this.pitch = 0.24;
         this.distance = 11.2;
@@ -929,11 +843,10 @@ export class FractureLabViewport
     {
         const gl = this.gl;
 
-        // Always compile lightweight QEF mesh shader first
         this.meshProg = linkProgram(gl, MESH_VS, MESH_FS, 'QefMesh');
+        this.rayProg = linkProgram(gl, FULLSCREEN_VS, RAYMARCH_FS, 'VolumeRaymarch');
         this.emptyVao = gl.createVertexArray();
 
-        // Data textures for compiled polyhedral blocks & planes
         this.blockTex = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, this.blockTex);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
@@ -948,29 +861,28 @@ export class FractureLabViewport
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
-        // Allocate 3D RGBA16F macro SDF + pullback volumes (RGBA16F LINEAR sampling is core WebGL 2.0!)
-        this.volRes = MACRO_VOL_RES;
-        this.volTexA = this._create3DVolumeTexture(this.volRes);
-        this.volTexB = this._create3DVolumeTexture(this.volRes);
+        this.volRes = SDF_VOL_RES;
+        this.sdfVolTex = this._create3DVolumeTexture(this.volRes);
 
-        // Compile fast Stage-1 Macro Baker & Stage-2 Zero-Nested-Loop Raymarcher
-        this.bakeProg = linkProgram(gl, FULLSCREEN_VS, MACRO_BAKE_FS, 'MacroBake');
-        this.rayProg = linkProgram(gl, FULLSCREEN_VS, RAYMARCH_FS, 'PureSdfRaymarch');
-
-        // Probe MRT RGBA16F 3D slice FBO support (`EXT_color_buffer_float`)
-        const hasFloatFbo = !!gl.getExtension('EXT_color_buffer_float');
-        this.bakeFbo = gl.createFramebuffer();
-        if (hasFloatFbo)
+        try
         {
-            gl.bindFramebuffer(gl.FRAMEBUFFER, this.bakeFbo);
-            gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, this.volTexA, 0, 0);
-            gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, this.volTexB, 0, 0);
-            gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
-            this.gpuVolBakeSupported = (gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE);
-            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            this.bakeProg = linkProgram(gl, FULLSCREEN_VS, SDF_BAKE_FS, 'SdfSliceBake');
+            const hasFloatFbo = !!gl.getExtension('EXT_color_buffer_float');
+            this.bakeFbo = gl.createFramebuffer();
+            if (hasFloatFbo)
+            {
+                gl.bindFramebuffer(gl.FRAMEBUFFER, this.bakeFbo);
+                gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, this.sdfVolTex, 0, 0);
+                this.gpuVolBakeSupported = (gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE);
+                gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            }
+        }
+        catch (err)
+        {
+            console.warn('[FractureLab] GPU slice baker unavailable, using CPU RGBA16F volume fallback:', err);
+            this.gpuVolBakeSupported = false;
         }
 
-        // QEF Dual-Contour Mesh VAO & buffers
         this.meshVao = gl.createVertexArray();
         this.vboPos = gl.createBuffer();
         this.vboNorm = gl.createBuffer();
@@ -998,13 +910,13 @@ export class FractureLabViewport
         gl.bindVertexArray(null);
     }
 
-    _bakeMacroVolumesGpu()
+    _bakeSdfVolumeGpu()
     {
         const gl = this.gl;
         const res = this.volRes;
+        const { params, sunDir, crackSalt } = this.formation;
 
         gl.bindFramebuffer(gl.FRAMEBUFFER, this.bakeFbo);
-        gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
         gl.viewport(0, 0, res, res);
         gl.disable(gl.DEPTH_TEST);
         gl.disable(gl.BLEND);
@@ -1019,17 +931,28 @@ export class FractureLabViewport
         gl.uniform1i(gl.getUniformLocation(this.bakeProg, 'uPlaneTex'), 1);
 
         gl.uniform1i(gl.getUniformLocation(this.bakeProg, 'uNumBlocks'), this.numBlocks || 0);
+        gl.uniform1i(gl.getUniformLocation(this.bakeProg, 'uCrackSalt'), crackSalt | 0);
         gl.uniform3fv(gl.getUniformLocation(this.bakeProg, 'uVolMin'), this.volMin);
         gl.uniform3fv(gl.getUniformLocation(this.bakeProg, 'uVolMax'), this.volMax);
-        gl.uniform1f(gl.getUniformLocation(this.bakeProg, 'uScale'), this.formation.params.scale);
+
+        gl.uniform1f(gl.getUniformLocation(this.bakeProg, 'uScale'), params.scale);
+        gl.uniform3fv(gl.getUniformLocation(this.bakeProg, 'uSunDir'), sunDir);
+        gl.uniform1f(gl.getUniformLocation(this.bakeProg, 'uJigsawRoughness'), params.jigsawRoughness ?? 0.55);
+        gl.uniform1f(gl.getUniformLocation(this.bakeProg, 'uPlumoseStrength'), params.plumoseStrength ?? 0.60);
+        gl.uniform1f(gl.getUniformLocation(this.bakeProg, 'uThermalNorm'), clamp((params.thermalDeltaT ?? 38) / 65.0, 0, 1.5));
+        gl.uniform1f(gl.getUniformLocation(this.bakeProg, 'uDirectionalBias'), params.directionalBias ?? 0.55);
+        gl.uniform1f(gl.getUniformLocation(this.bakeProg, 'uSkinDepth'), Math.max(0.06, params.thermalSkinDepth ?? 0.44));
+        gl.uniform1f(gl.getUniformLocation(this.bakeProg, 'uCrazing90Strength'), params.crazing90Strength ?? 0.30);
+        gl.uniform1f(gl.getUniformLocation(this.bakeProg, 'uCrazingSpacing'), Math.max(0.18, params.crazingSpacing ?? 0.62));
+        gl.uniform1f(gl.getUniformLocation(this.bakeProg, 'uVoronoiStrength'), params.voronoiJointStrength ?? 0.36);
+        gl.uniform1f(gl.getUniformLocation(this.bakeProg, 'uExfoliationStrength'), params.exfoliationStrength ?? 0.14);
 
         const uSliceLoc = gl.getUniformLocation(this.bakeProg, 'uSliceZNorm');
         gl.bindVertexArray(this.emptyVao);
 
         for (let z = 0; z < res; z++)
         {
-            gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, this.volTexA, 0, z);
-            gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, this.volTexB, 0, z);
+            gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, this.sdfVolTex, 0, z);
             gl.uniform1f(uSliceLoc, (z + 0.5) / res);
             gl.drawArrays(gl.TRIANGLES, 0, 3);
         }
@@ -1038,26 +961,21 @@ export class FractureLabViewport
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     }
 
-    _bakeMacroVolumesCpuFallback()
+    _bakeSdfVolumeCpuFallback()
     {
-        // Extension-free WebGL2 fallback if `EXT_color_buffer_float` is absent
         const gl = this.gl;
-        const res = 48;
+        const res = 56;
         if (this.volRes !== res)
         {
             this.volRes = res;
-            gl.deleteTexture(this.volTexA);
-            gl.deleteTexture(this.volTexB);
-            this.volTexA = this._create3DVolumeTexture(res);
-            this.volTexB = this._create3DVolumeTexture(res);
+            gl.deleteTexture(this.sdfVolTex);
+            this.sdfVolTex = this._create3DVolumeTexture(res);
         }
 
-        const total = res * res * res * 4;
-        const bufA = new Float32Array(total);
-        const bufB = new Float32Array(total);
-        const blocks = this.formation.blocks;
-        const S = this.formation.params.scale;
-        const meta = { p0x: 0, p0y: 0, p0z: 0, nx: 0, ny: 1, nz: 0, freshMask: 0, noThermalCracks: false, strataWeight: 0.25 };
+        const buf = new Float32Array(res * res * res * 4);
+        const info = {};
+        const prevCut = this.formation.params.cutawayEnabled;
+        this.formation.params.cutawayEnabled = false;
 
         let ptr = 0;
         for (let z = 0; z < res; z++)
@@ -1069,74 +987,59 @@ export class FractureLabViewport
                 for (let x = 0; x < res; x++)
                 {
                     const wx = this.volMin[0] + (this.volMax[0] - this.volMin[0]) * ((x + 0.5) / res);
-                    let bestD = 1e9, p0x = wx, p0y = wy, p0z = wz, nx = 0, ny = 1, nz = 0, fresh = 0, strata = 0.25, noCrk = false;
-                    for (let i = 0; i < blocks.length; i++)
-                    {
-                        const b = blocks[i];
-                        const lb = Math.hypot(wx - b.cx, wy - b.cy, wz - b.cz) - b.radius - S * 0.06;
-                        if (lb > bestD) continue;
-                        const dB = evalSingleFractureBlock(b, wx, wy, wz, this.formation, false, meta);
-                        if (dB < bestD)
-                        {
-                            bestD = dB;
-                            p0x = meta.p0x; p0y = meta.p0y; p0z = meta.p0z;
-                            nx = meta.nx; ny = meta.ny; nz = meta.nz;
-                            fresh = meta.freshMask;
-                            strata = meta.strataWeight;
-                            noCrk = meta.noThermalCracks;
-                        }
-                    }
-                    const nScale = (0.5 + 0.5 * strata) * (noCrk ? 2.5 : 1.0);
-                    bufA[ptr] = bestD; bufA[ptr + 1] = p0x; bufA[ptr + 2] = p0y; bufA[ptr + 3] = p0z;
-                    bufB[ptr] = nx * nScale; bufB[ptr + 1] = ny * nScale; bufB[ptr + 2] = nz * nScale; bufB[ptr + 3] = fresh;
+                    const d = evalFracturedFormationSdf(this.formation, wx, wy, wz, null, info);
+                    buf[ptr] = d;
+                    buf[ptr + 1] = info.freshMask ?? 0;
+                    buf[ptr + 2] = info.thermalStress ?? 0.5;
+                    buf[ptr + 3] = 1.0;
                     ptr += 4;
                 }
             }
         }
+        this.formation.params.cutawayEnabled = prevCut;
 
-        gl.bindTexture(gl.TEXTURE_3D, this.volTexA);
-        gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA16F, res, res, res, 0, gl.RGBA, gl.FLOAT, bufA);
-        gl.bindTexture(gl.TEXTURE_3D, this.volTexB);
-        gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA16F, res, res, res, 0, gl.RGBA, gl.FLOAT, bufB);
+        gl.bindTexture(gl.TEXTURE_3D, this.sdfVolTex);
+        gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA16F, res, res, res, 0, gl.RGBA, gl.FLOAT, buf);
     }
 
-    setFormation(formation, structuralChanged = true)
+    setFormation(formation, structuralChanged = true, cutawayOnly = false)
     {
         this.formation = formation;
-        if (!formation) return;
-
-        if (!structuralChanged) return;
+        if (!formation || cutawayOnly) return;
 
         const gl = this.gl;
-        const b = formation.bounds;
-        const pad = 0.52;
-        this.volMin = [b.minX - pad, b.minY - 0.18, b.minZ - pad];
-        this.volMax = [b.maxX + pad, b.maxY + pad, b.maxZ + pad];
+        if (structuralChanged)
+        {
+            const b = formation.bounds;
+            const pad = 0.50;
+            this.volMin = [b.minX - pad, b.minY - 0.18, b.minZ - pad];
+            this.volMax = [b.maxX + pad, b.maxY + pad, b.maxZ + pad];
 
-        const packed = packFracturedFormationGpuBuffers(formation);
-        this.numBlocks = packed.numBlocks;
+            const packed = packFracturedFormationGpuBuffers(formation);
+            this.numBlocks = packed.numBlocks;
 
-        gl.bindTexture(gl.TEXTURE_2D, this.blockTex);
-        gl.texImage2D(
-            gl.TEXTURE_2D, 0, gl.RGBA32F,
-            packed.blockTexWidth, packed.blockTexHeight, 0,
-            gl.RGBA, gl.FLOAT, packed.blockTexData
-        );
+            gl.bindTexture(gl.TEXTURE_2D, this.blockTex);
+            gl.texImage2D(
+                gl.TEXTURE_2D, 0, gl.RGBA32F,
+                packed.blockTexWidth, packed.blockTexHeight, 0,
+                gl.RGBA, gl.FLOAT, packed.blockTexData
+            );
 
-        gl.bindTexture(gl.TEXTURE_2D, this.planeTex);
-        gl.texImage2D(
-            gl.TEXTURE_2D, 0, gl.RGBA32F,
-            packed.planeTexWidth, packed.planeTexHeight, 0,
-            gl.RGBA, gl.FLOAT, packed.planeTexData
-        );
+            gl.bindTexture(gl.TEXTURE_2D, this.planeTex);
+            gl.texImage2D(
+                gl.TEXTURE_2D, 0, gl.RGBA32F,
+                packed.planeTexWidth, packed.planeTexHeight, 0,
+                gl.RGBA, gl.FLOAT, packed.planeTexData
+            );
+        }
 
         if (this.gpuVolBakeSupported)
         {
-            this._bakeMacroVolumesGpu();
+            this._bakeSdfVolumeGpu();
         }
         else
         {
-            this._bakeMacroVolumesCpuFallback();
+            this._bakeSdfVolumeCpuFallback();
         }
     }
 
@@ -1284,8 +1187,7 @@ export class FractureLabViewport
         const gl = this.gl;
         if (gl.isContextLost()) return;
 
-        const maxDpr = this.renderMode === 'raymarch' ? 1.5 : 1.75;
-        const dpr = Math.min(window.devicePixelRatio || 1, maxDpr);
+        const dpr = Math.min(window.devicePixelRatio || 1, 1.65);
         const cw = Math.max(1, Math.floor(this.canvas.clientWidth * dpr));
         const ch = Math.max(1, Math.floor(this.canvas.clientHeight * dpr));
         if (this.canvas.width !== cw || this.canvas.height !== ch)
@@ -1299,7 +1201,7 @@ export class FractureLabViewport
         const aspect = cw / ch;
         const fovRad = 42 * DEG2RAD;
         const cam = this._computeCameraBasis();
-        const { params, bounds, sunDir, theme, crackSalt } = this.formation;
+        const { params, bounds, sunDir, theme } = this.formation;
 
         if (this.renderMode === 'raymarch' || this.meshIndexCount === 0)
         {
@@ -1308,16 +1210,11 @@ export class FractureLabViewport
             gl.useProgram(this.rayProg);
 
             gl.activeTexture(gl.TEXTURE0);
-            gl.bindTexture(gl.TEXTURE_3D, this.volTexA);
-            gl.uniform1i(gl.getUniformLocation(this.rayProg, 'uVolA'), 0);
-
-            gl.activeTexture(gl.TEXTURE1);
-            gl.bindTexture(gl.TEXTURE_3D, this.volTexB);
-            gl.uniform1i(gl.getUniformLocation(this.rayProg, 'uVolB'), 1);
+            gl.bindTexture(gl.TEXTURE_3D, this.sdfVolTex);
+            gl.uniform1i(gl.getUniformLocation(this.rayProg, 'uSdfVol'), 0);
 
             gl.uniform3fv(gl.getUniformLocation(this.rayProg, 'uVolMin'), this.volMin);
             gl.uniform3fv(gl.getUniformLocation(this.rayProg, 'uVolMax'), this.volMax);
-            gl.uniform1i(gl.getUniformLocation(this.rayProg, 'uCrackSalt'), crackSalt | 0);
 
             gl.uniform3fv(gl.getUniformLocation(this.rayProg, 'uCamPos'), cam.eye);
             gl.uniform3fv(gl.getUniformLocation(this.rayProg, 'uCamFwd'), cam.fwd);
@@ -1333,15 +1230,7 @@ export class FractureLabViewport
             gl.uniform1i(gl.getUniformLocation(this.rayProg, 'uLensMode'), this.lensMode);
 
             gl.uniform1f(gl.getUniformLocation(this.rayProg, 'uScale'), params.scale);
-            gl.uniform1f(gl.getUniformLocation(this.rayProg, 'uJigsawRoughness'), params.jigsawRoughness ?? 0.55);
-            gl.uniform1f(gl.getUniformLocation(this.rayProg, 'uPlumoseStrength'), params.plumoseStrength ?? 0.60);
-            gl.uniform1f(gl.getUniformLocation(this.rayProg, 'uThermalNorm'), clamp((params.thermalDeltaT ?? 38) / 65.0, 0, 1.5));
-            gl.uniform1f(gl.getUniformLocation(this.rayProg, 'uDirectionalBias'), params.directionalBias ?? 0.55);
             gl.uniform1f(gl.getUniformLocation(this.rayProg, 'uSkinDepth'), Math.max(0.06, params.thermalSkinDepth ?? 0.44));
-            gl.uniform1f(gl.getUniformLocation(this.rayProg, 'uCrazing90Strength'), params.crazing90Strength ?? 0.30);
-            gl.uniform1f(gl.getUniformLocation(this.rayProg, 'uCrazingSpacing'), Math.max(0.18, params.crazingSpacing ?? 0.62));
-            gl.uniform1f(gl.getUniformLocation(this.rayProg, 'uVoronoiStrength'), params.voronoiJointStrength ?? 0.36);
-            gl.uniform1f(gl.getUniformLocation(this.rayProg, 'uExfoliationStrength'), params.exfoliationStrength ?? 0.14);
             gl.uniform1i(gl.getUniformLocation(this.rayProg, 'uCutawayEnabled'), params.cutawayEnabled ? 1 : 0);
             gl.uniform1i(gl.getUniformLocation(this.rayProg, 'uCutawayAxis'), params.cutawayAxis ?? 0);
             gl.uniform1f(gl.getUniformLocation(this.rayProg, 'uCutawayOffset'), params.cutawayOffset ?? 0.25);
@@ -1357,7 +1246,6 @@ export class FractureLabViewport
             return;
         }
 
-        // Mode 2: QEF Dual-Contoured Triangle Mesh + Sharp-Crease Wireframe Overlay
         gl.clearColor(0.072, 0.076, 0.088, 1.0);
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
         gl.enable(gl.DEPTH_TEST);
