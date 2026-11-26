@@ -1,0 +1,197 @@
+/*==========================================================================================================================================
+                                                           PROJECTDETAILS.CSS
+==========================================================================================================================================*/
+/* Project settings are typeset as one editable A4 sheet in the reader, not as a dashboard. */
+
+.project-setup {
+    display: block;
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 22px clamp(12px, 3vw, 32px) 30px;
+    background: var(--desk);
+    color: var(--paper-ink);
+    scrollbar-width: thin;
+    scrollbar-color: var(--nested) transparent;
+}
+#ProjectSetup[hidden], .viewer-scroll[hidden] { display: none !important; }
+
+.setup-sheet {
+    display: flex;
+    flex-direction: column;
+    width: min(794px, 100%);
+    min-height: 1123px;
+    margin: 0 auto;
+    padding: 42px 58px 28px;
+    background: var(--paper);
+    color: var(--paper-ink);
+    border-radius: 2px;
+    box-shadow: var(--paper-shadow);
+    font-family: Inter, Arial, sans-serif;
+}
+.setup-header {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+    gap: 20px;
+    margin: 0;
+    padding: 0 0 22px;
+    border-bottom: 1px solid var(--paper-rule);
+}
+.setup-header > .secondary {
+    margin-top: 4px;
+    padding: 7px 11px;
+    border: 1px solid var(--paper-rule);
+    border-radius: 3px;
+    background: transparent;
+    color: var(--paper-muted);
+    font-size: 10px;
+}
+.setup-header > .secondary:hover { background: #f1efe9; color: var(--paper-ink); }
+.setup-header > .secondary .icon { width: 14px; height: 14px; }
+.setup-heading .eyebrow { display: block; margin: 0 0 7px; color: var(--paper-muted); font-size: 8px; letter-spacing: 1.8px; }
+.setup-heading h1 { color: var(--paper-ink); font-family: Georgia, 'Times New Roman', serif; font-size: 29px; font-weight: 400; line-height: 1.12; letter-spacing: -.4px; }
+.setup-heading p { margin-top: 7px; color: var(--paper-muted); font-size: 10px; line-height: 1.5; }
+.setup-steps { display: none; }
+
+.setup-grid { display: block; margin: 0; }
+.setup-main { min-width: 0; }
+#ProjectSetupForm { display: grid; gap: 0; }
+.setup-card {
+    position: relative;
+    min-width: 0;
+    padding: 15px 0 16px;
+    border: 0;
+    border-bottom: 1px solid var(--paper-rule);
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+.setup-card-heading { display: flex; align-items: center; gap: 10px; margin: 0 0 11px; }
+.setup-icon {
+    display: grid;
+    place-items: center;
+    flex: 0 0 25px;
+    width: 25px;
+    height: 25px;
+    border: 1px solid var(--paper-rule);
+    border-radius: 50%;
+    background: transparent;
+    color: var(--paper-muted);
+    font-size: 8px;
+    font-weight: 500;
+}
+.setup-icon.service-eos { color: #426aa2; }
+.setup-icon.service-photon { color: #705493; }
+.setup-card-heading h2 { color: var(--paper-ink); font-family: Georgia, 'Times New Roman', serif; font-size: 15px; font-weight: 400; letter-spacing: 0; }
+.setup-card-heading p { margin-top: 2px; color: var(--paper-muted); font-size: 9px; line-height: 1.35; }
+.setup-fields { display: grid; gap: 9px 14px; }
+.two-columns { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.render-fields { grid-template-columns: minmax(150px, 1.4fr) repeat(3, minmax(78px, 1fr)); }
+.setup-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; color: var(--paper-ink); font-size: 9px; }
+.setup-field > span { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; color: var(--paper-muted); }
+.setup-field > span small, .setup-field > small { color: var(--paper-faint); font-size: 8px; font-weight: 400; }
+.setup-field input, .setup-field select, .setup-field textarea {
+    width: 100%;
+    min-height: 30px;
+    padding: 5px 8px;
+    border: 1px solid #d9d6cf;
+    border-radius: 2px;
+    background: #fffefa;
+    color: var(--paper-ink);
+    font-family: Inter, Arial, sans-serif;
+    font-size: 10px;
+    outline: none;
+}
+.setup-field textarea { min-height: 58px; height: 58px; resize: vertical; line-height: 1.45; }
+.setup-field input::placeholder, .setup-field textarea::placeholder { color: #aaa69e; }
+.setup-field input:focus, .setup-field select:focus, .setup-field textarea:focus { border-color: #9a6b1f; box-shadow: 0 0 0 2px #9a6b1f22; }
+.setup-field select option { background: #fffefa; color: var(--paper-ink); }
+.full-width, .icon-setting { grid-column: 1 / -1; }
+.icon-row { display: flex; align-items: center; gap: 9px; }
+.project-icon-preview { display: grid; place-items: center; flex: 0 0 34px; width: 34px; height: 34px; overflow: hidden; border: 1px solid var(--paper-rule); border-radius: 2px; background: #fffefa; color: #9a6b1f; font-size: 15px; font-weight: 500; }
+.project-icon-preview img { width: 100%; height: 100%; object-fit: cover; }
+.icon-inputs { display: grid; grid-template-columns: minmax(100px, 1fr) auto; gap: 7px; flex: 1; min-width: 0; }
+.icon-inputs .small { min-height: 30px; padding: 5px 9px; border-radius: 2px; font-size: 9px; }
+.icon-setting > small { color: var(--paper-faint); font-size: 8px; line-height: 1.35; }
+.setup-toggle, .setup-check { display: flex; align-items: center; gap: 6px; color: var(--paper-muted); font-size: 9px; cursor: pointer; }
+.setup-toggle input, .setup-check input { accent-color: #9a6b1f; width: 13px; height: 13px; margin: 0; }
+.setup-check { min-height: 30px; }
+.setup-check input { flex: 0 0 auto; }
+.terms-required { align-self: end; }
+.service-note { grid-column: 1 / -1; padding: 7px 9px; border-left: 2px solid #d9d6cf; color: var(--paper-muted); font-size: 8px; line-height: 1.45; }
+.setup-fields.is-disabled { opacity: .55; }
+.setup-fields.is-disabled input, .setup-fields.is-disabled select { pointer-events: none; }
+
+/* Advanced service configuration stays available but collapsed so the first sheet view stays composed. */
+.service-card { padding: 0; }
+.service-card summary, .secret-card summary { display: flex; align-items: center; min-height: 57px; margin: 0; padding: 10px 0; cursor: pointer; list-style: none; }
+.service-card summary::-webkit-details-marker, .secret-card summary::-webkit-details-marker { display: none; }
+.service-card summary::marker, .secret-card summary::marker { content: ''; }
+.service-card .setup-card-heading { margin: 0; padding-right: 136px; }
+.service-disclosure { display: flex; align-items: center; gap: 7px; margin-left: auto; color: var(--paper-muted); font-size: 9px; white-space: nowrap; }
+.service-disclosure b { color: #9a6b1f; font-size: 13px; font-weight: 400; }
+.service-card[open] .service-disclosure b { transform: rotate(45deg); }
+.service-toggle { position: absolute; top: 18px; right: 104px; z-index: 1; }
+.service-fields { padding: 0 0 14px 35px; }
+
+.secret-card { padding: 0; border-bottom: 1px solid var(--paper-rule); }
+.secret-card summary { min-height: 48px; gap: 10px; }
+.secret-card summary .setup-icon { color: #9a6b1f; }
+.secret-card summary strong, .secret-card summary small { display: block; }
+.secret-card summary strong { color: var(--paper-ink); font-family: Georgia, 'Times New Roman', serif; font-size: 13px; font-weight: 400; }
+.secret-card summary small { margin-top: 2px; color: var(--paper-muted); font-size: 8px; }
+.secret-card summary:after { content: '+'; margin-left: auto; color: var(--paper-muted); font-size: 15px; }
+.secret-card[open] summary:after { content: '−'; }
+.secret-warning { margin: 0 0 10px 35px; padding: 8px 10px; border-left: 2px solid #bd8b45; background: #f7f0e3; color: var(--paper-muted); font-size: 8px; line-height: 1.45; }
+.secret-warning strong { color: var(--paper-ink); }
+.secret-fields { padding: 0 0 14px 35px; }
+
+/* File actions and safety notes are printed as a compact colophon at the foot of the sheet. */
+.setup-aside { display: grid; grid-template-columns: 1.45fr 1fr 1fr; gap: 12px; position: static; margin-top: 13px; }
+.setup-status-card { min-width: 0; padding: 10px 0; border: 0; border-top: 1px solid var(--paper-rule); border-radius: 0; background: transparent; box-shadow: none; }
+.setup-status-card .eyebrow { color: var(--paper-muted); font-size: 7px; letter-spacing: 1.4px; }
+.setup-status-card h2 { margin-top: 4px; color: var(--paper-ink); font-size: 11px; font-weight: 500; overflow-wrap: anywhere; }
+.setup-status-card h3 { margin-top: 4px; color: var(--paper-ink); font-family: Georgia, 'Times New Roman', serif; font-size: 12px; font-weight: 400; }
+.setup-status-card p { margin-top: 4px; color: var(--paper-muted); font-size: 8px; line-height: 1.4; }
+.setup-status-card > small { display: block; margin-top: 5px; color: var(--paper-faint); font-size: 7px; line-height: 1.35; }
+.config-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; margin: 8px 0 5px; }
+.config-actions button { justify-content: center; min-width: 0; min-height: 30px; padding: 5px 6px; border: 1px solid #d9d6cf; border-radius: 2px; background: transparent; color: var(--paper-ink); font-size: 8px; white-space: normal; }
+.config-actions button.primary { border-color: #262521; background: #262521; color: #fffefa; }
+.config-actions button:hover { background: #f1efe9; }
+.config-actions button.primary:hover { background: #45433e; }
+.service-readiness { padding-top: 6px; border-top: 1px solid var(--paper-rule); }
+.link-card a { display: block; margin: 6px 0 0; color: #7c561a; font-size: 8px; line-height: 1.35; text-decoration: none; }
+.link-card a:hover { text-decoration: underline; }
+.setup-status-card code { color: var(--paper-ink); }
+.setup-footer { display: flex; justify-content: space-between; gap: 12px; margin-top: auto; padding-top: 12px; border-top: 1px solid var(--paper-rule); color: var(--paper-faint); font-size: 8px; }
+
+@media (max-width: 760px) {
+    .project-setup { padding: 12px; }
+    .setup-sheet { min-height: 100%; padding: 25px 24px 20px; }
+    .setup-header { grid-template-columns: 1fr; gap: 12px; padding-bottom: 16px; }
+    .setup-header > .secondary { justify-self: start; }
+    .setup-heading h1 { font-size: 25px; }
+    .setup-aside { grid-template-columns: 1fr 1fr; gap: 8px 14px; }
+    .setup-aside .setup-status-card:first-child { grid-column: 1 / -1; }
+    .setup-aside .link-card { grid-column: 1 / -1; }
+}
+@media (max-width: 480px) {
+    .setup-sheet { padding: 20px 16px; }
+    .setup-fields.two-columns, .setup-fields.render-fields { grid-template-columns: 1fr; }
+    .full-width, .icon-setting { grid-column: auto; }
+    .setup-aside { grid-template-columns: 1fr; }
+    .setup-aside .setup-status-card:first-child, .setup-aside .link-card { grid-column: auto; }
+    .config-actions { grid-template-columns: 1fr 1fr; }
+    .config-actions button:last-of-type { grid-column: 1 / -1; }
+    .service-card .setup-card-heading { padding-right: 100px; }
+    .service-disclosure { font-size: 0; }
+    .service-toggle { right: 76px; }
+    .service-fields, .secret-fields, .secret-warning { padding-left: 0; margin-left: 0; }
+}
+@media print {
+    .project-setup { overflow: visible; padding: 0; background: #fff; }
+    .setup-sheet { width: 210mm; min-height: 297mm; margin: 0; box-shadow: none; }
+    .setup-header > .secondary, .config-actions, .service-disclosure, .service-toggle { display: none; }
+    .service-card, .secret-card { break-inside: avoid; }
+}

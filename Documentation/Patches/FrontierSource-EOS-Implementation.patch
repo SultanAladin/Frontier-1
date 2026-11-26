@@ -1,0 +1,1516 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 1ef9e58..1c7b2ac 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -20,8 +20,87 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+ set(FRONTIER_PROFILE "Editor" CACHE STRING "Active Frontier build profile (Editor, Development, Shipping)")
+ set_property(CACHE FRONTIER_PROFILE PROPERTY STRINGS Editor Development Shipping)
+ 
+-option(FRONTIER_ENABLE_EOS_SDK    "Compile proprietary Epic Online Services transport adapter instead of open-source stub" OFF)
++option(FRONTIER_ENABLE_EOS_SDK    "Compile the EOS Auth/Connect/P2P/Sessions adapter" OFF)
+ option(FRONTIER_ENABLE_PHOTON_SDK "Compile proprietary Photon Realtime C++ transport adapter instead of open-source stub" OFF)
++set(FRONTIER_EOS_SDK_ROOT "" CACHE PATH "Authorized local EOS SDK root (SDK files are never vendored into Git)")
++set(FRONTIER_PHOTON_SDK_ROOT "" CACHE PATH "Authorized local Photon Realtime Core package root (SDK files are never vendored into Git)")
++
++if(FRONTIER_ENABLE_PHOTON_SDK)
++    if(NOT FRONTIER_PHOTON_SDK_ROOT)
++        message(FATAL_ERROR "FRONTIER_ENABLE_PHOTON_SDK=ON requires -DFRONTIER_PHOTON_SDK_ROOT=<directory containing RealtimeCore/>")
++    endif()
++    if(MSVC AND NOT CMAKE_MSVC_RUNTIME_LIBRARY)
++        # Photon Realtime Core ships /MD variants but no /MDd package. Keep the
++        # SDK and engine on the compatible DLL runtime unless the caller chose one.
++        set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL" CACHE STRING "MSVC runtime for the Photon Realtime Core package")
++    endif()
++    find_package(RealtimeCore CONFIG REQUIRED
++        PATHS "${FRONTIER_PHOTON_SDK_ROOT}"
++        CMAKE_FIND_ROOT_PATH_BOTH)
++    if(NOT TARGET RealtimeCore::Matchmaking)
++        message(FATAL_ERROR "Photon Realtime Core package did not define RealtimeCore::Matchmaking")
++    endif()
++    message(STATUS "Photon Realtime Core enabled from local package: ${FRONTIER_PHOTON_SDK_ROOT}")
++endif()
++
++if(FRONTIER_ENABLE_EOS_SDK)
++    if(NOT FRONTIER_EOS_SDK_ROOT)
++        message(FATAL_ERROR "FRONTIER_ENABLE_EOS_SDK=ON requires -DFRONTIER_EOS_SDK_ROOT=<authorized EOS SDK directory>")
++    endif()
++    find_path(FRONTIER_EOS_INCLUDE_DIR eos_sdk.h
++        HINTS "${FRONTIER_EOS_SDK_ROOT}/Include" "${FRONTIER_EOS_SDK_ROOT}/include"
++        REQUIRED NO_DEFAULT_PATH)
++    if(WIN32)
++        if(CMAKE_GENERATOR_PLATFORM MATCHES "ARM64|arm64" OR CMAKE_SYSTEM_PROCESSOR MATCHES "ARM64|aarch64")
++            set(FRONTIER_EOS_IMPORT_NAME EOSSDK-Win64-Shippingarm64.lib)
++            set(FRONTIER_EOS_RUNTIME_NAME EOSSDK-Win64-Shippingarm64.dll)
++        else()
++            set(FRONTIER_EOS_IMPORT_NAME EOSSDK-Win64-Shipping.lib)
++            set(FRONTIER_EOS_RUNTIME_NAME EOSSDK-Win64-Shipping.dll)
++        endif()
++        find_file(FRONTIER_EOS_IMPORT_LIBRARY "${FRONTIER_EOS_IMPORT_NAME}"
++            HINTS "${FRONTIER_EOS_SDK_ROOT}/Lib" "${FRONTIER_EOS_SDK_ROOT}/Lib/Win64" "${FRONTIER_EOS_SDK_ROOT}/lib"
++            REQUIRED NO_DEFAULT_PATH)
++        find_file(FRONTIER_EOS_RUNTIME "${FRONTIER_EOS_RUNTIME_NAME}"
++            HINTS "${FRONTIER_EOS_SDK_ROOT}/Bin" "${FRONTIER_EOS_SDK_ROOT}/Bin/Win64" "${FRONTIER_EOS_SDK_ROOT}/bin"
++            REQUIRED NO_DEFAULT_PATH)
++        add_library(FrontierEOSSDK SHARED IMPORTED GLOBAL)
++        set_target_properties(FrontierEOSSDK PROPERTIES
++            IMPORTED_IMPLIB "${FRONTIER_EOS_IMPORT_LIBRARY}"
++            IMPORTED_LOCATION "${FRONTIER_EOS_RUNTIME}")
++    elseif(APPLE)
++        find_file(FRONTIER_EOS_RUNTIME libEOSSDK-Mac-Shipping.dylib
++            HINTS "${FRONTIER_EOS_SDK_ROOT}/Bin" "${FRONTIER_EOS_SDK_ROOT}/Bin/Mac" "${FRONTIER_EOS_SDK_ROOT}/lib"
++            REQUIRED NO_DEFAULT_PATH)
++        add_library(FrontierEOSSDK SHARED IMPORTED GLOBAL)
++        set_target_properties(FrontierEOSSDK PROPERTIES IMPORTED_LOCATION "${FRONTIER_EOS_RUNTIME}")
++    elseif(ANDROID)
++        message(FATAL_ERROR "The currently staged EOS flattened runtime set has no Android binary; provide a platform-matched EOS SDK package.")
++    else()
++        if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
++            set(FRONTIER_EOS_RUNTIME_NAME libEOSSDK-LinuxArm64-Shipping.so)
++        else()
++            set(FRONTIER_EOS_RUNTIME_NAME libEOSSDK-Linux-Shipping.so)
++        endif()
++        find_file(FRONTIER_EOS_RUNTIME "${FRONTIER_EOS_RUNTIME_NAME}"
++            HINTS "${FRONTIER_EOS_SDK_ROOT}/Bin" "${FRONTIER_EOS_SDK_ROOT}/Bin/Linux" "${FRONTIER_EOS_SDK_ROOT}/lib"
++            REQUIRED NO_DEFAULT_PATH)
++        add_library(FrontierEOSSDK SHARED IMPORTED GLOBAL)
++        set_target_properties(FrontierEOSSDK PROPERTIES IMPORTED_LOCATION "${FRONTIER_EOS_RUNTIME}")
++    endif()
++    get_filename_component(FRONTIER_EOS_RUNTIME_DIR "${FRONTIER_EOS_RUNTIME}" DIRECTORY)
++    list(APPEND CMAKE_BUILD_RPATH "${FRONTIER_EOS_RUNTIME_DIR}")
++    message(STATUS "EOS SDK enabled from local package: ${FRONTIER_EOS_SDK_ROOT}")
++endif()
++
++function(frontier_stage_eos_runtime TargetName)
++    if(FRONTIER_ENABLE_EOS_SDK AND WIN32)
++        add_custom_command(TARGET ${TargetName} POST_BUILD
++            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
++                "$<TARGET_FILE:FrontierEOSSDK>" "$<TARGET_FILE_DIR:${TargetName}>"
++            COMMENT "Staging EOSSDK-Win64-Shipping.dll beside ${TargetName}")
++    endif()
++endfunction()
+ 
+ if(FRONTIER_PROFILE STREQUAL "Editor")
+     set(FRONTIER_PROFILE_EDITOR_DEF      1)
+@@ -1395,6 +1474,13 @@ target_compile_definitions(FrontierEngine PUBLIC
+ )
+ target_link_libraries(FrontierEngine PUBLIC FrontierSerialization FrontierCompileSettings thorvg_static Threads::Threads ${CMAKE_DL_LIBS})
+ target_link_libraries(FrontierEngine PRIVATE Jolt FrontierZstdDecompress)
++if(FRONTIER_ENABLE_EOS_SDK)
++    target_include_directories(FrontierEngine PRIVATE "${FRONTIER_EOS_INCLUDE_DIR}")
++    target_link_libraries(FrontierEngine PUBLIC FrontierEOSSDK)
++endif()
++if(FRONTIER_ENABLE_PHOTON_SDK)
++    target_link_libraries(FrontierEngine PUBLIC RealtimeCore::Matchmaking)
++endif()
+ if(WIN32)
+     target_link_libraries(FrontierEngine PUBLIC ws2_32)
+ endif()
+@@ -1423,6 +1509,7 @@ set_target_properties(FrontierEngineRuntimeDll PROPERTIES
+ )
+ target_compile_definitions(FrontierEngineRuntimeDll PRIVATE FRONTIER_BUILDING_ENGINE_DLL=1)
+ target_link_libraries(FrontierEngineRuntimeDll PRIVATE FrontierEngine)
++frontier_stage_eos_runtime(FrontierEngineRuntimeDll)
+ if(UNIX AND NOT APPLE)
+     target_link_options(FrontierEngineRuntimeDll PRIVATE "-Wl,--exclude-libs,ALL")
+ endif()
+@@ -1443,6 +1530,7 @@ if(NOT ANDROID AND FRONTIER_PROFILE STREQUAL "Editor")
+         "FRONTIER_REPO_ROOT_DIR=\"${CMAKE_SOURCE_DIR}\""
+     )
+     target_link_libraries(FrontierWorkspaceUiDll PRIVATE FrontierEngine FrontierImGui)
++    frontier_stage_eos_runtime(FrontierWorkspaceUiDll)
+     if(UNIX AND NOT APPLE)
+         target_link_options(FrontierWorkspaceUiDll PRIVATE "-Wl,--exclude-libs,ALL")
+     endif()
+@@ -1472,6 +1560,7 @@ if(NOT ANDROID AND FRONTIER_PROFILE STREQUAL "Editor")
+         add_executable(${APP_NAME} ${LAUNCH_SOURCE})
+         target_compile_definitions(${APP_NAME} PRIVATE "FRONTIER_REPO_ROOT_DIR=\"${CMAKE_SOURCE_DIR}\"")
+         target_link_libraries(${APP_NAME} PRIVATE FrontierEngine FrontierImGui)
++        frontier_stage_eos_runtime(${APP_NAME})
+         if(WIN32)
+             target_link_options(${APP_NAME} PRIVATE "/STACK:8388608")
+         endif()
+@@ -1483,6 +1572,7 @@ if(NOT ANDROID AND FRONTIER_PROFILE STREQUAL "Editor")
+     add_executable(FrontierDefaultContentGenerator EXCLUDE_FROM_ALL Engine/Tools/DefaultContentGeneratorMain.cpp)
+     target_compile_definitions(FrontierDefaultContentGenerator PRIVATE "FRONTIER_REPO_ROOT_DIR=\"${CMAKE_SOURCE_DIR}\"")
+     target_link_libraries(FrontierDefaultContentGenerator PRIVATE FrontierEngine)
++    frontier_stage_eos_runtime(FrontierDefaultContentGenerator)
+     add_custom_target(FrontierGenerateDefaultContent
+         COMMAND FrontierDefaultContentGenerator "--repo-root=${CMAKE_SOURCE_DIR}"
+         DEPENDS FrontierDefaultContentGenerator
+@@ -1514,6 +1604,7 @@ if(BUILD_TESTING)
+         else()
+             target_link_libraries(${EXHIBIT_NAME} PRIVATE FrontierShippingExhibitUi FrontierEngine FrontierImGui)
+         endif()
++        frontier_stage_eos_runtime(${EXHIBIT_NAME})
+         add_test(NAME ${EXHIBIT_NAME} COMMAND ${EXHIBIT_NAME})
+     endfunction()
+ 
+diff --git a/Engine/Codecs/ProjectCodec.cpp b/Engine/Codecs/ProjectCodec.cpp
+index 841e028..d43a518 100644
+--- a/Engine/Codecs/ProjectCodec.cpp
++++ b/Engine/Codecs/ProjectCodec.cpp
+@@ -27,6 +27,10 @@ SpaceContainerPayload ProjectEncoder::BuildPayload(
+ 
+     toml::table Settings;
+     Settings.insert_or_assign("ProjectTitle", Model.ProjectTitle);
++    if (!Model.BrowserConfigurationJson.empty())
++    {
++        Settings.insert_or_assign("BrowserConfigurationJson", Model.BrowserConfigurationJson);
++    }
+     Settings.insert_or_assign("StartupSpacePath", Model.StartupSpacePath);
+     Settings.insert_or_assign("TargetTickRateHz", Model.TargetTickRateHz);
+     Payload.DomainManifest.insert_or_assign(".ProjectSettings", std::move(Settings));
+@@ -78,6 +82,7 @@ bool ProjectDecoder::ExtractModel(
+     if (const toml::table* Settings = Payload.DomainManifest[".ProjectSettings"].as_table())
+     {
+         OutModel.ProjectTitle     = (*Settings)["ProjectTitle"].value_or(Payload.DocumentTitle);
++        OutModel.BrowserConfigurationJson = (*Settings)["BrowserConfigurationJson"].value_or(std::string{});
+         OutModel.StartupSpacePath = (*Settings)["StartupSpacePath"].value_or(std::string{});
+         OutModel.TargetTickRateHz = (*Settings)["TargetTickRateHz"].value_or(120.0);
+     }
+diff --git a/Engine/Codecs/ProjectCodec.h b/Engine/Codecs/ProjectCodec.h
+index cddce28..a57e94d 100644
+--- a/Engine/Codecs/ProjectCodec.h
++++ b/Engine/Codecs/ProjectCodec.h
+@@ -33,6 +33,7 @@ struct ProjectDependencyLockEntry
+ struct ProjectSpaceDocumentModel
+ {
+     std::string                             ProjectTitle      { "FrontierProject" };   // [-]  - Human-readable project name
++    std::string                             BrowserConfigurationJson {};                  // [-]  - Opaque editable Project Browser settings, preserved by native codec round-trips
+     std::string                             StartupSpacePath  { "Main.UVSpace" };      // [-]  - Default workspace document on launch
+     double                                  TargetTickRateHz  = 120.0;                 // [Hz] - Deterministic runtime tick frequency
+     std::vector<ProjectDependencyLockEntry> DependencyLocks   {};                      // [-]  - Locked external/workspace dependencies
+diff --git a/Engine/NetworkingSpace/NetworkingExtension.cpp b/Engine/NetworkingSpace/NetworkingExtension.cpp
+index 7747aa4..7cfb03e 100644
+--- a/Engine/NetworkingSpace/NetworkingExtension.cpp
++++ b/Engine/NetworkingSpace/NetworkingExtension.cpp
+@@ -56,11 +56,21 @@ void NetworkingExtension::Tick(double Δt) noexcept
+         AccumulateReplicationElapsed(Contract, Δt);
+     }
+ 
++    // EOS owns asynchronous Auth/Connect and Sessions callbacks even when Photon or UDP is the active datagram route.
++    EpicChannel.AdvanceChannel(Δt);
++    if (EpicOnlineTransport::QuerySdkCompiled() && EpicChannel.QueryIdentityPhase() == EpicIdentityPhase::Authenticated &&
++        EpicChannel.QueryChannelReady() &&
++        ActiveConfiguration.PreferredTransport == TransportChannelCategory::None &&
++        ActiveCategory != TransportChannelCategory::EpicOnline && ActiveCategory != TransportChannelCategory::PhotonRealtime)
++    {
++        FailedTransportBitmask &= static_cast<uint8_t>(~DeriveTransportBit(TransportChannelCategory::EpicOnline));
++        (void)ActivatePreferredOrFallbackTransport();
++    }
+     switch (ActiveCategory)
+     {
+     case TransportChannelCategory::Loopback:        LoopbackChannel.AdvanceChannel(Δt); break;
+     case TransportChannelCategory::SovereignSocket: SocketChannel.AdvanceChannel(Δt);   break;
+-    case TransportChannelCategory::EpicOnline:      EpicChannel.AdvanceChannel(Δt);     break;
++    case TransportChannelCategory::EpicOnline:      break;
+     case TransportChannelCategory::PhotonRealtime:  PhotonChannel.AdvanceChannel(Δt);   break;
+     case TransportChannelCategory::None:            break;
+     }
+@@ -170,6 +180,21 @@ void NetworkingExtension::ConfigureNetworkSpace(
+     SocketChannel.ConfigureBindPort(0u, LocalEndpointId);
+ }
+ 
++bool NetworkingExtension::ConfigureEpicIdentity(const EpicSessionCredentials& Credentials)
++{
++    return EpicChannel.ConfigureCredentials(Credentials);
++}
++
++bool NetworkingExtension::BeginEpicAccountPortalLogin() noexcept
++{
++    return EpicChannel.BeginEpicAccountPortalLogin();
++}
++
++bool NetworkingExtension::ResolveEpicProductUserConsent(bool CreateNewProductUser) noexcept
++{
++    return EpicChannel.ResolveProductUserConsent(CreateNewProductUser);
++}
++
+ void NetworkingExtension::AttachSharedLoopbackSwitch(
+     LoopbackPacketSwitch* SharedSwitch,
+     uint32_t              LocalEndpointIdentifier) noexcept
+@@ -185,7 +210,7 @@ uint8_t NetworkingExtension::ComputeTransportAvailabilityMask() const noexcept
+     uint8_t Mask = static_cast<uint8_t>(TransportLinkAvailabilityMask::EnableLoopback) |
+                    static_cast<uint8_t>(TransportLinkAvailabilityMask::EnableSovereignSocket);
+ 
+-    if (EpicOnlineTransport::QuerySdkCompiled() || EpicChannel.QueryChannelReady() || EpicChannel.QueryChannelOperational())
++    if (EpicChannel.QueryChannelReady() || EpicChannel.QueryChannelOperational())
+     {
+         Mask |= static_cast<uint8_t>(TransportLinkAvailabilityMask::EnableEpicOnline);
+     }
+diff --git a/Engine/NetworkingSpace/NetworkingExtension.h b/Engine/NetworkingSpace/NetworkingExtension.h
+index 785a773..518c5fe 100644
+--- a/Engine/NetworkingSpace/NetworkingExtension.h
++++ b/Engine/NetworkingSpace/NetworkingExtension.h
+@@ -65,6 +65,9 @@ public:
+     // Configuration & transport routing
+     void               ConfigureNetworkSpace(const Codecs::NetworkSpaceConfiguration& Configuration, uint32_t LocalEndpointIdentifier = 1u);
+     void               AttachSharedLoopbackSwitch(LoopbackPacketSwitch* SharedSwitch, uint32_t LocalEndpointIdentifier) noexcept;
++    [[nodiscard]] bool ConfigureEpicIdentity(const EpicSessionCredentials& Credentials);
++    [[nodiscard]] bool BeginEpicAccountPortalLogin() noexcept;
++    [[nodiscard]] bool ResolveEpicProductUserConsent(bool CreateNewProductUser) noexcept;
+ 
+     [[nodiscard]] TransportChannelCategory ActivatePreferredOrFallbackTransport() noexcept;
+     [[nodiscard]] TransportChannelCategory TriggerTransportFailover() noexcept;
+diff --git a/Engine/NetworkingSpace/Transports/EpicOnlineTransport.cpp b/Engine/NetworkingSpace/Transports/EpicOnlineTransport.cpp
+index 91d2361..fbe297b 100644
+--- a/Engine/NetworkingSpace/Transports/EpicOnlineTransport.cpp
++++ b/Engine/NetworkingSpace/Transports/EpicOnlineTransport.cpp
+@@ -1,71 +1,751 @@
+ /*============================================================================================================================================
+                                                            EPICONLINETRANSPORT.CPP
+ ============================================================================================================================================*/
+-// 🧩 Proprietary Epic Online Services SDK adapter compilation unit (compiled only when FRONTIER_ENABLE_EOS_SDK=ON)
+-
+-//------------------------------------------------------------------------------------------------------------------------
+-//                                                        INCLUDES
+-//------------------------------------------------------------------------------------------------------------------------
++// EOS SDK-backed Auth -> Connect identity, EOS P2P packets, and EOS Sessions host/search/join/leave operations.
+ 
+ #include "Engine/NetworkingSpace/Transports/EpicOnlineTransport.h"
+ 
++#include <eos_auth.h>
++#include <eos_connect.h>
++#include <eos_p2p.h>
++#include <eos_sessions.h>
++#include <eos_sdk.h>
++
++#include <algorithm>
++#include <array>
++#include <cstring>
++#include <mutex>
++#include <unordered_map>
++#include <utility>
++#include <vector>
++
+ namespace Frontier::NetworkingSpace
+ {
++namespace
++{
++std::mutex EosRuntimeMutex{};
++uint32_t EosRuntimeReferences = 0u;
++
++bool AcquireEosRuntime(const EpicSessionCredentials& Credentials)
++{
++    std::scoped_lock Lock(EosRuntimeMutex);
++    if (EosRuntimeReferences == 0u)
++    {
++        EOS_InitializeOptions InitializeOptions{};
++        InitializeOptions.ApiVersion = EOS_INITIALIZE_API_LATEST;
++        InitializeOptions.ProductName = Credentials.ProductName.c_str();
++        InitializeOptions.ProductVersion = Credentials.ProductVersion.c_str();
++        if (EOS_Initialize(&InitializeOptions) != EOS_EResult::EOS_Success)
++            return false;
++    }
++    ++EosRuntimeReferences;
++    return true;
++}
++
++void ReleaseEosRuntime() noexcept
++{
++    std::scoped_lock Lock(EosRuntimeMutex);
++    if (EosRuntimeReferences == 0u)
++        return;
++    --EosRuntimeReferences;
++    if (EosRuntimeReferences == 0u)
++        (void)EOS_Shutdown();
++}
++
++uint32_t ToEosScopeMask(uint32_t Requested) noexcept
++{
++    uint32_t Result = 0u;
++    if ((Requested & static_cast<uint32_t>(IdentityScopeMask::EnableBasicProfile)) != 0u)
++        Result |= static_cast<uint32_t>(EOS_EAuthScopeFlags::EOS_AS_BasicProfile);
++    if ((Requested & static_cast<uint32_t>(IdentityScopeMask::EnableFriendsRoster)) != 0u)
++        Result |= static_cast<uint32_t>(EOS_EAuthScopeFlags::EOS_AS_FriendsList);
++    if ((Requested & static_cast<uint32_t>(IdentityScopeMask::EnablePresenceBroadcast)) != 0u)
++        Result |= static_cast<uint32_t>(EOS_EAuthScopeFlags::EOS_AS_Presence);
++    if ((Requested & static_cast<uint32_t>(IdentityScopeMask::EnableCountryCode)) != 0u)
++        Result |= static_cast<uint32_t>(EOS_EAuthScopeFlags::EOS_AS_Country);
++    return Result;
++}
++
++std::string RedactedResult(const char* Operation, EOS_EResult Result)
++{
++    return std::string("eos=") + Operation + "; result=" + EOS_EResult_ToString(Result);
++}
++}
++
++struct EpicOnlineTransport::SdkState
++{
++    EpicOnlineTransport* Owner = nullptr;
++
++    ~SdkState() { ReleasePlatform(); }
++    EOS_HPlatform Platform = nullptr;
++    EOS_HAuth Auth = nullptr;
++    EOS_HConnect Connect = nullptr;
++    EOS_HP2P P2P = nullptr;
++    EOS_HSessions Sessions = nullptr;
++    EOS_EpicAccountId EpicAccount = nullptr;
++    EOS_ProductUserId ProductUser = nullptr;
++    EOS_ContinuanceToken PendingContinuanceToken = nullptr;
++    double ConsentElapsedSeconds = 0.0;
++    EOS_HSessionSearch SearchHandle = nullptr;
++    EOS_HSessionDetails PendingSessionDetails = nullptr;
++    bool SearchInProgress = false;
++    EOS_NotificationId PeerRequestNotification = EOS_INVALID_NOTIFICATIONID;
++    EOS_P2P_SocketId Socket{};
++    std::unordered_map<uint32_t, EOS_ProductUserId> Peers{};
++    std::string IdentityJwt{};
++    bool OwnsGlobalRuntime = false;
++
++    void ReleaseSearch() noexcept
++    {
++        SearchInProgress = false;
++        if (PendingSessionDetails != nullptr)
++        {
++            EOS_SessionDetails_Release(PendingSessionDetails);
++            PendingSessionDetails = nullptr;
++        }
++        if (SearchHandle != nullptr)
++        {
++            EOS_SessionSearch_Release(SearchHandle);
++            SearchHandle = nullptr;
++        }
++    }
++
++    void ReleasePlatform() noexcept
++    {
++        ReleaseSearch();
++        if (P2P != nullptr && PeerRequestNotification != EOS_INVALID_NOTIFICATIONID)
++        {
++            EOS_P2P_RemoveNotifyPeerConnectionRequest(P2P, PeerRequestNotification);
++            PeerRequestNotification = EOS_INVALID_NOTIFICATIONID;
++        }
++        if (Platform != nullptr)
++        {
++            EOS_Platform_Release(Platform);
++            Platform = nullptr;
++        }
++        Auth = nullptr;
++        Connect = nullptr;
++        P2P = nullptr;
++        Sessions = nullptr;
++        EpicAccount = nullptr;
++        ProductUser = nullptr;
++        PendingContinuanceToken = nullptr;
++        Peers.clear();
++        if (!IdentityJwt.empty())
++        {
++            ZeroSensitiveBytes(std::span<char>(IdentityJwt.data(), IdentityJwt.size()));
++            IdentityJwt.clear();
++        }
++        if (OwnsGlobalRuntime)
++        {
++            ReleaseEosRuntime();
++            OwnsGlobalRuntime = false;
++        }
++    }
++
++    void Fail(const char* Operation, EOS_EResult Result) noexcept
++    {
++        Owner->IdentityPhase = EpicIdentityPhase::Failed;
++        Owner->SessionPhase = EpicSessionPhase::Failed;
++        Owner->RedactedDiagnostic = RedactedResult(Operation, Result);
++    }
++
++    static void EOS_CALL OnAuthLogin(const EOS_Auth_LoginCallbackInfo* Info)
++    {
++        if (Info == nullptr || Info->ClientData == nullptr)
++            return;
++        auto& State = *static_cast<SdkState*>(Info->ClientData);
++        EpicOnlineTransport& Self = *State.Owner;
++        if (Info->ResultCode != EOS_EResult::EOS_Success || !EOS_EpicAccountId_IsValid(Info->SelectedAccountId))
++        {
++            State.Fail("auth_login_failed", Info->ResultCode);
++            return;
++        }
++        State.EpicAccount = Info->SelectedAccountId;
++        EOS_Auth_CopyIdTokenOptions CopyOptions{};
++        CopyOptions.ApiVersion = EOS_AUTH_COPYIDTOKEN_API_LATEST;
++        CopyOptions.AccountId = State.EpicAccount;
++        EOS_Auth_IdToken* IdToken = nullptr;
++        const EOS_EResult CopyResult = EOS_Auth_CopyIdToken(State.Auth, &CopyOptions, &IdToken);
++        if (CopyResult != EOS_EResult::EOS_Success || IdToken == nullptr || IdToken->JsonWebToken == nullptr)
++        {
++            if (IdToken != nullptr)
++                EOS_Auth_IdToken_Release(IdToken);
++            State.Fail("auth_identity_token_unavailable", CopyResult);
++            return;
++        }
++        State.IdentityJwt.assign(IdToken->JsonWebToken);
++        EOS_Auth_IdToken_Release(IdToken);
++
++        EOS_Connect_Credentials Credentials{};
++        Credentials.ApiVersion = EOS_CONNECT_CREDENTIALS_API_LATEST;
++        Credentials.Type = EOS_EExternalCredentialType::EOS_ECT_EPIC_ID_TOKEN;
++        Credentials.Token = State.IdentityJwt.c_str();
++        EOS_Connect_LoginOptions LoginOptions{};
++        LoginOptions.ApiVersion = EOS_CONNECT_LOGIN_API_LATEST;
++        LoginOptions.Credentials = &Credentials;
++        Self.IdentityPhase = EpicIdentityPhase::ConnectPending;
++        EOS_Connect_Login(State.Connect, &LoginOptions, &State, OnConnectLogin);
++    }
++
++    static void EOS_CALL OnConnectLogin(const EOS_Connect_LoginCallbackInfo* Info)
++    {
++        if (Info == nullptr || Info->ClientData == nullptr)
++            return;
++        auto& State = *static_cast<SdkState*>(Info->ClientData);
++        EpicOnlineTransport& Self = *State.Owner;
++        if (Info->ResultCode == EOS_EResult::EOS_InvalidUser && Info->ContinuanceToken != nullptr)
++        {
++            State.PendingContinuanceToken = Info->ContinuanceToken;
++            State.ConsentElapsedSeconds = 0.0;
++            Self.IdentityPhase = EpicIdentityPhase::ProductUserConsentRequired;
++            Self.RedactedDiagnostic = "eos=product_user_creation_requires_explicit_consent";
++            return;
++        }
++        if (Info->ResultCode != EOS_EResult::EOS_Success || !EOS_ProductUserId_IsValid(Info->LocalUserId))
++        {
++            State.Fail("connect_login_failed", Info->ResultCode);
++            return;
++        }
++        State.AcceptProductUser(Info->LocalUserId);
++    }
++
++    static void EOS_CALL OnCreateProductUser(const EOS_Connect_CreateUserCallbackInfo* Info)
++    {
++        if (Info == nullptr || Info->ClientData == nullptr)
++            return;
++        auto& State = *static_cast<SdkState*>(Info->ClientData);
++        if (Info->ResultCode != EOS_EResult::EOS_Success || !EOS_ProductUserId_IsValid(Info->LocalUserId))
++        {
++            State.Fail("connect_create_user_failed", Info->ResultCode);
++            return;
++        }
++        State.AcceptProductUser(Info->LocalUserId);
++    }
++
++    void AcceptProductUser(EOS_ProductUserId User)
++    {
++        ProductUser = User;
++        std::array<char, 128> ProductUserText{};
++        int32_t BufferLength = static_cast<int32_t>(ProductUserText.size());
++        if (EOS_ProductUserId_ToString(ProductUser, ProductUserText.data(), &BufferLength) != EOS_EResult::EOS_Success)
++        {
++            Fail("connect_product_user_id_conversion_failed", EOS_EResult::EOS_UnexpectedError);
++            return;
++        }
++        Owner->ProductUserIdentifier.assign(ProductUserText.data());
++        Owner->IdentityPhase = EpicIdentityPhase::Authenticated;
++        Owner->RedactedDiagnostic = "eos=authenticated; identity_token=redacted";
++        PendingContinuanceToken = nullptr;
++    }
++
++    static void EOS_CALL OnPeerConnectionRequest(const EOS_P2P_OnIncomingConnectionRequestInfo* Info)
++    {
++        if (Info == nullptr || Info->ClientData == nullptr || Info->SocketId == nullptr)
++            return;
++        auto& State = *static_cast<SdkState*>(Info->ClientData);
++        if (State.P2P == nullptr || State.ProductUser == nullptr || Info->LocalUserId != State.ProductUser)
++            return;
++        const bool KnownPeer = std::any_of(State.Peers.begin(), State.Peers.end(), [Info](const auto& Entry)
++        {
++            return Entry.second == Info->RemoteUserId;
++        });
++        if (!KnownPeer)
++            return;
++        EOS_P2P_AcceptConnectionOptions Accept{};
++        Accept.ApiVersion = EOS_P2P_ACCEPTCONNECTION_API_LATEST;
++        Accept.LocalUserId = State.ProductUser;
++        Accept.RemoteUserId = Info->RemoteUserId;
++        Accept.SocketId = Info->SocketId;
++        (void)EOS_P2P_AcceptConnection(State.P2P, &Accept);
++    }
++
++    static void EOS_CALL OnSessionUpdated(const EOS_Sessions_UpdateSessionCallbackInfo* Info)
++    {
++        if (Info == nullptr || Info->ClientData == nullptr)
++            return;
++        auto& State = *static_cast<SdkState*>(Info->ClientData);
++        if (Info->ResultCode != EOS_EResult::EOS_Success)
++        {
++            State.Owner->SessionPhase = EpicSessionPhase::Failed;
++            State.Owner->RedactedDiagnostic = RedactedResult("session_create_failed", Info->ResultCode);
++            return;
++        }
++        State.Owner->SessionPhase = EpicSessionPhase::Ready;
++        if (Info->SessionName != nullptr)
++            State.Owner->ActiveSessionName = Info->SessionName;
++        State.Owner->RedactedDiagnostic = "eos=session_ready";
++    }
++
++    static void EOS_CALL OnSessionStarted(const EOS_Sessions_StartSessionCallbackInfo* Info)
++    {
++        if (Info == nullptr || Info->ClientData == nullptr)
++            return;
++        auto& State = *static_cast<SdkState*>(Info->ClientData);
++        if (Info->ResultCode != EOS_EResult::EOS_Success)
++        {
++            State.Owner->SessionPhase = EpicSessionPhase::Ready;
++            State.Owner->RedactedDiagnostic = RedactedResult("session_start_failed", Info->ResultCode);
++            return;
++        }
++        State.Owner->SessionPhase = EpicSessionPhase::Active;
++        State.Owner->RedactedDiagnostic = "eos=session_started";
++    }
++
++    static void EOS_CALL OnSearchComplete(const EOS_SessionSearch_FindCallbackInfo* Info)
++    {
++        if (Info == nullptr || Info->ClientData == nullptr)
++            return;
++        auto& State = *static_cast<SdkState*>(Info->ClientData);
++        State.SearchInProgress = false;
++        if (Info->ResultCode != EOS_EResult::EOS_Success || State.SearchHandle == nullptr)
++        {
++            State.Owner->SessionPhase = EpicSessionPhase::Failed;
++            State.Owner->SessionSearchResultCount = 0u;
++            State.Owner->RedactedDiagnostic = RedactedResult("session_search_failed", Info->ResultCode);
++            return;
++        }
++        EOS_SessionSearch_GetSearchResultCountOptions CountOptions{};
++        CountOptions.ApiVersion = EOS_SESSIONSEARCH_GETSEARCHRESULTCOUNT_API_LATEST;
++        State.Owner->SessionSearchResultCount = EOS_SessionSearch_GetSearchResultCount(State.SearchHandle, &CountOptions);
++        State.Owner->SessionPhase = EpicSessionPhase::Searching;
++        State.Owner->RedactedDiagnostic = "eos=session_search_complete";
++    }
++
++    static void EOS_CALL OnSessionJoined(const EOS_Sessions_JoinSessionCallbackInfo* Info)
++    {
++        if (Info == nullptr || Info->ClientData == nullptr)
++            return;
++        auto& State = *static_cast<SdkState*>(Info->ClientData);
++        const std::string JoinedSessionName = Info->SessionName != nullptr ? Info->SessionName : "";
++        State.ReleaseSearch();
++        if (Info->ResultCode != EOS_EResult::EOS_Success)
++        {
++            State.Owner->SessionPhase = EpicSessionPhase::Failed;
++            State.Owner->RedactedDiagnostic = RedactedResult("session_join_failed", Info->ResultCode);
++            return;
++        }
++        State.Owner->ActiveSessionName = JoinedSessionName;
++        State.Owner->SessionPhase = EpicSessionPhase::Active;
++        State.Owner->RedactedDiagnostic = "eos=session_joined";
++    }
++
++    static void EOS_CALL OnSessionEnded(const EOS_Sessions_EndSessionCallbackInfo* Info)
++    {
++        if (Info == nullptr || Info->ClientData == nullptr)
++            return;
++        auto& State = *static_cast<SdkState*>(Info->ClientData);
++        if (Info->ResultCode != EOS_EResult::EOS_Success)
++        {
++            State.Owner->SessionPhase = EpicSessionPhase::Failed;
++            State.Owner->RedactedDiagnostic = RedactedResult("session_end_failed", Info->ResultCode);
++            return;
++        }
++        EOS_Sessions_DestroySessionOptions DestroyOptions{};
++        DestroyOptions.ApiVersion = EOS_SESSIONS_DESTROYSESSION_API_LATEST;
++        DestroyOptions.SessionName = State.Owner->ActiveSessionName.c_str();
++        State.Owner->SessionPhase = EpicSessionPhase::Leaving;
++        EOS_Sessions_DestroySession(State.Sessions, &DestroyOptions, &State, OnSessionDestroyed);
++    }
++
++    static void EOS_CALL OnSessionDestroyed(const EOS_Sessions_DestroySessionCallbackInfo* Info)
++    {
++        if (Info == nullptr || Info->ClientData == nullptr)
++            return;
++        auto& State = *static_cast<SdkState*>(Info->ClientData);
++        if (Info->ResultCode != EOS_EResult::EOS_Success)
++        {
++            State.Owner->SessionPhase = EpicSessionPhase::Failed;
++            State.Owner->RedactedDiagnostic = RedactedResult("session_destroy_failed", Info->ResultCode);
++            return;
++        }
++        State.Owner->ActiveSessionName.clear();
++        State.Owner->SessionPhase = EpicSessionPhase::None;
++        State.Owner->RedactedDiagnostic = "eos=session_closed";
++    }
++};
++
++EpicOnlineTransport::EpicOnlineTransport() : Sdk(std::make_unique<SdkState>())
++{
++    Sdk->Owner = this;
++    Sdk->Socket.ApiVersion = EOS_P2P_SOCKETID_API_LATEST;
++    constexpr char SocketName[] = "FrontierNet";
++    std::memcpy(Sdk->Socket.SocketName, SocketName, sizeof(SocketName));
++}
+ 
+ EpicOnlineTransport::~EpicOnlineTransport() noexcept
+ {
+     CloseChannel();
++    SignOut();
+     ScrubSensitiveCredentials();
+ }
+ 
+-bool EpicOnlineTransport::QuerySdkCompiled() noexcept
+-{
+-    return true;
+-}
++bool EpicOnlineTransport::QuerySdkCompiled() noexcept { return true; }
+ 
+ bool EpicOnlineTransport::ConfigureCredentials(const EpicSessionCredentials& Candidate)
+ {
++    SignOut();
+     ScrubSensitiveCredentials();
+-    if (Candidate.ProductIdentifier.empty() ||
+-        Candidate.SandboxIdentifier.empty() ||
+-        Candidate.DeploymentIdentifier.empty() ||
++    const auto IsAsciiCredential = [](const std::string& Value)
++    {
++        return Value.size() <= 64u && !Value.empty() && std::all_of(Value.begin(), Value.end(), [](unsigned char Character)
++        {
++            return Character > 32u && Character < 127u;
++        });
++    };
++    const bool ClientCredentialsAbsent = Candidate.ClientIdentifier.empty() && Candidate.ClientSecret.empty();
++    const bool ClientCredentialsValid = IsAsciiCredential(Candidate.ClientIdentifier) && IsAsciiCredential(Candidate.ClientSecret);
++    if (Candidate.ProductIdentifier.empty() || Candidate.SandboxIdentifier.empty() ||
++        Candidate.DeploymentIdentifier.empty() || (!ClientCredentialsAbsent && !ClientCredentialsValid) ||
+         !VerifyMandatoryIdentityScopes(Candidate.RequestedScopeMask) ||
+         (!Candidate.EncryptionHexKey.empty() && !VerifyHexStorageKeyFormat(Candidate.EncryptionHexKey)))
+     {
+-        CredentialsValid   = false;
+-        RedactedDiagnostic = "eos=rejected_invalid_scopes_or_storage_key";
++        IdentityPhase = EpicIdentityPhase::Failed;
++        RedactedDiagnostic = "eos=configuration_rejected";
++        return false;
++    }
++    Credentials = Candidate;
++    CredentialsValid = true;
++    IdentityPhase = EpicIdentityPhase::Unconfigured;
++    RedactedDiagnostic = "eos=credentials_configured; authentication_not_attempted";
++    return true;
++}
++
++bool EpicOnlineTransport::InitializeSdk() noexcept
++{
++    if (Sdk->Platform != nullptr)
++        return true;
++    if (!CredentialsValid || Credentials.ClientIdentifier.empty() || Credentials.ClientSecret.empty() || !QuerySdkCompiled())
++        return false;
++    if (!AcquireEosRuntime(Credentials))
++    {
++        IdentityPhase = EpicIdentityPhase::Failed;
++        RedactedDiagnostic = "eos=initialize_failed";
++        return false;
++    }
++    Sdk->OwnsGlobalRuntime = true;
++
++    EOS_Platform_Options Options{};
++    Options.ApiVersion = EOS_PLATFORM_OPTIONS_API_LATEST;
++    Options.ProductId = Credentials.ProductIdentifier.c_str();
++    Options.SandboxId = Credentials.SandboxIdentifier.c_str();
++    Options.DeploymentId = Credentials.DeploymentIdentifier.c_str();
++    Options.ClientCredentials.ClientId = Credentials.ClientIdentifier.c_str();
++    Options.ClientCredentials.ClientSecret = Credentials.ClientSecret.c_str();
++    Options.bIsServer = EOS_FALSE;
++    Options.EncryptionKey = Credentials.EncryptionHexKey.empty() ? nullptr : Credentials.EncryptionHexKey.c_str();
++    Sdk->Platform = EOS_Platform_Create(&Options);
++    if (Sdk->Platform == nullptr)
++    {
++        Sdk->ReleasePlatform();
++        IdentityPhase = EpicIdentityPhase::Failed;
++        RedactedDiagnostic = "eos=platform_create_failed";
++        return false;
++    }
++    Sdk->Auth = EOS_Platform_GetAuthInterface(Sdk->Platform);
++    Sdk->Connect = EOS_Platform_GetConnectInterface(Sdk->Platform);
++    Sdk->P2P = EOS_Platform_GetP2PInterface(Sdk->Platform);
++    Sdk->Sessions = EOS_Platform_GetSessionsInterface(Sdk->Platform);
++    if (Sdk->Auth == nullptr || Sdk->Connect == nullptr || Sdk->P2P == nullptr || Sdk->Sessions == nullptr)
++    {
++        Sdk->ReleasePlatform();
++        IdentityPhase = EpicIdentityPhase::Failed;
++        RedactedDiagnostic = "eos=required_interface_unavailable";
++        return false;
++    }
++    if (!Credentials.ClientSecret.empty())
++    {
++        ZeroSensitiveBytes(std::span<char>(Credentials.ClientSecret.data(), Credentials.ClientSecret.size()));
++        Credentials.ClientSecret.clear();
++    }
++    IdentityPhase = EpicIdentityPhase::PlatformReady;
++    RedactedDiagnostic = "eos=platform_ready; player_authentication_not_attempted";
++    return true;
++}
++
++bool EpicOnlineTransport::BeginEpicAccountPortalLogin() noexcept
++{
++    if (!InitializeSdk() || IdentityPhase == EpicIdentityPhase::AuthPending || IdentityPhase == EpicIdentityPhase::ConnectPending)
++        return false;
++    EOS_Auth_Credentials AuthCredentials{};
++    AuthCredentials.ApiVersion = EOS_AUTH_CREDENTIALS_API_LATEST;
++    AuthCredentials.Type = EOS_ELoginCredentialType::EOS_LCT_AccountPortal;
++    EOS_Auth_LoginOptions Options{};
++    Options.ApiVersion = EOS_AUTH_LOGIN_API_LATEST;
++    Options.Credentials = &AuthCredentials;
++    Options.ScopeFlags = static_cast<EOS_EAuthScopeFlags>(ToEosScopeMask(Credentials.RequestedScopeMask));
++    IdentityPhase = EpicIdentityPhase::AuthPending;
++    RedactedDiagnostic = "eos=account_portal_login_pending";
++    EOS_Auth_Login(Sdk->Auth, &Options, Sdk.get(), SdkState::OnAuthLogin);
++    return true;
++}
++
++bool EpicOnlineTransport::ResolveProductUserConsent(bool CreateNewProductUser) noexcept
++{
++    if (IdentityPhase != EpicIdentityPhase::ProductUserConsentRequired || Sdk->PendingContinuanceToken == nullptr ||
++        Sdk->ConsentElapsedSeconds >= ContinuanceApprovalTimeoutSeconds)
+         return false;
++    EOS_ContinuanceToken Token = Sdk->PendingContinuanceToken;
++    Sdk->PendingContinuanceToken = nullptr;
++    if (!CreateNewProductUser)
++    {
++        IdentityPhase = EpicIdentityPhase::Failed;
++        RedactedDiagnostic = "eos=product_user_creation_declined";
++        return true;
+     }
++    EOS_Connect_CreateUserOptions Options{};
++    Options.ApiVersion = EOS_CONNECT_CREATEUSER_API_LATEST;
++    Options.ContinuanceToken = Token;
++    IdentityPhase = EpicIdentityPhase::ConnectPending;
++    RedactedDiagnostic = "eos=product_user_creation_pending";
++    EOS_Connect_CreateUser(Sdk->Connect, &Options, Sdk.get(), SdkState::OnCreateProductUser);
++    return true;
++}
++
++void EpicOnlineTransport::SignOut() noexcept
++{
++    CloseChannel();
++    if (Sdk)
++        Sdk->ReleasePlatform();
++    ProductUserIdentifier.clear();
++    ActiveSessionName.clear();
++    SessionSearchResultCount = 0u;
++    SessionPhase = EpicSessionPhase::None;
++    CredentialsValid = !Credentials.ClientSecret.empty();
++    IdentityPhase = CredentialsValid ? EpicIdentityPhase::PlatformReady : EpicIdentityPhase::Unconfigured;
++}
++
++std::string EpicOnlineTransport::CopyEpicIdentityJwt() const
++{
++    return Sdk ? Sdk->IdentityJwt : std::string{};
++}
+ 
+-    Credentials        = Candidate;
+-    CredentialsValid   = true;
+-    RedactedDiagnostic = RedactCredentialText(
+-        "eos=sdk_configured; product=" + Credentials.ProductIdentifier +
+-        "; storage_key=" + Credentials.EncryptionHexKey);
++bool EpicOnlineTransport::RegisterPeer(uint32_t EndpointIdentifier, std::string_view ProductUserText)
++{
++    if (EndpointIdentifier == 0u || ProductUserText.empty() || !Sdk || Sdk->ProductUser == nullptr)
++        return false;
++    std::string Text(ProductUserText);
++    EOS_ProductUserId User = EOS_ProductUserId_FromString(Text.c_str());
++    if (!EOS_ProductUserId_IsValid(User))
++        return false;
++    Sdk->Peers[EndpointIdentifier] = User;
+     return true;
+ }
+ 
++void EpicOnlineTransport::UnregisterPeer(uint32_t EndpointIdentifier) noexcept
++{
++    if (Sdk)
++        Sdk->Peers.erase(EndpointIdentifier);
++}
++
+ void EpicOnlineTransport::AttachSimulatedBridgeSwitch(LoopbackPacketSwitch* BridgeSwitch, uint32_t LocalEndpointIdentifier) noexcept
+ {
+     SimulatedBridge = BridgeSwitch;
+-    LocalEndpoint   = (LocalEndpointIdentifier != 0u) ? LocalEndpointIdentifier : 1u;
++    LocalEndpoint = LocalEndpointIdentifier != 0u ? LocalEndpointIdentifier : 1u;
++}
++
++bool EpicOnlineTransport::CreateMatchSession(std::string_view Name, std::string_view Bucket, uint32_t MaxPlayers) noexcept
++{
++    if (IdentityPhase != EpicIdentityPhase::Authenticated || Sdk->Sessions == nullptr || Name.empty() || Bucket.empty() ||
++        Name.size() > 64u || Bucket.size() > 64u || MaxPlayers < 2u || MaxPlayers > 100u ||
++        SessionPhase == EpicSessionPhase::Creating || SessionPhase == EpicSessionPhase::Ready ||
++        SessionPhase == EpicSessionPhase::Starting || SessionPhase == EpicSessionPhase::Joining ||
++        SessionPhase == EpicSessionPhase::Active || SessionPhase == EpicSessionPhase::Leaving)
++        return false;
++    const std::string SessionName(Name);
++    const std::string BucketId(Bucket);
++    EOS_Sessions_CreateSessionModificationOptions CreateOptions{};
++    CreateOptions.ApiVersion = EOS_SESSIONS_CREATESESSIONMODIFICATION_API_LATEST;
++    CreateOptions.SessionName = SessionName.c_str();
++    CreateOptions.BucketId = BucketId.c_str();
++    CreateOptions.MaxPlayers = MaxPlayers;
++    CreateOptions.LocalUserId = Sdk->ProductUser;
++    CreateOptions.bPresenceEnabled = EOS_FALSE;
++    EOS_HSessionModification Modification = nullptr;
++    if (EOS_Sessions_CreateSessionModification(Sdk->Sessions, &CreateOptions, &Modification) != EOS_EResult::EOS_Success || Modification == nullptr)
++        return false;
++    EOS_SessionModification_SetPermissionLevelOptions Permission{};
++    Permission.ApiVersion = EOS_SESSIONMODIFICATION_SETPERMISSIONLEVEL_API_LATEST;
++    Permission.PermissionLevel = EOS_EOnlineSessionPermissionLevel::EOS_OSPF_PublicAdvertised;
++    const EOS_EResult PermissionResult = EOS_SessionModification_SetPermissionLevel(Modification, &Permission);
++    EOS_SessionModification_SetJoinInProgressAllowedOptions JoinOptions{};
++    JoinOptions.ApiVersion = EOS_SESSIONMODIFICATION_SETJOININPROGRESSALLOWED_API_LATEST;
++    JoinOptions.bAllowJoinInProgress = EOS_TRUE;
++    const EOS_EResult JoinResult = PermissionResult == EOS_EResult::EOS_Success
++        ? EOS_SessionModification_SetJoinInProgressAllowed(Modification, &JoinOptions)
++        : PermissionResult;
++    if (JoinResult != EOS_EResult::EOS_Success)
++    {
++        EOS_SessionModification_Release(Modification);
++        return false;
++    }
++    EOS_Sessions_AttributeData BucketAttribute{};
++    BucketAttribute.ApiVersion = EOS_SESSIONS_ATTRIBUTEDATA_API_LATEST;
++    BucketAttribute.Key = "frontier_bucket";
++    BucketAttribute.ValueType = EOS_ESessionAttributeType::EOS_AT_STRING;
++    BucketAttribute.Value.AsUtf8 = BucketId.c_str();
++    EOS_SessionModification_AddAttributeOptions AttributeOptions{};
++    AttributeOptions.ApiVersion = EOS_SESSIONMODIFICATION_ADDATTRIBUTE_API_LATEST;
++    AttributeOptions.SessionAttribute = &BucketAttribute;
++    AttributeOptions.AdvertisementType = EOS_ESessionAttributeAdvertisementType::EOS_SAAT_Advertise;
++    const EOS_EResult AttributeResult = EOS_SessionModification_AddAttribute(Modification, &AttributeOptions);
++    if (AttributeResult != EOS_EResult::EOS_Success)
++    {
++        EOS_SessionModification_Release(Modification);
++        return false;
++    }
++    ActiveSessionName = SessionName;
++    EOS_Sessions_UpdateSessionOptions UpdateOptions{};
++    UpdateOptions.ApiVersion = EOS_SESSIONS_UPDATESESSION_API_LATEST;
++    UpdateOptions.SessionModificationHandle = Modification;
++    SessionPhase = EpicSessionPhase::Creating;
++    RedactedDiagnostic = "eos=session_create_pending";
++    EOS_Sessions_UpdateSession(Sdk->Sessions, &UpdateOptions, Sdk.get(), SdkState::OnSessionUpdated);
++    EOS_SessionModification_Release(Modification);
++    return true;
++}
++
++bool EpicOnlineTransport::StartMatchSession() noexcept
++{
++    if (IdentityPhase != EpicIdentityPhase::Authenticated || SessionPhase != EpicSessionPhase::Ready ||
++        ActiveSessionName.empty() || Sdk->Sessions == nullptr)
++        return false;
++    EOS_Sessions_StartSessionOptions Options{};
++    Options.ApiVersion = EOS_SESSIONS_STARTSESSION_API_LATEST;
++    Options.SessionName = ActiveSessionName.c_str();
++    SessionPhase = EpicSessionPhase::Starting;
++    RedactedDiagnostic = "eos=session_start_pending";
++    EOS_Sessions_StartSession(Sdk->Sessions, &Options, Sdk.get(), SdkState::OnSessionStarted);
++    return true;
++}
++
++bool EpicOnlineTransport::SearchMatchSessions(std::string_view BucketIdentifier, uint32_t MaxResults) noexcept
++{
++    if (IdentityPhase != EpicIdentityPhase::Authenticated || Sdk->Sessions == nullptr || BucketIdentifier.empty() ||
++        MaxResults == 0u || MaxResults > 64u || Sdk->SearchInProgress || SessionPhase == EpicSessionPhase::Creating ||
++        SessionPhase == EpicSessionPhase::Joining || SessionPhase == EpicSessionPhase::Leaving)
++        return false;
++    Sdk->ReleaseSearch();
++    SessionSearchResultCount = 0u;
++    EOS_Sessions_CreateSessionSearchOptions CreateOptions{};
++    CreateOptions.ApiVersion = EOS_SESSIONS_CREATESESSIONSEARCH_API_LATEST;
++    CreateOptions.MaxSearchResults = MaxResults;
++    if (EOS_Sessions_CreateSessionSearch(Sdk->Sessions, &CreateOptions, &Sdk->SearchHandle) != EOS_EResult::EOS_Success ||
++        Sdk->SearchHandle == nullptr)
++        return false;
++
++    const std::string Bucket(BucketIdentifier);
++    EOS_Sessions_AttributeData Attribute{};
++    Attribute.ApiVersion = EOS_SESSIONS_ATTRIBUTEDATA_API_LATEST;
++    Attribute.Key = "frontier_bucket";
++    Attribute.ValueType = EOS_ESessionAttributeType::EOS_AT_STRING;
++    Attribute.Value.AsUtf8 = Bucket.c_str();
++    EOS_SessionSearch_SetParameterOptions Parameter{};
++    Parameter.ApiVersion = EOS_SESSIONSEARCH_SETPARAMETER_API_LATEST;
++    Parameter.Parameter = &Attribute;
++    Parameter.ComparisonOp = EOS_EComparisonOp::EOS_CO_EQUAL;
++    if (EOS_SessionSearch_SetParameter(Sdk->SearchHandle, &Parameter) != EOS_EResult::EOS_Success)
++    {
++        Sdk->ReleaseSearch();
++        return false;
++    }
++    EOS_SessionSearch_FindOptions FindOptions{};
++    FindOptions.ApiVersion = EOS_SESSIONSEARCH_FIND_API_LATEST;
++    FindOptions.LocalUserId = Sdk->ProductUser;
++    SessionPhase = EpicSessionPhase::Searching;
++    Sdk->SearchInProgress = true;
++    RedactedDiagnostic = "eos=session_search_pending";
++    EOS_SessionSearch_Find(Sdk->SearchHandle, &FindOptions, Sdk.get(), SdkState::OnSearchComplete);
++    return true;
++}
++
++bool EpicOnlineTransport::JoinMatchSession(uint32_t SearchResultIndex, std::string_view LocalSessionName) noexcept
++{
++    if (IdentityPhase != EpicIdentityPhase::Authenticated || Sdk->Sessions == nullptr || Sdk->SearchHandle == nullptr ||
++        SearchResultIndex >= SessionSearchResultCount || LocalSessionName.empty() || LocalSessionName.size() > 64u ||
++        SessionPhase != EpicSessionPhase::Searching)
++        return false;
++    EOS_SessionSearch_CopySearchResultByIndexOptions CopyOptions{};
++    CopyOptions.ApiVersion = EOS_SESSIONSEARCH_COPYSEARCHRESULTBYINDEX_API_LATEST;
++    CopyOptions.SessionIndex = SearchResultIndex;
++    if (EOS_SessionSearch_CopySearchResultByIndex(Sdk->SearchHandle, &CopyOptions, &Sdk->PendingSessionDetails) != EOS_EResult::EOS_Success ||
++        Sdk->PendingSessionDetails == nullptr)
++        return false;
++    const std::string LocalName(LocalSessionName);
++    EOS_Sessions_JoinSessionOptions JoinOptions{};
++    JoinOptions.ApiVersion = EOS_SESSIONS_JOINSESSION_API_LATEST;
++    JoinOptions.SessionName = LocalName.c_str();
++    JoinOptions.SessionHandle = Sdk->PendingSessionDetails;
++    JoinOptions.LocalUserId = Sdk->ProductUser;
++    JoinOptions.bPresenceEnabled = EOS_FALSE;
++    ActiveSessionName = LocalName;
++    SessionPhase = EpicSessionPhase::Joining;
++    RedactedDiagnostic = "eos=session_join_pending";
++    EOS_Sessions_JoinSession(Sdk->Sessions, &JoinOptions, Sdk.get(), SdkState::OnSessionJoined);
++    return true;
++}
++
++bool EpicOnlineTransport::LeaveMatchSession() noexcept
++{
++    if ((SessionPhase != EpicSessionPhase::Active && SessionPhase != EpicSessionPhase::Ready) ||
++        ActiveSessionName.empty() || Sdk->Sessions == nullptr)
++        return false;
++    const bool WasReady = SessionPhase == EpicSessionPhase::Ready;
++    SessionPhase = EpicSessionPhase::Leaving;
++    if (WasReady)
++    {
++        EOS_Sessions_DestroySessionOptions DestroyOptions{};
++        DestroyOptions.ApiVersion = EOS_SESSIONS_DESTROYSESSION_API_LATEST;
++        DestroyOptions.SessionName = ActiveSessionName.c_str();
++        RedactedDiagnostic = "eos=session_destroy_pending";
++        EOS_Sessions_DestroySession(Sdk->Sessions, &DestroyOptions, Sdk.get(), SdkState::OnSessionDestroyed);
++        return true;
++    }
++    EOS_Sessions_EndSessionOptions Options{};
++    Options.ApiVersion = EOS_SESSIONS_ENDSESSION_API_LATEST;
++    Options.SessionName = ActiveSessionName.c_str();
++    RedactedDiagnostic = "eos=session_end_pending";
++    EOS_Sessions_EndSession(Sdk->Sessions, &Options, Sdk.get(), SdkState::OnSessionEnded);
++    return true;
+ }
+ 
+ void EpicOnlineTransport::ScrubSensitiveCredentials() noexcept
+ {
+-    if (!Credentials.EncryptionHexKey.empty())
++    if (Sdk && !Sdk->IdentityJwt.empty())
+     {
+-        ZeroSensitiveBytes(std::span<char>(Credentials.EncryptionHexKey.data(), Credentials.EncryptionHexKey.size()));
+-        Credentials.EncryptionHexKey.clear();
++        ZeroSensitiveBytes(std::span<char>(Sdk->IdentityJwt.data(), Sdk->IdentityJwt.size()));
++        Sdk->IdentityJwt.clear();
++    }
++    for (std::string* Secret : {&Credentials.ClientSecret, &Credentials.EncryptionHexKey})
++    {
++        if (!Secret->empty())
++        {
++            ZeroSensitiveBytes(std::span<char>(Secret->data(), Secret->size()));
++            Secret->clear();
++        }
+     }
+     CredentialsValid = false;
+ }
+ 
+ bool EpicOnlineTransport::OpenChannel() noexcept
+ {
+-    if (!CredentialsValid)
++    if (SimulatedBridge != nullptr && CredentialsValid)
+     {
++        ChannelOpen = true;
++        return true;
++    }
++    if (IdentityPhase != EpicIdentityPhase::Authenticated || Sdk->P2P == nullptr || Sdk->ProductUser == nullptr)
+         return false;
++    if (Sdk->PeerRequestNotification == EOS_INVALID_NOTIFICATIONID)
++    {
++        EOS_P2P_AddNotifyPeerConnectionRequestOptions NotifyOptions{};
++        NotifyOptions.ApiVersion = EOS_P2P_ADDNOTIFYPEERCONNECTIONREQUEST_API_LATEST;
++        NotifyOptions.LocalUserId = Sdk->ProductUser;
++        NotifyOptions.SocketId = &Sdk->Socket;
++        Sdk->PeerRequestNotification = EOS_P2P_AddNotifyPeerConnectionRequest(
++            Sdk->P2P, &NotifyOptions, Sdk.get(), SdkState::OnPeerConnectionRequest);
++        if (Sdk->PeerRequestNotification == EOS_INVALID_NOTIFICATIONID)
++            return false;
+     }
+     ChannelOpen = true;
+     return true;
+@@ -74,40 +754,107 @@ bool EpicOnlineTransport::OpenChannel() noexcept
+ void EpicOnlineTransport::CloseChannel() noexcept
+ {
+     ChannelOpen = false;
++    if (Sdk && Sdk->P2P && Sdk->PeerRequestNotification != EOS_INVALID_NOTIFICATIONID)
++    {
++        EOS_P2P_RemoveNotifyPeerConnectionRequest(Sdk->P2P, Sdk->PeerRequestNotification);
++        Sdk->PeerRequestNotification = EOS_INVALID_NOTIFICATIONID;
++    }
++    if (Sdk && Sdk->P2P && Sdk->ProductUser)
++    {
++        EOS_P2P_CloseConnectionsOptions Options{};
++        Options.ApiVersion = EOS_P2P_CLOSECONNECTIONS_API_LATEST;
++        Options.LocalUserId = Sdk->ProductUser;
++        Options.SocketId = &Sdk->Socket;
++        (void)EOS_P2P_CloseConnections(Sdk->P2P, &Options);
++    }
+ }
+ 
+-void EpicOnlineTransport::AdvanceChannel([[maybe_unused]] double Δt) noexcept
++void EpicOnlineTransport::AdvanceChannel(double Δt) noexcept
+ {
+-    // EOS_Platform_Tick integration point when linked against EOSSDK
++    if (IdentityPhase == EpicIdentityPhase::ProductUserConsentRequired && Sdk->PendingContinuanceToken != nullptr && Δt > 0.0)
++    {
++        Sdk->ConsentElapsedSeconds += Δt;
++        if (Sdk->ConsentElapsedSeconds >= ContinuanceApprovalTimeoutSeconds)
++        {
++            Sdk->PendingContinuanceToken = nullptr;
++            IdentityPhase = EpicIdentityPhase::Failed;
++            RedactedDiagnostic = "eos=product_user_consent_expired";
++        }
++    }
++    if (Sdk && Sdk->Platform != nullptr)
++        EOS_Platform_Tick(Sdk->Platform);
+ }
+ 
+-bool EpicOnlineTransport::TransmitDatagram(
+-    uint32_t                 TargetEndpointIdentifier,
+-    DeliveryChannel          Channel,
+-    std::span<const uint8_t> WireBytes)
++bool EpicOnlineTransport::TransmitDatagram(uint32_t TargetEndpointIdentifier, DeliveryChannel Channel, std::span<const uint8_t> WireBytes)
+ {
+-    if (!ChannelOpen)
+-    {
++    if (!ChannelOpen || WireBytes.empty() || WireBytes.size() > EOS_P2P_MAX_PACKET_SIZE)
+         return false;
+-    }
+     if (SimulatedBridge != nullptr)
+-    {
+         return SimulatedBridge->EnqueueFlightDatagram(LocalEndpoint, TargetEndpointIdentifier, Channel, WireBytes);
+-    }
+-    return false;
++    if (Sdk->P2P == nullptr || Sdk->ProductUser == nullptr)
++        return false;
++    const auto Peer = Sdk->Peers.find(TargetEndpointIdentifier);
++    if (Peer == Sdk->Peers.end())
++        return false;
++    EOS_P2P_SendPacketOptions Options{};
++    Options.ApiVersion = EOS_P2P_SENDPACKET_API_LATEST;
++    Options.LocalUserId = Sdk->ProductUser;
++    Options.RemoteUserId = Peer->second;
++    Options.SocketId = &Sdk->Socket;
++    Options.Channel = static_cast<uint8_t>(Channel);
++    Options.DataLengthBytes = static_cast<uint32_t>(WireBytes.size());
++    Options.Data = WireBytes.data();
++    Options.bAllowDelayedDelivery = EOS_TRUE;
++    Options.bDisableAutoAcceptConnection = EOS_FALSE;
++    Options.Reliability = Channel == DeliveryChannel::UnreliableSequenced
++        ? EOS_EPacketReliability::EOS_PR_UnreliableUnordered
++        : (Channel == DeliveryChannel::ReliableOrdered
++            ? EOS_EPacketReliability::EOS_PR_ReliableOrdered
++            : EOS_EPacketReliability::EOS_PR_ReliableUnordered);
++    return EOS_P2P_SendPacket(Sdk->P2P, &Options) == EOS_EResult::EOS_Success;
+ }
+ 
+ bool EpicOnlineTransport::ReceiveDatagram(PacketDatagram& OutDatagram)
+ {
+     if (!ChannelOpen)
+-    {
+         return false;
+-    }
+     if (SimulatedBridge != nullptr)
+-    {
+         return SimulatedBridge->PopArrivedDatagram(LocalEndpoint, OutDatagram);
+-    }
+-    return false;
++    if (Sdk->P2P == nullptr || Sdk->ProductUser == nullptr)
++        return false;
++    EOS_P2P_GetNextReceivedPacketSizeOptions SizeOptions{};
++    SizeOptions.ApiVersion = EOS_P2P_GETNEXTRECEIVEDPACKETSIZE_API_LATEST;
++    SizeOptions.LocalUserId = Sdk->ProductUser;
++    uint32_t PacketSize = 0u;
++    if (EOS_P2P_GetNextReceivedPacketSize(Sdk->P2P, &SizeOptions, &PacketSize) != EOS_EResult::EOS_Success ||
++        PacketSize == 0u || PacketSize > EOS_P2P_MAX_PACKET_SIZE)
++        return false;
++    std::vector<uint8_t> Bytes(PacketSize);
++    EOS_P2P_ReceivePacketOptions ReceiveOptions{};
++    ReceiveOptions.ApiVersion = EOS_P2P_RECEIVEPACKET_API_LATEST;
++    ReceiveOptions.LocalUserId = Sdk->ProductUser;
++    ReceiveOptions.MaxDataSizeBytes = PacketSize;
++    EOS_ProductUserId RemoteUser = nullptr;
++    EOS_P2P_SocketId RemoteSocket{};
++    uint8_t ReceivedChannel = 0u;
++    uint32_t BytesWritten = PacketSize;
++    if (EOS_P2P_ReceivePacket(Sdk->P2P, &ReceiveOptions, &RemoteUser, &RemoteSocket, &ReceivedChannel,
++                              Bytes.data(), &BytesWritten) != EOS_EResult::EOS_Success || BytesWritten == 0u)
++        return false;
++    const auto Peer = std::find_if(Sdk->Peers.begin(), Sdk->Peers.end(), [RemoteUser](const auto& Entry) { return Entry.second == RemoteUser; });
++    if (Peer == Sdk->Peers.end() || ReceivedChannel > static_cast<uint8_t>(DeliveryChannel::ReliableOrdered))
++        return false;
++    Bytes.resize(BytesWritten);
++    OutDatagram.PeerEndpointIdentifier = Peer->first;
++    OutDatagram.Channel = static_cast<DeliveryChannel>(ReceivedChannel);
++    OutDatagram.WireBytes = std::move(Bytes);
++    return true;
++}
++
++bool EpicOnlineTransport::QueryChannelReady() const noexcept
++{
++    return CredentialsValid && (SimulatedBridge != nullptr ||
++        (IdentityPhase == EpicIdentityPhase::Authenticated && Sdk && Sdk->P2P != nullptr));
+ }
+ 
+ } // namespace Frontier::NetworkingSpace
+diff --git a/Engine/NetworkingSpace/Transports/EpicOnlineTransport.h b/Engine/NetworkingSpace/Transports/EpicOnlineTransport.h
+index 0269098..32d59c0 100644
+--- a/Engine/NetworkingSpace/Transports/EpicOnlineTransport.h
++++ b/Engine/NetworkingSpace/Transports/EpicOnlineTransport.h
+@@ -1,19 +1,16 @@
+ /*============================================================================================================================================
+                                                             EPICONLINETRANSPORT.H
+ ============================================================================================================================================*/
+-// 🧩 Epic Online Services P2P + Lobby/Session transport adapter with mandatory 4-scope enforcement and zero-SDK open-source stub seam
++// Epic Online Services Auth/Connect identity, P2P packet transport, and Sessions fallback.
+ 
+ #pragma once
+ 
+-//------------------------------------------------------------------------------------------------------------------------
+-//                                                        INCLUDES
+-//------------------------------------------------------------------------------------------------------------------------
+-
+ #include "Engine/NetworkingSpace/Policies/AuthenticationScopePolicy.h"
+ #include "Engine/NetworkingSpace/Transports/LoopbackTransport.h"
+ #include "Engine/NetworkingSpace/Transports/TransportInterface.h"
+ 
+ #include <cstdint>
++#include <memory>
+ #include <span>
+ #include <string>
+ #include <string_view>
+@@ -21,38 +18,77 @@
+ namespace Frontier::NetworkingSpace
+ {
+ 
+-//------------------------------------------------------------------------------------------------------------------------
+-//                                                       STRUCTURES
+-//------------------------------------------------------------------------------------------------------------------------
+-
+ struct EpicSessionCredentials
+ {
+-    std::string ProductIdentifier   {};                                                                     // [-] - Non-secret EOS ProductId
+-    std::string SandboxIdentifier   {};                                                                     // [-] - Non-secret EOS SandboxId
+-    std::string DeploymentIdentifier{};                                                                     // [-] - Non-secret EOS DeploymentId
+-    std::string EncryptionHexKey    {};                                                                     // [-] - 64-char hex key (scrubbed on close)
+-    uint32_t    RequestedScopeMask  = static_cast<uint32_t>(IdentityScopeMask::EnableMandatoryPortalMask);  // [mask] - Must include all 4 portal scopes
++    std::string ProductIdentifier{};
++    std::string SandboxIdentifier{};
++    std::string DeploymentIdentifier{};
++    std::string ClientIdentifier{};
++    std::string ClientSecret{}; // Local secret only. Never put this in project TOML or source control.
++    std::string ProductName{"Frontier"};
++    std::string ProductVersion{"1.0.0"};
++    std::string EncryptionHexKey{};
++    uint32_t RequestedScopeMask = static_cast<uint32_t>(IdentityScopeMask::EnableMandatoryPortalMask);
+ };
+ 
+-//------------------------------------------------------------------------------------------------------------------------
+-//                                                        CLASSES
+-//------------------------------------------------------------------------------------------------------------------------
++enum class EpicIdentityPhase : uint8_t
++{
++    Unconfigured,
++    PlatformReady,
++    AuthPending,
++    ConnectPending,
++    ProductUserConsentRequired,
++    Authenticated,
++    Failed,
++};
++
++enum class EpicSessionPhase : uint8_t
++{
++    None,
++    Creating,
++    Ready,
++    Starting,
++    Searching,
++    Joining,
++    Active,
++    Leaving,
++    Failed,
++};
+ 
+ class EpicOnlineTransport final
+ {
+ public:
+-    EpicOnlineTransport() = default;
++    EpicOnlineTransport();
+     ~EpicOnlineTransport() noexcept;
+ 
+-    EpicOnlineTransport(const EpicOnlineTransport&)            = delete;
++    EpicOnlineTransport(const EpicOnlineTransport&) = delete;
+     EpicOnlineTransport& operator=(const EpicOnlineTransport&) = delete;
+-    EpicOnlineTransport(EpicOnlineTransport&&) noexcept        = default;
+-    EpicOnlineTransport& operator=(EpicOnlineTransport&&) noexcept = default;
++    EpicOnlineTransport(EpicOnlineTransport&&) = delete;
++    EpicOnlineTransport& operator=(EpicOnlineTransport&&) = delete;
+ 
+     [[nodiscard]] bool ConfigureCredentials(const EpicSessionCredentials& Credentials);
++    [[nodiscard]] bool InitializeSdk() noexcept;
++    [[nodiscard]] bool BeginEpicAccountPortalLogin() noexcept;
++    [[nodiscard]] bool ResolveProductUserConsent(bool CreateNewProductUser) noexcept;
++    void               SignOut() noexcept;
++    [[nodiscard]] EpicIdentityPhase QueryIdentityPhase() const noexcept { return IdentityPhase; }
++    [[nodiscard]] std::string_view QueryProductUserIdentifier() const noexcept { return ProductUserIdentifier; }
++    [[nodiscard]] std::string       CopyEpicIdentityJwt() const;
++
++    [[nodiscard]] bool RegisterPeer(uint32_t EndpointIdentifier, std::string_view ProductUserIdentifier);
++    void               UnregisterPeer(uint32_t EndpointIdentifier) noexcept;
+     void               AttachSimulatedBridgeSwitch(LoopbackPacketSwitch* BridgeSwitch, uint32_t LocalEndpointIdentifier) noexcept;
+-    void               ScrubSensitiveCredentials() noexcept;
+ 
++    [[nodiscard]] bool CreateMatchSession(std::string_view SessionName, std::string_view BucketIdentifier, uint32_t MaxPlayers) noexcept;
++    [[nodiscard]] bool StartMatchSession() noexcept;
++    [[nodiscard]] bool SearchMatchSessions(std::string_view BucketIdentifier, uint32_t MaxResults = 16u) noexcept;
++    [[nodiscard]] bool JoinMatchSession(uint32_t SearchResultIndex, std::string_view LocalSessionName) noexcept;
++    [[nodiscard]] bool LeaveMatchSession() noexcept;
++    [[nodiscard]] EpicSessionPhase QuerySessionPhase() const noexcept { return SessionPhase; }
++    [[nodiscard]] uint32_t QuerySessionSearchResultCount() const noexcept { return SessionSearchResultCount; }
++    [[nodiscard]] std::string_view QueryActiveSessionName() const noexcept { return ActiveSessionName; }
++
++    void               ScrubSensitiveCredentials() noexcept;
+     [[nodiscard]] bool OpenChannel() noexcept;
+     void               CloseChannel() noexcept;
+     void               AdvanceChannel(double Δt) noexcept;
+@@ -61,22 +97,28 @@ public:
+         uint32_t                 TargetEndpointIdentifier,
+         DeliveryChannel          Channel,
+         std::span<const uint8_t> WireBytes);
+-
+     [[nodiscard]] bool ReceiveDatagram(PacketDatagram& OutDatagram);
+ 
+     [[nodiscard]] TransportChannelCategory QueryChannelCategory() const noexcept { return TransportChannelCategory::EpicOnline; }
+-    [[nodiscard]] bool                     QueryChannelOperational() const noexcept { return ChannelOpen; }
+-    [[nodiscard]] bool                     QueryChannelReady() const noexcept { return CredentialsValid && (QuerySdkCompiled() || SimulatedBridge != nullptr); }
+-    [[nodiscard]] static bool              QuerySdkCompiled() noexcept;
+-    [[nodiscard]] std::string_view         InspectRedactedDiagnostic() const noexcept { return RedactedDiagnostic; }
++    [[nodiscard]] bool QueryChannelOperational() const noexcept { return ChannelOpen; }
++    [[nodiscard]] bool QueryChannelReady() const noexcept;
++    [[nodiscard]] static bool QuerySdkCompiled() noexcept;
++    [[nodiscard]] std::string_view InspectRedactedDiagnostic() const noexcept { return RedactedDiagnostic; }
+ 
+ private:
+-    EpicSessionCredentials Credentials        {};
+-    LoopbackPacketSwitch*  SimulatedBridge    = nullptr;
+-    uint32_t               LocalEndpoint      = 1u;
+-    bool                   CredentialsValid   = false;
+-    bool                   ChannelOpen        = false;
+-    std::string            RedactedDiagnostic = "eos=unconfigured";
++    struct SdkState;
++    std::unique_ptr<SdkState> Sdk;
++    EpicSessionCredentials Credentials{};
++    LoopbackPacketSwitch* SimulatedBridge = nullptr;
++    uint32_t LocalEndpoint = 1u;
++    EpicIdentityPhase IdentityPhase = EpicIdentityPhase::Unconfigured;
++    EpicSessionPhase SessionPhase = EpicSessionPhase::None;
++    std::string ProductUserIdentifier{};
++    std::string ActiveSessionName{};
++    std::string RedactedDiagnostic{"eos=unconfigured"};
++    uint32_t SessionSearchResultCount = 0u;
++    bool CredentialsValid = false;
++    bool ChannelOpen = false;
+ };
+ 
+ static_assert(PacketTransportChannel<EpicOnlineTransport>, "EpicOnlineTransport must satisfy PacketTransportChannel");
+diff --git a/Engine/NetworkingSpace/Transports/EpicStubTransport.cpp b/Engine/NetworkingSpace/Transports/EpicStubTransport.cpp
+index 8af2fca..8d2c41b 100644
+--- a/Engine/NetworkingSpace/Transports/EpicStubTransport.cpp
++++ b/Engine/NetworkingSpace/Transports/EpicStubTransport.cpp
+@@ -1,17 +1,17 @@
+ /*============================================================================================================================================
+                                                             EPICSTUBTRANSPORT.CPP
+ ============================================================================================================================================*/
+-// 🧩 Open-source zero-proprietary-SDK Epic Online Services stub enforcing scope/hex-key validation and graceful transport failover
+-
+-//------------------------------------------------------------------------------------------------------------------------
+-//                                                        INCLUDES
+-//------------------------------------------------------------------------------------------------------------------------
++// Open-source EOS stub. It never authenticates or claims cloud readiness; the explicit loopback bridge exists only for tests.
+ 
+ #include "Engine/NetworkingSpace/Transports/EpicOnlineTransport.h"
+ 
+ namespace Frontier::NetworkingSpace
+ {
+ 
++struct EpicOnlineTransport::SdkState {};
++
++EpicOnlineTransport::EpicOnlineTransport() = default;
++
+ EpicOnlineTransport::~EpicOnlineTransport() noexcept
+ {
+     CloseChannel();
+@@ -26,80 +26,78 @@ bool EpicOnlineTransport::QuerySdkCompiled() noexcept
+ bool EpicOnlineTransport::ConfigureCredentials(const EpicSessionCredentials& Candidate)
+ {
+     ScrubSensitiveCredentials();
+-    if (Candidate.ProductIdentifier.empty() ||
+-        Candidate.SandboxIdentifier.empty() ||
+-        Candidate.DeploymentIdentifier.empty() ||
+-        !VerifyMandatoryIdentityScopes(Candidate.RequestedScopeMask) ||
++    if (Candidate.ProductIdentifier.empty() || Candidate.SandboxIdentifier.empty() ||
++        Candidate.DeploymentIdentifier.empty() || !VerifyMandatoryIdentityScopes(Candidate.RequestedScopeMask) ||
+         (!Candidate.EncryptionHexKey.empty() && !VerifyHexStorageKeyFormat(Candidate.EncryptionHexKey)))
+     {
+-        CredentialsValid   = false;
+-        RedactedDiagnostic = "eos=stub_rejected_invalid_scopes_or_storage_key";
++        RedactedDiagnostic = "eos=stub_rejected_invalid_configuration";
+         return false;
+     }
+-
+-    Credentials        = Candidate;
+-    CredentialsValid   = true;
+-    RedactedDiagnostic = RedactCredentialText(
+-        "eos=stub_validated; product=" + Credentials.ProductIdentifier +
+-        "; storage_key=" + Credentials.EncryptionHexKey);
++    Credentials = Candidate;
++    CredentialsValid = true;
++    IdentityPhase = EpicIdentityPhase::PlatformReady;
++    RedactedDiagnostic = "eos=sdk_not_compiled; cloud_login_unavailable";
+     return true;
+ }
+ 
++bool EpicOnlineTransport::InitializeSdk() noexcept { return false; }
++bool EpicOnlineTransport::BeginEpicAccountPortalLogin() noexcept { return false; }
++bool EpicOnlineTransport::ResolveProductUserConsent([[maybe_unused]] bool CreateNewProductUser) noexcept { return false; }
++void EpicOnlineTransport::SignOut() noexcept { ChannelOpen = false; IdentityPhase = EpicIdentityPhase::Unconfigured; }
++std::string EpicOnlineTransport::CopyEpicIdentityJwt() const { return {}; }
++bool EpicOnlineTransport::RegisterPeer([[maybe_unused]] uint32_t EndpointIdentifier, [[maybe_unused]] std::string_view ProductId) { return false; }
++void EpicOnlineTransport::UnregisterPeer([[maybe_unused]] uint32_t EndpointIdentifier) noexcept {}
++bool EpicOnlineTransport::CreateMatchSession([[maybe_unused]] std::string_view SessionName, [[maybe_unused]] std::string_view BucketIdentifier, [[maybe_unused]] uint32_t MaxPlayers) noexcept { return false; }
++bool EpicOnlineTransport::StartMatchSession() noexcept { return false; }
++bool EpicOnlineTransport::SearchMatchSessions([[maybe_unused]] std::string_view BucketIdentifier, [[maybe_unused]] uint32_t MaxResults) noexcept { return false; }
++bool EpicOnlineTransport::JoinMatchSession([[maybe_unused]] uint32_t SearchResultIndex, [[maybe_unused]] std::string_view LocalSessionName) noexcept { return false; }
++bool EpicOnlineTransport::LeaveMatchSession() noexcept { return false; }
++
+ void EpicOnlineTransport::AttachSimulatedBridgeSwitch(LoopbackPacketSwitch* BridgeSwitch, uint32_t LocalEndpointIdentifier) noexcept
+ {
+     SimulatedBridge = BridgeSwitch;
+-    LocalEndpoint   = (LocalEndpointIdentifier != 0u) ? LocalEndpointIdentifier : 1u;
++    LocalEndpoint = LocalEndpointIdentifier != 0u ? LocalEndpointIdentifier : 1u;
+ }
+ 
+ void EpicOnlineTransport::ScrubSensitiveCredentials() noexcept
+ {
+-    if (!Credentials.EncryptionHexKey.empty())
++    for (std::string* Secret : {&Credentials.ClientSecret, &Credentials.EncryptionHexKey})
+     {
+-        ZeroSensitiveBytes(std::span<char>(Credentials.EncryptionHexKey.data(), Credentials.EncryptionHexKey.size()));
+-        Credentials.EncryptionHexKey.clear();
++        if (!Secret->empty())
++        {
++            ZeroSensitiveBytes(std::span<char>(Secret->data(), Secret->size()));
++            Secret->clear();
++        }
+     }
+     CredentialsValid = false;
++    if (IdentityPhase != EpicIdentityPhase::Failed)
++        IdentityPhase = EpicIdentityPhase::Unconfigured;
+ }
+ 
+ bool EpicOnlineTransport::OpenChannel() noexcept
+ {
+-    // Open only when an explicit simulated bridge switch is attached for deterministic failover validation
+-    if (!CredentialsValid || SimulatedBridge == nullptr)
+-    {
++    if (SimulatedBridge == nullptr || !CredentialsValid)
+         return false;
+-    }
+     ChannelOpen = true;
+     return true;
+ }
+ 
+-void EpicOnlineTransport::CloseChannel() noexcept
+-{
+-    ChannelOpen = false;
+-}
++void EpicOnlineTransport::CloseChannel() noexcept { ChannelOpen = false; }
++void EpicOnlineTransport::AdvanceChannel([[maybe_unused]] double Δt) noexcept {}
+ 
+-void EpicOnlineTransport::AdvanceChannel([[maybe_unused]] double Δt) noexcept
++bool EpicOnlineTransport::TransmitDatagram(uint32_t Target, DeliveryChannel Channel, std::span<const uint8_t> Bytes)
+ {
++    return ChannelOpen && SimulatedBridge != nullptr && SimulatedBridge->EnqueueFlightDatagram(LocalEndpoint, Target, Channel, Bytes);
+ }
+ 
+-bool EpicOnlineTransport::TransmitDatagram(
+-    uint32_t                 TargetEndpointIdentifier,
+-    DeliveryChannel          Channel,
+-    std::span<const uint8_t> WireBytes)
++bool EpicOnlineTransport::ReceiveDatagram(PacketDatagram& OutDatagram)
+ {
+-    if (!ChannelOpen || SimulatedBridge == nullptr)
+-    {
+-        return false;
+-    }
+-    return SimulatedBridge->EnqueueFlightDatagram(LocalEndpoint, TargetEndpointIdentifier, Channel, WireBytes);
++    return ChannelOpen && SimulatedBridge != nullptr && SimulatedBridge->PopArrivedDatagram(LocalEndpoint, OutDatagram);
+ }
+ 
+-bool EpicOnlineTransport::ReceiveDatagram(PacketDatagram& OutDatagram)
++bool EpicOnlineTransport::QueryChannelReady() const noexcept
+ {
+-    if (!ChannelOpen || SimulatedBridge == nullptr)
+-    {
+-        return false;
+-    }
+-    return SimulatedBridge->PopArrivedDatagram(LocalEndpoint, OutDatagram);
++    return CredentialsValid && (SimulatedBridge != nullptr);
+ }
+ 
+ } // namespace Frontier::NetworkingSpace
+diff --git a/Engine/NetworkingSpace/Transports/README.md b/Engine/NetworkingSpace/Transports/README.md
+index e9b03df..0e99e6e 100644
+--- a/Engine/NetworkingSpace/Transports/README.md
++++ b/Engine/NetworkingSpace/Transports/README.md
+@@ -1,6 +1,6 @@
+ # 🧩 `Engine/NetworkingSpace/Transports/`
+ 
+-> **TL;DR**: Epic Online Services P2P + Lobby/Session transport adapter with mandatory 4-scope enforcement and zero-SDK open-source stub seam (11 source/header/shader files under `Engine/NetworkingSpace/Transports/`).
++> **TL;DR**: Epic Online Services Auth/Connect identity, P2P datagrams, and Sessions fallback behind an opt-in SDK adapter, with an offline no-SDK stub. Photon remains an external adapter seam pending its SDK.
+ 
+ ---
+ 
+@@ -8,13 +8,13 @@
+ 
+ | File | Purpose |
+ | :--- | :--- |
+-| `EpicOnlineTransport.cpp` | Proprietary Epic Online Services SDK adapter compilation unit (compiled only when FRONTIER_ENABLE_EOS_SDK=ON) |
+-| `EpicOnlineTransport.h` | Epic Online Services P2P + Lobby/Session transport adapter with mandatory 4-scope enforcement and zero-SDK open-source stub seam |
+-| `EpicStubTransport.cpp` | Open-source zero-proprietary-SDK Epic Online Services stub enforcing scope/hex-key validation and graceful transport failover |
++| `EpicOnlineTransport.cpp` | EOS SDK-backed Account Portal Auth, Connect product-user consent, P2P packet send/receive, and Sessions create/start/search/join/end/destroy operations; compiled only when `FRONTIER_ENABLE_EOS_SDK=ON` |
++| `EpicOnlineTransport.h` | SDK-neutral identity/session state API, credential inputs, explicit product-user consent, endpoint-to-ProductUserId mapping, and packet transport |
++| `EpicStubTransport.cpp` | Open-source no-SDK implementation; it reports cloud login/session APIs unavailable and supports only the explicit loopback test bridge |
+ | `LoopbackTransport.cpp` | Deterministic SplitMix64 intra-application packet switch and zero-socket LoopbackTransport implementation |
+ | `LoopbackTransport.h` | Deterministic intra-application packet switch with SplitMix64 latency, jitter, reordering, and loss simulation for offline/CI runs |
+-| `PhotonRealtimeTransport.cpp` | Proprietary Photon Realtime C++ SDK adapter compilation unit (compiled only when FRONTIER_ENABLE_PHOTON_SDK=ON) |
+-| `PhotonRealtimeTransport.h` | Photon Realtime Core cloud room transport with Epic JWT custom-authentication hygiene, relay region assignment, and open-source stub |
++| `PhotonRealtimeTransport.cpp` | SDK-gated Photon translation unit; currently validates configuration and keeps a loopback seam, but live client, room, and event wiring remains unfinished |
++| `PhotonRealtimeTransport.h` | SDK-neutral Photon transport interface, room/auth configuration, relay-region selection, and token-scrubbing contract |
+ | `PhotonStubTransport.cpp` | Open-source zero-proprietary-SDK Photon Realtime stub enforcing Epic JWT verification, token scrubbing, and failover routing |
+ | `SocketTransport.cpp` | Non-blocking BSD/Winsock2 UDP socket, RFC 5389 STUN reflexive discovery, RFC 8439 ChaCha20-Poly1305 AEAD, and zero-key relay |
+ | `SocketTransport.h` | Sovereign non-blocking OS UDP transport with RFC 5389 STUN NAT discovery, RFC 8439 ChaCha20-Poly1305 AEAD, and stateless relay |
+@@ -36,7 +36,17 @@ using namespace Frontier::NetworkingSpace;
+ EpicSessionCredentials Instance {};
+ ```
+ 
++## EOS Setup and Lifecycle
++
++- EOS is opt-in and proprietary. Keep the authorized SDK outside Git, then configure with `-DFRONTIER_ENABLE_EOS_SDK=ON -DFRONTIER_EOS_SDK_ROOT=<local EOS SDK root>`; the root must contain `Include/`, `Lib/`, and `Bin/` (platform-specific runtime names are checked by CMake).
++- Photon Realtime Core is also opt-in and proprietary. Keep the authorized package outside Git and configure with `-DFRONTIER_ENABLE_PHOTON_SDK=ON -DFRONTIER_PHOTON_SDK_ROOT=<package root containing RealtimeCore/>`; CMake resolves `RealtimeCore::Matchmaking` and links the selected platform variant. The 6.0.0-preview-347 package supplied in Drive has not been staged into this checkout, so this option cannot yet be configured or built here.
++- Configure `EpicSessionCredentials` from a secure runtime configuration source, then call `InitializeSdk()` and `BeginEpicAccountPortalLogin()`. Real SDK initialization requires both EOS client ID and client secret. The optional attached loopback bridge is a deterministic test-only seam; it never establishes an EOS identity or cloud session. `NetworkingExtension::Tick()` drives EOS callbacks even while another transport is selected.
++- The required profile/friends/presence/country scopes are always requested. A Connect `EOS_InvalidUser` response pauses at `ProductUserConsentRequired`; the caller must obtain an explicit user decision and invoke `ResolveProductUserConsent(true|false)` within the policy's 180-second window. There is no silent profile creation.
++- Once authenticated, register each remote endpoint's EOS Product User ID with `RegisterPeer()`, then activate routing. P2P accepts connection requests only from registered Product User IDs and enforces EOS's 1170-byte datagram limit.
++- Sessions support public host creation, start, bucket-filtered search, join-by-result, end, and destroy. Poll `QuerySessionPhase()` and `QuerySessionSearchResultCount()`; call `LeaveMatchSession()` and keep ticking until the phase returns to `None` before signing out or destroying the transport.
++- Client secrets and identity JWTs are runtime-only. They are not logged or included in project TOML; the client secret is scrubbed immediately after platform creation, and JWT copies returned for Photon must be scrubbed by the caller.
++
+ ## Build & Verification
+ 
+ - Built as part of `FrontierEngine` in root `CMakeLists.txt` (ISO C++20).
+-- Validated by the repository's CTest suites under `Exhibits/` (`ctest --test-dir build-editor --output-on-failure`).
++- The no-SDK stub translation unit was compiled in this workspace. The proprietary SDK-enabled build, CTest suites, and live EOS staging test were not run because the SDK binaries have not been staged locally and CMake is not installed in this workspace.

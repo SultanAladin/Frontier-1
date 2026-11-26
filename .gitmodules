@@ -1,0 +1,4 @@
+[submodule "FrontierSource"]
+	path = FrontierSource
+	url = https://github.com/egoistinbox-hue/Frontier.git
+	branch = arena/f490d972-frontier

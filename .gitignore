@@ -1,0 +1,7 @@
+# Local secrets must never enter source control or product packages.
+**/ProjectSettings.local.toml
+**/*.secrets.toml
+
+# Python-generated artifacts.
+__pycache__/
+*.py[cod]

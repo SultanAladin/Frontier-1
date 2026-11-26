@@ -1,0 +1,132 @@
+<!doctype html>
+<!--==========================================================================================================================================
+                                                               INDEX.HTML
+==========================================================================================================================================-->
+<!-- 🧩 Frontier project browser design prototype: format-specific previews, local notes and shared theme selection. -->
+<html lang="en" data-theme="oled">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Frontier — Project browser</title>
+<link rel="stylesheet" href="Styles.css?v=17f2179dbab7">
+<link rel="stylesheet" href="PanelLayout.css?v=f83pane03">
+<link rel="stylesheet" href="ProjectZeroLook.css?v=fec2911902c2">
+<link rel="stylesheet" href="DocumentReader.css?v=f83doc01">
+<link rel="stylesheet" href="ProjectDetails.css?v=projectspace-page-20261125-v4">
+</head>
+<body>
+<svg class="symbols" xmlns="http://www.w3.org/2000/svg"><defs>
+<symbol id="folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v9H3z"/></symbol>
+<symbol id="grid" viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></symbol>
+<symbol id="clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/></symbol>
+<symbol id="star" viewBox="0 0 24 24"><path d="m12 3 2.7 5.6 6.2.9-4.5 4.3 1.1 6.2-5.5-2.9-5.5 2.9 1.1-6.2-4.5-4.3 6.2-.9z"/></symbol>
+<symbol id="arrow" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></symbol>
+<symbol id="back" viewBox="0 0 24 24"><path d="M19 12H5m6-6-6 6 6 6"/></symbol>
+<symbol id="search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></symbol>
+<symbol id="plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="cube" viewBox="0 0 24 24"><path d="m12 3 9 5v8l-9 5-9-5V8zm0 10 9-5m-9 5L3 8m9 5v8M7.5 5.5l9 5"/></symbol>
+<symbol id="file" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6zm8 0v5h4M9 12h6m-6 4h6"/></symbol>
+<symbol id="chat" viewBox="0 0 24 24"><path d="M4 4h16v12h-8l-5 4v-4H4zM8 8h8m-8 4h5"/></symbol>
+<symbol id="sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></symbol>
+<symbol id="close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
+<symbol id="frontier-mark" viewBox="0 0 24 24"><path d="M2.5 18.5 8.5 9l4 5.5 2.6-3.2 6.4 7.2z"/><circle cx="16.5" cy="6.5" r="2.2"/></symbol>
+<symbol id="solidarc-mark" viewBox="0 0 24 24"><path d="M4 16.5a8 8 0 0 1 16 0"/><path d="m12 9.5 5 2.8v5.4L12 20.5l-5-2.8v-5.4z"/><path d="m7 12.3 5 2.8 5-2.8M12 15.1v5.4"/></symbol>
+</defs></svg>
+<section id="Library" class="library">
+<aside class="library-rail left-pane"><header class="pane-header"><strong>Files</strong><button class="icon-button collapse-toggle" data-collapse="left" aria-expanded="true" aria-label="Collapse left panel" title="Collapse left panel">‹</button></header><div class="rail-scroll"><div class="pz-tally" aria-label="Library summary"><div class="pz-tally-tile"><span class="pz-tally-seat"><svg class="icon"><use href="#grid"/></svg></span><small>Projects</small><b id="TallyProjects">1</b></div><div class="pz-tally-tile starred"><span class="pz-tally-seat"><svg class="icon"><use href="#star"/></svg></span><small>Starred</small><b id="TallyStarred">0</b></div></div><div class="rail-title">WORKSPACE</div><button class="nav active" data-filter="all"><svg class="icon"><use href="#grid"/></svg>All files<span id="AllCount">6</span></button><button class="nav" data-filter="recent"><svg class="icon"><use href="#clock"/></svg>Recent</button><button class="nav" data-filter="starred"><svg class="icon"><use href="#star"/></svg>Starred</button><div class="rail-title second">FORMATS</div><button class="nav" data-filter="project"><span class="format-dot project"></span>Projects</button><button class="nav" data-filter="cad" title="📝 Not in the specification (Default Project only) — keep or remove? Shows local CAD files only."><span class="format-dot cad"></span>CAD</button><button class="nav" data-filter="geometry" title="📝 Not in the specification (Default Project only) — keep or remove? Shows local Geometry files only."><span class="format-dot geometry"></span>Geometry</button><div class="rail-bottom"><button class="text-button" id="BrowseRail">Browse files <span>↗</span></button></div></div></aside>
+<main class="library-main"><header class="pane-header library-viewer-header"><h1>Project browser</h1><span id="LibraryThemeSlot"><span id="ThemeControl" class="theme-control"><label class="sr" for="Theme">Theme</label><select id="Theme"><option value="oled">OLED</option><option value="light">Light</option><option value="dark">Dark</option></select></span></span><button class="primary" id="NewProject"><svg class="icon"><use href="#plus"/></svg>New Project</button><button class="secondary" id="Browse" title="📝 Not in the Project Browser specification — keep or remove?"><svg class="icon"><use href="#folder"/></svg>Open from disk</button></header><div class="library-scroll">
+<div class="section-heading"><div><h2 id="CollectionTitle">Your workspace</h2><span class="subtle" id="CollectionCount">1 project</span></div><div class="collection-controls"><label class="search"><svg class="icon"><use href="#search"/></svg><input id="Search" placeholder="Search files…" aria-label="Search files"><kbd>/</kbd></label><label class="sr" for="Sort">Sort files</label><select id="Sort"><option value="recent">Last opened</option><option value="name">Name A–Z</option></select></div></div>
+<div id="Cards" class="cards"><p class="subtle" role="status">Loading files… Refresh this preview if the list does not appear.</p></div><div id="Empty" class="empty" hidden><svg class="icon"><use href="#search"/></svg><h2>No matching files</h2><p>Try another name or choose a different format.</p><button id="ClearSearch">Clear search</button></div>
+<div class="folder-access"><button id="BrowseFolder" class="secondary"><svg class="icon"><use href="#folder"/></svg>Browse a folder</button></div>
+<div class="prototype-note">HTML prototype · Frontier and SolidArc launch is not connected</div></div></main><aside class="library-inspector right-pane"><header class="pane-header inspector-pane-header"><div class="inspector-tabs" role="tablist" aria-label="Library file information"><button role="tab" aria-selected="true" disabled>Details</button><button role="tab" aria-selected="false" disabled>Comments</button><button role="tab" aria-selected="false" disabled>History</button></div><button class="icon-button collapse-toggle" data-collapse="right" aria-expanded="true" aria-label="Collapse right panel" title="Collapse right panel">›</button></header><div class="library-inspector-content" id="LibraryOpenWith"></div></aside>
+</section>
+<section id="Reader" class="reader" hidden>
+<div class="reader-body"><aside class="preview-rail left-pane"><header class="pane-header"><div class="rail-heading"><svg class="icon" id="RailIcon"><use href="#grid"/></svg><h2 id="RailTitle">Levels</h2><span id="RailCount"></span></div><button class="icon-button collapse-toggle" data-collapse="left" aria-expanded="true" aria-label="Collapse left panel" title="Collapse left panel">‹</button></header><div class="rail-scroll"><div class="crossline"></div><div id="PreviewSequence"></div><div class="rail-section">DOCUMENTS</div><button class="document-link" id="Document"><svg class="icon"><use href="#file"/></svg><span>Overview.md<small>Project document</small></span></button><button class="document-link" id="ProjectSettingsPage" hidden><svg class="icon"><use href="#file"/></svg><span>Project settings<small>.projectspace page</small></span></button></div></aside>
+<main class="preview-main"><header class="pane-header viewer-pane-header"><button class="icon-button" id="Back" aria-label="Back to files" title="Back to files"><svg class="icon"><use href="#back"/></svg></button><div class="reader-identity"><strong id="ReaderName"></strong><span class="reader-meta"><span id="ReaderFormat" class="file-tag"></span><label class="sr" for="RevisionSelect">Preview version</label><select id="RevisionSelect" aria-label="Preview version"></select></span></div><div class="reader-actions"><button class="icon-button" id="StarReader" aria-label="Star file"><svg class="icon"><use href="#star"/></svg></button><div class="open-split"><button class="primary small" id="OpenEditor"><span id="OpenEditorLabel">Open in Frontier</span></button><button class="primary small open-split-toggle" id="OpenMenuToggle" aria-haspopup="true" aria-expanded="false" aria-label="Choose the editor" title="Choose the editor">▾</button><div class="open-menu" id="OpenMenu" hidden><span class="open-menu-title">Open with</span><div class="open-app-switch" id="OpenAppSwitch" role="radiogroup" aria-label="Open with"></div></div></div></div></header>
+<div class="viewer-scroll document-desk"><article class="paper-page" id="PaperPage"><header class="page-head"><span id="PageHeadLeft"></span><span id="PageHeadRight"></span></header><div class="preview-heading"><div><span class="eyebrow" id="PreviewEyebrow">LEVEL 01</span><h2 id="PreviewTitle">The valley</h2></div><span class="subtle" id="PreviewMode">Illustrative preview</span></div><div id="PreviewCanvas" class="preview-canvas"></div><div class="preview-caption"><span id="PreviewDescription"></span><span id="PreviewResolution">Concept preview</span></div><dl class="page-facts" id="PageFacts"></dl><footer class="page-foot"><span id="PageFootLeft">Frontier · SolidArc</span><span id="PageFootNumber">Page 1 of 1</span></footer></article></div><section id="ProjectSetup" class="project-setup" hidden aria-labelledby="SetupTitle">
+<div class="setup-sheet">
+<header class="setup-header">
+  <button type="button" class="secondary" id="BackToOverview"><svg class="icon"><use href="#back"/></svg>Back to project</button>
+  <div class="setup-heading"><span class="eyebrow">PROJECTSPACE · CONFIGURATION</span><h1 id="SetupTitle">Project settings</h1><p>Edit the settings saved with this project document.</p></div>
+</header>
+<div class="setup-grid">
+  <main class="setup-main">
+    <form id="ProjectSetupForm" autocomplete="off">
+      <section class="setup-card" aria-labelledby="IdentityHeading">
+        <div class="setup-card-heading"><span class="setup-icon">01</span><div><h2 id="IdentityHeading">Project identity</h2><p>Project identity is part of the project-space manifest.</p></div></div>
+        <div class="setup-fields two-columns">
+          <label class="setup-field"><span>Project name</span><input id="ProjectName" name="project_name" maxlength="80" required placeholder="e.g. Frontier Demo"></label>
+          <label class="setup-field"><span>Project ID</span><input id="ProjectId" name="project_id" maxlength="80" spellcheck="false" placeholder="Generated on save"></label>
+          <div class="setup-field icon-setting"><span>Project icon</span><div class="icon-row"><span id="ProjectIconPreview" class="project-icon-preview" aria-label="Project icon preview">F</span><div class="icon-inputs"><input id="ProjectIconPath" name="project_icon" maxlength="240" placeholder="Assets/project-icon.png"><button type="button" class="secondary small" id="ChooseProjectIcon">Choose image</button><input id="ProjectIconFile" type="file" accept="image/png,image/jpeg,image/webp" hidden></div></div><small>Choose a relative project asset path; the selected image is preview-only until copied into the project.</small></div>
+          <label class="setup-field"><span>Project version</span><input id="ProjectVersion" name="project_version" maxlength="32" placeholder="0.1.0"></label>
+        </div>
+      </section>
+      <section class="setup-card" aria-labelledby="RenderHeading">
+        <div class="setup-card-heading"><span class="setup-icon">02</span><div><h2 id="RenderHeading">Render output</h2><p>Default target dimensions for rendered previews and exports.</p></div></div>
+        <div class="setup-fields render-fields">
+          <label class="setup-field"><span>Preset</span><select id="RenderPreset"><option value="custom">Custom</option><option value="1920x1080">Full HD · 1920 × 1080</option><option value="2560x1440">QHD · 2560 × 1440</option><option value="3840x2160">4K · 3840 × 2160</option><option value="1080x1920">Portrait · 1080 × 1920</option></select></label>
+          <label class="setup-field"><span>Width (px)</span><input id="RenderWidth" name="render_width" type="number" min="64" max="16384" step="1" value="1920" required></label>
+          <label class="setup-field"><span>Height (px)</span><input id="RenderHeight" name="render_height" type="number" min="64" max="16384" step="1" value="1080" required></label>
+          <label class="setup-field"><span>Output format</span><select id="RenderFormat" name="render_format"><option value="png">PNG · lossless</option><option value="exr">OpenEXR · HDR</option><option value="jpg">JPEG · compact</option></select></label>
+        </div>
+      </section>
+      <section class="setup-card" aria-labelledby="TermsHeading">
+        <div class="setup-card-heading"><span class="setup-icon">03</span><div><h2 id="TermsHeading">Terms and conditions</h2><p>Supply your approved terms. This prototype does not invent legal copy.</p></div></div>
+        <div class="setup-fields two-columns">
+          <label class="setup-field"><span>Terms version</span><input id="TermsVersion" name="terms_version" maxlength="32" placeholder="e.g. 2026-01"></label>
+          <label class="setup-check terms-required"><input id="TermsRequired" type="checkbox"><span>Require acceptance before first launch</span></label>
+          <label class="setup-field full-width"><span>Terms text or project terms URL</span><textarea id="TermsText" name="terms_text" rows="5" maxlength="20000" placeholder="Paste approved terms, or enter the URL to the terms document."></textarea></label>
+        </div>
+      </section>
+      <details class="setup-card service-card" aria-labelledby="EOSHeading">
+        <summary class="setup-card-heading"><span class="setup-icon service-eos">E</span><div><h2 id="EOSHeading">Epic Online Services</h2><p>Project identifiers · local credentials stay separate</p></div><span class="service-disclosure">Edit settings <b aria-hidden="true">＋</b></span></summary>
+        <label class="setup-toggle service-toggle"><input id="EOSEnabled" type="checkbox" checked><span>Enabled</span></label>
+        <div class="setup-fields two-columns service-fields" id="EOSFields">
+          <label class="setup-field"><span>Product ID</span><input id="EOSProductId" autocomplete="off" spellcheck="false"></label>
+          <label class="setup-field"><span>Sandbox ID</span><input id="EOSSandboxId" autocomplete="off" spellcheck="false"></label>
+          <label class="setup-field"><span>Deployment ID</span><input id="EOSDeploymentId" autocomplete="off" spellcheck="false"></label>
+          <label class="setup-field"><span>Client ID <small>if required by the selected EOS login flow</small></span><input id="EOSClientId" autocomplete="off" spellcheck="false"></label>
+          <p class="service-note full-width">Identity scopes are fixed to the project’s required Auth, Connect, Friends, and Lobby/Session flow. A short-lived player ID token is never saved in this file.</p>
+        </div>
+      </details>
+      <details class="setup-card service-card" aria-labelledby="PhotonHeading">
+        <summary class="setup-card-heading"><span class="setup-icon service-photon">P</span><div><h2 id="PhotonHeading">Photon Realtime</h2><p>App ID and room routing · uses EOS identity at runtime</p></div><span class="service-disclosure">Edit settings <b aria-hidden="true">＋</b></span></summary>
+        <label class="setup-toggle service-toggle"><input id="PhotonEnabled" type="checkbox"><span>Enabled</span></label>
+        <div class="setup-fields two-columns service-fields" id="PhotonFields">
+          <label class="setup-field"><span>Realtime App ID</span><input id="PhotonAppId" autocomplete="off" spellcheck="false"></label>
+          <label class="setup-field"><span>App version</span><input id="PhotonAppVersion" value="1.0" maxlength="32"></label>
+          <label class="setup-field"><span>Room name</span><input id="PhotonRoom" value="FrontierDevRoom" maxlength="128"></label>
+          <label class="setup-field"><span>Region</span><select id="PhotonRegion"><option value="eu">Europe · eu</option><option value="us">United States · us</option><option value="asia">Asia · asia</option><option value="jp">Japan · jp</option><option value="kr">South Korea · kr</option><option value="au">Australia · au</option><option value="in">India · in</option><option value="cn">Mainland China · cn</option><option value="sa">South America · sa</option></select></label>
+          <p class="service-note full-width">Photon Realtime authenticates the player with a short-lived EOS identity token at runtime. Do not store a player token in TOML.</p>
+        </div>
+      </details>
+      <details class="setup-card secret-card" id="LocalSecretsPanel">
+        <summary><span class="setup-icon">SEC</span><span><strong>Local test secrets</strong><small>Only for this machine · excluded from standard config and packaging</small></span></summary>
+        <div class="secret-warning"><strong>These values are plaintext in a TOML file.</strong> Use only for local testing. Do not commit, share, or package this file. Never put EOS client secrets or Photon server secrets in a distributed game client.</div>
+        <div class="setup-fields two-columns secret-fields">
+          <label class="setup-field secret-field"><span>EOS client secret <small>server-side only</small></span><input id="EOSClientSecret" type="password" autocomplete="new-password"></label>
+          <label class="setup-field secret-field"><span>EOS encryption key <small>64-character hex value</small></span><input id="EOSEncryptionKey" type="password" autocomplete="new-password" maxlength="64"></label>
+          <label class="setup-field secret-field"><span>Photon server secret <small>never for client builds</small></span><input id="PhotonServerSecret" type="password" autocomplete="new-password"></label>
+          <label class="setup-check"><input id="RevealSecrets" type="checkbox"><span>Show local secrets while editing</span></label>
+        </div>
+      </details>
+    </form>
+  </main>
+  <aside class="setup-aside">
+    <div class="setup-status-card"><span class="eyebrow">PROJECT FILE</span><h2 id="ProjectFileLabel">Project settings</h2><p id="ConfigStatus" role="status">Edits belong to the selected .projectspace page.</p><div class="config-actions"><button type="button" class="secondary" id="LoadProjectConfig">Open .projectspace</button><button type="button" class="primary" id="SaveProjectConfig">Save .projectspace</button><button type="button" class="secondary" id="SaveLocalTestConfig">Save local test TOML</button><input id="ProjectConfigPicker" type="file" accept=".projectspace,.toml,text/plain" hidden></div><small>Project settings are saved in the selected .projectspace file. Local test secrets stay in a separate, explicitly confirmed file.</small></div>
+    <div class="setup-status-card package-card"><span class="eyebrow">PACKAGE SAFETY</span><h3>Keep secrets local</h3><p>The standard .projectspace does not contain local test secrets. Keep local test files out of source control and distribution builds.</p><p class="service-readiness" id="ServiceReadiness">EOS / Photon are configuration-only in this HTML prototype; native SDK runtime testing is not connected here.</p></div>
+    <div class="setup-status-card link-card"><span class="eyebrow">SDK INPUTS</span><h3>Drive links</h3><a href="https://drive.google.com/drive/folders/1QoR3DeBGHkP2CmnLAlCLyQSKslfJBtEs?usp=drive_link" target="_blank" rel="noopener noreferrer">Photon Realtime Core SDK folder ↗</a><a href="https://drive.google.com/file/d/1vEc4b4I0Bsmvuhz8LJoWAXNdAvPfbZZA/view?usp=drivesdk" target="_blank" rel="noopener noreferrer">EOS SDK 1.19.2.1 archive ↗</a><small>Private Drive links; sign in with an authorized account. Proprietary SDK files remain in Drive and are not bundled in this prototype or Git.</small></div>
+  </aside>
+</div>
+<footer class="setup-footer"><span>Frontier · .projectspace</span><span>Page 1 · Project settings</span></footer>
+</div>
+</section>
+<footer class="viewer-footer"><div class="preview-bottom"><svg class="icon"><use href="#cube"/></svg><span id="PreviewBottom">Read-only browser preview</span></div><div class="viewer-toolbar"><button class="icon-button" id="Previous" aria-label="Previous page"><svg class="icon"><use href="#back"/></svg></button><span id="PreviewIndex">1 / 3</span><button class="icon-button" id="Next" aria-label="Next page"><svg class="icon"><use href="#arrow"/></svg></button><span class="toolbar-divider"></span><button class="icon-button" id="ZoomOut" aria-label="Zoom out">−</button><button id="ZoomReset" class="zoom-label" title="Actual size">100%</button><button class="icon-button" id="ZoomIn" aria-label="Zoom in">+</button><span class="toolbar-divider"></span><button class="text-button" id="Fit">Fit page</button></div><span class="bottom-right" id="PreviewEditor">No editor opened</span></footer></main>
+<aside class="inspector right-pane"><header class="pane-header inspector-pane-header"><div class="inspector-tabs" role="tablist" aria-label="File information"><button role="tab" aria-selected="true" data-tab="details">Details</button><button role="tab" aria-selected="false" data-tab="comments">Comments <span id="CommentCount"></span></button><button role="tab" aria-selected="false" data-tab="history">History</button></div><button class="icon-button collapse-toggle" data-collapse="right" aria-expanded="true" aria-label="Collapse right panel" title="Collapse right panel">›</button></header><div class="inspector-scroll"><div id="InspectorContent" class="inspector-content"></div><form id="CommentForm" class="comment-form" hidden><label for="CommentText">Add a note to this preview</label><textarea id="CommentText" maxlength="2000" placeholder="Leave a thought, ask a question…" rows="3" required></textarea><div><span>Saved in this browser only</span><button class="primary small" type="submit">Send <svg class="icon"><use href="#arrow"/></svg></button></div></form></div></aside></div>
+</section>
+
+<input id="FilePicker" type="file" multiple accept=".project,.projectspace,.scene,.assembly,.sketch,.geometry,.geometryspace,.md,.png,.jpg,.jpeg,.webp" hidden><input id="FolderPicker" type="file" webkitdirectory multiple hidden>
+<dialog id="LaunchDialog"><button class="icon-button dialog-close" id="CloseDialog" aria-label="Close"><svg class="icon"><use href="#close"/></svg></button><span class="launch-mark" id="LaunchMark"></span><span class="eyebrow">NATIVE HAND-OFF PREVIEW</span><h2>Ready for the next step.</h2><p id="LaunchDescription"></p><div class="handoff"><span>OPEN WITH</span><strong id="LaunchTarget">Frontier</strong><span>FILE</span><code id="LaunchFile"></code></div><p class="subtle">This HTML prototype does not launch Frontier.exe or SolidArc, or decode native project content. Your original file is unchanged.</p><button class="primary" id="ReturnPreview">Back to preview</button></dialog>
+<div id="Toast" class="toast" role="status" aria-live="polite" hidden></div>
+<script src="ReferenceRenderer.js?v=f83doc01"></script>
+<script src="Browser.js?v=projectspace-settings-20261125-v3"></script>
+</body></html>
