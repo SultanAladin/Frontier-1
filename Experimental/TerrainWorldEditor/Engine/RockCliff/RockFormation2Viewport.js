@@ -87,6 +87,7 @@ float evalPlainPrimitive(int bi, vec3 p) {
     if (hasDeform) {
         vec4 d0 = texelFetch(uBlockTex, ivec2(7, bi), 0); // (baseY, refH, taper, pinch)
         vec4 d1 = texelFetch(uBlockTex, ivec2(8, bi), 0); // (twistRad, bendX, bendZ, skewX)
+        vec4 d2 = texelFetch(uBlockTex, ivec2(10, bi), 0); // (ringFreq, ringAmp, ringPhase, pinchHeightNorm)
 
         float h = clamp((q.y - d0.x) / max(0.15, d0.y), -0.25, 1.35);
         float u = h - 0.5;
@@ -104,9 +105,14 @@ float evalPlainPrimitive(int bi, vec3 p) {
         }
 
         float sTap = max(0.16, 1.0 - d0.z * (h - 0.35));
-        float pRel = (h - 0.34) / 0.25;
+        float pRel = (h - d2.w) / 0.22;
         float sPinch = 1.0 - d0.w * exp(-pRel * pRel);
-        float s = clamp(sTap * sPinch, 0.16, 2.40);
+        float sRing = 1.0;
+        if (d2.y > 1e-4 && d2.x > 0.05) {
+            float hc = clamp(h, 0.0, 1.0);
+            sRing = 1.0 + d2.y * sin(hc * d2.x * 6.2831853 + d2.z);
+        }
+        float s = clamp(sTap * sPinch * sRing, 0.14, 2.50);
         q.x = x1 / s;
         q.z = z1 / s;
         scaleFactor = min(1.0, s) * deformPenalty;
@@ -205,14 +211,41 @@ void main() {
         float intraBlend = lm1.w;
 
         float dLyr = 1e9;
-        for (int k = 0; k < 128; k++) {
+        float dInst = 1e9;
+        bool hasInst = false;
+        for (int k = 0; k < 256; k++) {
             if (k >= bCount) break;
             int bi = bStart + k;
             vec4 sph = texelFetch(uBlockTex, ivec2(0, bi), 0);
+            float pOp = texelFetch(uBlockTex, ivec2(6, bi), 0).w;
             float lb = length(p - sph.xyz) - sph.w;
-            if (lb > dLyr + intraBlend) continue;
-            float dP = evalPlainPrimitive(bi, p);
-            dLyr = (dLyr > 1e8) ? dP : (intraBlend > 1e-4 ? sminPoly(dLyr, dP, intraBlend) : min(dLyr, dP));
+            float lbCons = lb > 0.0 ? lb * 0.25 : lb;
+
+            if (pOp > -1.5 && pOp < -0.5) {
+                if (hasInst) {
+                    dLyr = (dLyr > 1e8) ? dInst : (intraBlend > 1e-4 ? sminPoly(dLyr, dInst, intraBlend) : min(dLyr, dInst));
+                }
+                hasInst = true;
+                if (lbCons > dLyr + intraBlend + 0.25) {
+                    dInst = lbCons;
+                } else {
+                    dInst = evalPlainPrimitive(bi, p);
+                }
+            } else if (pOp >= 0.0) {
+                float subB = pOp;
+                if (lbCons > min(dInst, dLyr + intraBlend) + subB + 0.25) continue;
+                float dP = evalPlainPrimitive(bi, p);
+                dInst = (dInst > 1e8) ? dP : (subB > 1e-4 ? sminPoly(dInst, dP, subB) : min(dInst, dP));
+                hasInst = true;
+            } else {
+                float cutB = max(0.0, -pOp - 2.0);
+                if (!hasInst || dInst > dLyr + intraBlend + 0.25 || lbCons > max(0.0, -dInst) + cutB + 0.25) continue;
+                float dP = evalPlainPrimitive(bi, p);
+                dInst = smaxPoly(dInst, -dP, cutB);
+            }
+        }
+        if (hasInst) {
+            dLyr = (dLyr > 1e8) ? dInst : (intraBlend > 1e-4 ? sminPoly(dLyr, dInst, intraBlend) : min(dLyr, dInst));
         }
 
         if (!hasBase) {
@@ -310,16 +343,18 @@ vec3 calcNormal(vec3 p, float eps) {
 }
 
 float calcSoftShadow(vec3 ro, vec3 rd) {
+    vec2 sb = intersectAabb(ro, rd, uVolMin, uVolMax);
+    if (sb.y <= sb.x) return 1.0;
     float res = 1.0;
-    float t = 0.06;
-    for (int i = 0; i < 26; i++) {
+    float t = max(0.05, sb.x + 0.02);
+    float tMax = min(sb.y, 28.0);
+    for (int i = 0; i < 32; i++) {
+        if (t > tMax) break;
         vec3 sp = ro + rd * t;
-        if (any(lessThan(sp, uVolMin)) || any(greaterThan(sp, uVolMax))) break;
         float h = evalD(sp);
         if (h < 0.003) return 0.14;
-        res = min(res, 8.0 * h / t);
+        res = min(res, 8.0 * h / max(0.06, t));
         t += clamp(h * 0.85, 0.03, 0.45);
-        if (t > 12.0) break;
     }
     return clamp(res, 0.14, 1.0);
 }
@@ -414,10 +449,10 @@ void main() {
         floorCol = mix(floorCol, vec3(0.12, 0.13, 0.15), line1 * 0.42 * fade);
         floorCol = mix(floorCol, vec3(0.20, 0.22, 0.25), line5 * 0.65 * fade);
 
-        // Soft floor contact shadow from the 3D SDF volume!
+        // Soft floor contact shadow from the 3D SDF volume (supports elevated floating sky islands cleanly)!
         float fShadow = calcSoftShadow(fp + vec3(0.0, 0.04, 0.0), uSunDir);
         float contactAo = 1.0;
-        if (all(greaterThan(fp, uVolMin - vec3(1.0))) && all(lessThan(fp, uVolMax + vec3(1.0)))) {
+        if (uVolMin.y <= 0.25 && all(greaterThan(fp.xz, uVolMin.xz - vec2(1.0))) && all(lessThan(fp.xz, uVolMax.xz + vec2(1.0)))) {
             float dGround = evalD(fp + vec3(0.0, 0.12, 0.0));
             contactAo = clamp(0.45 + 0.55 * smoothstep(0.0, 0.85, dGround), 0.35, 1.0);
         }
@@ -830,10 +865,10 @@ export class RockFormation2Viewport
         const b = this.compiledStack.bounds;
         this.target = [
             (b.minX + b.maxX) * 0.5,
-            (b.minY + b.maxY) * 0.42,
+            b.minY > 0.2 ? (b.minY * 0.35 + b.maxY * 0.50) : (b.minY + b.maxY) * 0.42,
             (b.minZ + b.maxZ) * 0.5
         ];
-        const span = Math.max(3.5, b.maxX - b.minX, b.maxY - b.minY, b.maxZ - b.minZ);
+        const span = Math.max(3.5, b.maxX - b.minX, Math.max(b.maxY, b.maxY - b.minY), b.maxZ - b.minZ);
         this.distance = span * 1.38;
         this.yaw = 0.52;
         this.pitch = 0.28;
@@ -1487,29 +1522,47 @@ export class RockFormation2Viewport
 
         // Draw generated rock instance markers + orientation ticks so placement & random angles are immediately legible
         const evalRes = evaluateRock2GeneratorInstances(g, layer.params, layer.type);
+        const floatHover = layer.type === 'floating_rock' ? Math.max(0.0, layer.params?.hoverHeight ?? 2.4) : 0.0;
         ctx.save();
         for (let i = 0; i < evalRes.instances.length; i++)
         {
             const inst = evalRes.instances[i];
-            const p0 = projLocal(inst.pos[0], inst.pos[1], inst.pos[2]);
+            const iy = inst.pos[1] + floatHover;
+            const p0 = projLocal(inst.pos[0], iy, inst.pos[2]);
             if (!p0) continue;
+            if (floatHover > 0.1)
+            {
+                const pGround = projLocal(inst.pos[0], inst.pos[1], inst.pos[2]);
+                if (pGround)
+                {
+                    ctx.save();
+                    ctx.strokeStyle = 'rgba(124, 212, 248, 0.36)';
+                    ctx.setLineDash([3, 3]);
+                    ctx.lineWidth = 1.1;
+                    ctx.beginPath();
+                    ctx.moveTo(pGround.sx, pGround.sy);
+                    ctx.lineTo(p0.sx, p0.sy);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            }
             const yawRad = inst.yawDeg * DEG2RAD;
             const tickLen = 0.42;
             const pDir = projLocal(
                 inst.pos[0] + Math.sin(yawRad) * tickLen,
-                inst.pos[1],
+                iy,
                 inst.pos[2] + Math.cos(yawRad) * tickLen
             );
             if (pDir)
             {
-                ctx.strokeStyle = 'rgba(239, 244, 207, 0.42)';
+                ctx.strokeStyle = floatHover > 0.1 ? 'rgba(124, 212, 248, 0.58)' : 'rgba(239, 244, 207, 0.42)';
                 ctx.lineWidth = 1.4;
                 ctx.beginPath();
                 ctx.moveTo(p0.sx, p0.sy);
                 ctx.lineTo(pDir.sx, pDir.sy);
                 ctx.stroke();
             }
-            ctx.fillStyle = 'rgba(239, 244, 207, 0.72)';
+            ctx.fillStyle = floatHover > 0.1 ? 'rgba(124, 212, 248, 0.86)' : 'rgba(239, 244, 207, 0.72)';
             ctx.beginPath();
             ctx.arc(p0.sx, p0.sy, 2.8, 0, Math.PI * 2);
             ctx.fill();

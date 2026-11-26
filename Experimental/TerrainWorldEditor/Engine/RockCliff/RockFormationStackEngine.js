@@ -2,9 +2,9 @@
                                                 ROCKFORMATIONSTACKENGINE.JS
 ==========================================================================================================================================*/
 // Pure-SDF Composable Layer-Stack Engine for RockFormation 2.0:
-//   - 8 Atomic Plain Base Rock Shapes (`big_boulder`, `smooth_rock`, `small_rock`, `cliff_block`, `basalt_column`,
-//     `spire_pinnacle`, `rock_slab`, `custom_sculpt_rock`) — ZERO arches, ZERO hardcoded multi-rock scatters,
-//     ZERO fractures, ZERO thermal crazing, ZERO exfoliation, ZERO chemical/noise surface processing.
+//   - 11 Atomic Plain Base Rock Shapes (`big_boulder`, `smooth_rock`, `small_rock`, `cliff_block`, `basalt_column`,
+//     `spire_pinnacle`, `hoodoo_column`, `pedestal_rock`, `floating_rock`, `rock_slab`, `custom_sculpt_rock`) —
+//     ZERO hardcoded multi-rock scatters, ZERO fractures, ZERO thermal crazing, ZERO chemical/noise surface processing.
 //   - Composable Per-Layer Distribution Generators (`none`, `spline`, `array`, `splatter`, `scatter`) with:
 //       * Interactive 3D Viewport Multi-Knot Catmull-Rom Splines (ideal for curved cliffs & canyon faces)
 //       * Interactive 3D Viewport Array Lines/Frames where every generated rock has distinct mutated geometry,
@@ -64,6 +64,7 @@ export const ROCK2_STONE_TONES = {
     basalt:     { label: 'Dark Basalt Slate',   hex: '#454a52', rgb: [0.27, 0.29, 0.32] },
     granite:    { label: 'Pale Sierra Granite', hex: '#aea69c', rgb: [0.68, 0.65, 0.61] },
     sandstone:  { label: 'Warm Desert Buff',    hex: '#b88f6b', rgb: [0.72, 0.56, 0.42] },
+    bryceCoral: { label: 'Bryce Claron Coral',  hex: '#bd7257', rgb: [0.74, 0.45, 0.34] },
     cobble:     { label: 'River Cobble Blue',   hex: '#757d85', rgb: [0.46, 0.49, 0.52] },
     limestone:  { label: 'Karst Cream Stone',   hex: '#bab5a6', rgb: [0.73, 0.71, 0.65] },
     redSlate:   { label: 'Red Canyon Slate',    hex: '#9e5e4d', rgb: [0.62, 0.37, 0.30] }
@@ -72,7 +73,7 @@ export const ROCK2_STONE_TONES = {
 export const ROCK2_STONE_TONE_OPTIONS = Object.entries(ROCK2_STONE_TONES).map(([k, v]) => [v.label, k]);
 
 /*==========================================================================================================================================
-                     2. 8 ATOMIC PLAIN BASE ROCK GENERATORS (SINGLE ROCK PER BASE NODE · ZERO ARCHES)
+                     2. 11 ATOMIC PLAIN BASE ROCK GENERATORS (SINGLE ROCK PER BASE NODE · 100% PURE SDF)
 ==========================================================================================================================================*/
 
 export const ROCK2_NODE_CATALOG = [
@@ -233,7 +234,7 @@ export const ROCK2_NODE_CATALOG = [
         shortBadge: 'CLIFF',
         glyph: 'Layers',
         accent: '#e09f6d',
-        desc: 'Single plain cliff buttress — attach interactive 3D Spline to sculpt full curved cliffs & canyon faces',
+        desc: 'Single plain cliff buttress, yardang prow or half-dome — attach 3D Spline to sculpt curved cliffs & canyons',
         defaults: {
             stoneTone: 'sandstone',
             seed: 7042,
@@ -244,13 +245,14 @@ export const ROCK2_NODE_CATALOG = [
             facetCount: 10,
             roundness: 0.14,
             overhangLean: 0.08,
+            basalUndercut: 0.0,
             batterTaper: 0.14,
             crestSlope: 0.08,
             prowWedge: 0.15
         },
         controlGroups: [
             {
-                title: 'Cliff Buttress Monolith',
+                title: 'Cliff Buttress, Yardang & Half-Dome',
                 badge: 'BASE ROCK',
                 glyph: 'Layers',
                 hint: 'Single plain cliff buttress — attach Spline Generator above and drag 3D knots in the viewport to shape cliffs & canyon walls.',
@@ -262,12 +264,15 @@ export const ROCK2_NODE_CATALOG = [
                             ['Overhanging Sea-Cliff Brow', 'overhang'],
                             ['Battered Cuesta Rampart', 'rampart'],
                             ['Flat-Capped Mesa Buttress', 'mesa'],
-                            ['Angular Promontory Prow', 'prow']
+                            ['Angular Promontory Prow', 'prow'],
+                            ['Saharan Wind-Carved Yardang Fin', 'yardang_fin'],
+                            ['Granite Half-Dome & Sheer Face', 'exfoliation_dome']
                         ]
                     },
                     { key: 'facetCount', label: 'Face Joint Planes', min: 6, max: 20, step: 1, decimals: 0, unit: 'pl' },
                     { key: 'roundness', label: 'Cliff Arris Rounding', min: 0.02, max: 0.65, step: 0.01, decimals: 2, unit: 'w' },
                     { key: 'overhangLean', label: 'Slope Back ↔ Overhang Brow', min: -0.55, max: 0.65, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'basalUndercut', label: 'Basal Wave / Wind Undercut', min: 0.0, max: 0.60, step: 0.02, decimals: 2, unit: 'w' },
                     { key: 'batterTaper', label: 'Base-to-Crest Taper', min: -0.45, max: 0.65, step: 0.02, decimals: 2, unit: 'w' },
                     { key: 'crestSlope', label: 'Rim Crest Tilt', min: -0.50, max: 0.50, step: 0.02, decimals: 2, unit: 'w' },
                     { key: 'prowWedge', label: 'Front Face Angularity', min: 0.0, max: 0.60, step: 0.02, decimals: 2, unit: 'w' }
@@ -330,7 +335,7 @@ export const ROCK2_NODE_CATALOG = [
         shortBadge: 'SPIRE',
         glyph: 'Activity',
         accent: '#d9b8ff',
-        desc: 'Single plain rock spire, obelisk needle, desert hoodoo shaft, leaning fang or flat-topped pinnacle',
+        desc: 'Single plain alpine horn, sea-stack needle, Tsingy karst razor blade or cathedral organ-pipe spire',
         defaults: {
             stoneTone: 'limestone',
             seed: 8821,
@@ -341,6 +346,8 @@ export const ROCK2_NODE_CATALOG = [
             facetSides: 7,
             roundness: 0.16,
             taper: 0.58,
+            buttressRibs: 0,
+            fluteDepth: 0.0,
             waistPinch: 0.0,
             twistDeg: 14,
             bendX: 0.10,
@@ -348,27 +355,184 @@ export const ROCK2_NODE_CATALOG = [
         },
         controlGroups: [
             {
-                title: 'Spire, Needle & Hoodoo Tower',
+                title: 'Spire, Karst Blade & Cathedral Organ',
                 badge: 'BASE ROCK',
                 glyph: 'Activity',
-                hint: 'Single plain vertical rock spire — control taper, hoodoo waist pinch, helical twist & lean.',
+                hint: 'Single plain vertical rock spire — control gothic taper, bundled organ-pipe ribs, karst fluting & lean.',
                 controls: [
                     {
                         type: 'select', key: 'spireStyle', label: 'Spire Archetype',
                         options: [
                             ['Alpine Horn / Obelisk', 'horn'],
                             ['Slender Sea-Stack Needle', 'needle'],
-                            ['Pinched Desert Hoodoo', 'hoodoo'],
+                            ['Tsingy Limestone Karst Razor', 'karst_razor'],
+                            ['Cathedral Organ-Pipe Spire', 'cathedral_organ'],
+                            ['Pinched Desert Spire', 'hoodoo'],
                             ['Flat-Topped Butte Tower', 'butte']
                         ]
                     },
                     { key: 'facetSides', label: 'Perimeter Facet Sides', min: 4, max: 14, step: 1, decimals: 0, unit: 'pl' },
                     { key: 'roundness', label: 'Ridge Rounding', min: 0.02, max: 0.80, step: 0.01, decimals: 2, unit: 'w' },
                     { key: 'taper', label: 'Vertical Spire Taper', min: -0.35, max: 0.88, step: 0.02, decimals: 2, unit: 'w' },
-                    { key: 'waistPinch', label: 'Pedestal / Hoodoo Pinch', min: -0.40, max: 0.68, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'buttressRibs', label: 'Organ-Pipe Buttress Ribs', min: 0, max: 5, step: 1, decimals: 0, unit: 'rb' },
+                    { key: 'fluteDepth', label: 'Vertical Karst Fluting', min: 0.0, max: 0.55, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'waistPinch', label: 'Mid-Shaft Pinch', min: -0.40, max: 0.68, step: 0.02, decimals: 2, unit: 'w' },
                     { key: 'twistDeg', label: 'Helical Spire Twist', min: -90, max: 90, step: 2, decimals: 0, unit: '°' },
                     { key: 'bendX', label: 'Cantilever Spire Lean', min: -0.55, max: 0.55, step: 0.02, decimals: 2, unit: 'w' },
                     { key: 'flatCap', label: 'Summit Plateau Cut', min: 0.0, max: 0.80, step: 0.02, decimals: 2, unit: 'w' }
+                ]
+            }
+        ]
+    },
+    {
+        type: 'hoodoo_column',
+        name: 'Hoodoo Column',
+        shortBadge: 'HOODOO',
+        glyph: 'Hoodoo',
+        accent: '#f08a6c',
+        desc: 'Single plain Bryce badlands hoodoo pillar with continuous pinch-and-swell rings & sculpted crown cap',
+        defaults: {
+            stoneTone: 'bryceCoral',
+            seed: 6408,
+            posX: 0.0, posY: 0.0, posZ: 0.0,
+            yawDeg: 0, pitchDeg: 0, rollDeg: 0,
+            width: 2.2, height: 6.4, length: 2.1,
+            hoodooStyle: 'bulb_cap',
+            ringCount: 5,
+            ringSwell: 0.22,
+            neckPinch: 0.36,
+            capSize: 1.12,
+            taper: 0.24,
+            basalApron: 0.34,
+            leanX: 0.06,
+            roundness: 0.30
+        },
+        controlGroups: [
+            {
+                title: 'Badlands Hoodoo Rings & Crown',
+                badge: 'BASE ROCK',
+                glyph: 'Hoodoo',
+                hint: 'Continuous fluted badlands shaft with analytical pinch-and-swell rings and pitched hoodoo crown — attach Spline or Array for Bryce amphitheaters.',
+                controls: [
+                    {
+                        type: 'select', key: 'hoodooStyle', label: 'Hoodoo Archetype',
+                        options: [
+                            ['Bulb-Cap Bryce Hoodoo', 'bulb_cap'],
+                            ['Castellated Turret Hoodoo', 'turret'],
+                            ['Stacked Totem Pillar', 'totem'],
+                            ['Narrow Badlands Fin Hoodoo', 'fin_spire']
+                        ]
+                    },
+                    { key: 'ringCount', label: 'Pinch-and-Swell Rings', min: 2, max: 9, step: 1, decimals: 0, unit: 'rg' },
+                    { key: 'ringSwell', label: 'Ring Bulge & Constriction', min: 0.0, max: 0.44, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'neckPinch', label: 'Sub-Crown Throat Pinch', min: 0.0, max: 0.65, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'capSize', label: 'Crown Cap Overhang', min: 0.55, max: 1.60, step: 0.02, decimals: 2, unit: '×' },
+                    { key: 'taper', label: 'Column Base→Crown Taper', min: -0.25, max: 0.75, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'basalApron', label: 'Grounded Pedestal Apron', min: 0.0, max: 0.80, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'leanX', label: 'Column Lean', min: -0.40, max: 0.40, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'roundness', label: 'Facet↔Ring Rounding', min: 0.04, max: 0.80, step: 0.02, decimals: 2, unit: 'w' }
+                ]
+            }
+        ]
+    },
+    {
+        type: 'pedestal_rock',
+        name: 'Pedestal / Balanced Rock',
+        shortBadge: 'PEDESTAL',
+        glyph: 'Pedestal',
+        accent: '#e6b472',
+        desc: 'Single plain perched balanced boulder, desert mushroom rock, caprock toadstool or cantilevered anvil',
+        defaults: {
+            stoneTone: 'sandstone',
+            seed: 4729,
+            posX: 0.0, posY: 0.0, posZ: 0.0,
+            yawDeg: 0, pitchDeg: 0, rollDeg: 0,
+            width: 3.4, height: 5.2, length: 3.2,
+            pedestalStyle: 'balanced_boulder',
+            stemHeightRatio: 0.48,
+            neckWidth: 0.36,
+            capOverhang: 1.22,
+            capTiltDeg: 14,
+            capOffset: 0.08,
+            stemRibs: 0.14,
+            plinthFlare: 0.38,
+            roundness: 0.26
+        },
+        controlGroups: [
+            {
+                title: 'Pedestal Stem & Perched Caprock',
+                badge: 'BASE ROCK',
+                glyph: 'Pedestal',
+                hint: 'Stepped plinth + concave-tapered pedestal throat + tilted overhanging cap boulder in 100% Pure SDF.',
+                controls: [
+                    {
+                        type: 'select', key: 'pedestalStyle', label: 'Pedestal Archetype',
+                        options: [
+                            ['Perched Balanced Boulder', 'balanced_boulder'],
+                            ['Desert Mushroom / Toadstool', 'desert_mushroom'],
+                            ['Tabular Caprock Table', 'caprock_table'],
+                            ['Cantilevered Anvil Prow', 'anvil_prow']
+                        ]
+                    },
+                    { key: 'stemHeightRatio', label: 'Pedestal Stem Height Ratio', min: 0.25, max: 0.74, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'neckWidth', label: 'Throat Neck Width', min: 0.18, max: 0.80, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'capOverhang', label: 'Caprock Overhang Scale', min: 0.70, max: 1.75, step: 0.02, decimals: 2, unit: '×' },
+                    { key: 'capTiltDeg', label: 'Perched Cap Tilt', min: -36, max: 36, step: 1, decimals: 0, unit: '°' },
+                    { key: 'capOffset', label: 'Eccentric Cap Balance Shift', min: -0.45, max: 0.45, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'stemRibs', label: 'Mudstone Stem Ribs', min: 0.0, max: 0.38, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'plinthFlare', label: 'Basal Plinth Flare', min: 0.0, max: 0.85, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'roundness', label: 'Cap & Throat Rounding', min: 0.04, max: 0.85, step: 0.02, decimals: 2, unit: 'w' }
+                ]
+            }
+        ]
+    },
+    {
+        type: 'floating_rock',
+        name: 'Floating Rock / Sky Island',
+        shortBadge: 'FLOATING',
+        glyph: 'FloatingIsland',
+        accent: '#7cd4f8',
+        desc: 'Single plain mid-air floating rock mass with inverted stalactite root keel, spurs & plateau/crag top',
+        defaults: {
+            stoneTone: 'granite',
+            seed: 9137,
+            posX: 0.0, posY: 0.0, posZ: 0.0,
+            yawDeg: 0, pitchDeg: 0, rollDeg: 0,
+            width: 4.8, height: 4.6, length: 4.4,
+            floatingStyle: 'sky_island',
+            hoverHeight: 2.4,
+            keelRatio: 0.62,
+            keelSharpness: 0.74,
+            topFlatness: 0.82,
+            rimOverhang: 0.32,
+            keelSpurs: 3,
+            keelSkew: 0.10,
+            roundness: 0.18
+        },
+        controlGroups: [
+            {
+                title: 'Floating Sky Island & Hanging Root Keel',
+                badge: 'BASE ROCK',
+                glyph: 'FloatingIsland',
+                hint: 'True elevated Pure-SDF floating rock (zero ground clipping at Y=0) — pair with 3D Array or Scatter for floating archipelagos.',
+                controls: [
+                    {
+                        type: 'select', key: 'floatingStyle', label: 'Floating Archetype',
+                        options: [
+                            ['Flat-Topped Sky Island', 'sky_island'],
+                            ['Torn Floating Monolith Crag', 'torn_monolith'],
+                            ['Stalactite Dagger Spire', 'stalactite_dagger'],
+                            ['Cantilevered Hover Ledge', 'hover_ledge']
+                        ]
+                    },
+                    { key: 'hoverHeight', label: 'Hover Clearance (Air Gap)', min: 0.0, max: 12.0, step: 0.1, decimals: 1, unit: 'm' },
+                    { key: 'keelRatio', label: 'Hanging Root Keel Depth', min: 0.25, max: 0.82, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'keelSharpness', label: 'Blunt Root ↔ Razor Keel Tip', min: 0.10, max: 0.95, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'topFlatness', label: 'Crag Peak ↔ Plateau Deck', min: 0.0, max: 1.0, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'rimOverhang', label: 'Equatorial Rim Shelf Overhang', min: 0.0, max: 0.75, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'keelSpurs', label: 'Secondary Hanging Root Spurs', min: 0, max: 4, step: 1, decimals: 0, unit: '#' },
+                    { key: 'keelSkew', label: 'Wind-Sheared Root Slant', min: -0.50, max: 0.50, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'roundness', label: 'Bedrock Facet Rounding', min: 0.04, max: 0.72, step: 0.02, decimals: 2, unit: 'w' }
                 ]
             }
         ]
@@ -482,12 +646,14 @@ export const ROCK2_ROCK_POOL_OPTIONS = [
     ['Varied Shapes of Base Rock', 'varied_base'],
     ['Mixed Boulders, Cobbles, Slabs & Clasts', 'mixed_boulders'],
     ['Mixed Canyon Outcrop (Cliff + Boulder + Slab + Spire)', 'mixed_outcrop'],
+    ['Mixed Badlands (Hoodoo + Pedestal + Spire + Cliff)', 'mixed_badlands'],
     ['Exact Base Rock Only (No Shape Mutation)', 'uniform_base']
 ];
 
 const ROCK_POOLS = {
     mixed_boulders: ['big_boulder', 'smooth_rock', 'small_rock', 'rock_slab'],
-    mixed_outcrop:  ['cliff_block', 'big_boulder', 'rock_slab', 'spire_pinnacle']
+    mixed_outcrop:  ['cliff_block', 'big_boulder', 'rock_slab', 'spire_pinnacle'],
+    mixed_badlands: ['hoodoo_column', 'pedestal_rock', 'spire_pinnacle', 'cliff_block']
 };
 
 /**
@@ -993,6 +1159,113 @@ export const ROCK2_STARTER_STACKS = [
                     scaleMin: 0.45,
                     scaleMax: 1.35,
                     sizeBias: 1.5,
+                    uniqueSeeds: 1
+                })
+            })
+        ]
+    },
+    {
+        id: 'stack-bryce-hoodoos',
+        name: '08 · Bryce Hoodoo Amphitheater (Spline)',
+        badge: 'HOODOO SPLINE',
+        buildLayers: () => [
+            createRock2Layer('hoodoo_column', {
+                name: 'Bryce Hoodoo Colonnade',
+                combineMode: 'union',
+                stoneTone: 'bryceCoral',
+                seed: 6408,
+                width: 2.1, height: 6.5, length: 2.0,
+                hoodooStyle: 'bulb_cap',
+                ringCount: 5, ringSwell: 0.24, neckPinch: 0.38, capSize: 1.14, basalApron: 0.42,
+                generator: createRock2Generator('spline', {
+                    splinePreset: 'arc',
+                    knots: buildRock2SplinePresetKnots('arc', 10.4, 2.2),
+                    count: 7,
+                    alignToTangent: 1,
+                    spacingJitter: 0.16,
+                    shapeVariety: 0.85,
+                    heightVariation: 0.24,
+                    scaleVariation: 0.14,
+                    intraBlend: 0.22,
+                    uniqueSeeds: 1
+                })
+            }),
+            createRock2Layer('spire_pinnacle', {
+                name: 'Cathedral Organ Sentinel',
+                combineMode: 'smooth_union',
+                blendRadius: 0.30,
+                stoneTone: 'sandstone',
+                seed: 8821,
+                posX: 0.0, posY: 0.0, posZ: -1.9,
+                width: 2.5, height: 7.4, length: 2.3,
+                spireStyle: 'cathedral_organ',
+                buttressRibs: 3, fluteDepth: 0.16, taper: 0.62, roundness: 0.14
+            })
+        ]
+    },
+    {
+        id: 'stack-pedestal-outcrop',
+        name: '09 · Balanced Pedestal & Yardang Fin',
+        badge: 'PEDESTAL',
+        buildLayers: () => [
+            createRock2Layer('pedestal_rock', {
+                name: 'Hero Balanced Caprock',
+                combineMode: 'union',
+                stoneTone: 'sandstone',
+                seed: 4729,
+                posX: -1.3, posY: 0.0, posZ: 0.3,
+                width: 3.6, height: 5.5, length: 3.3,
+                pedestalStyle: 'balanced_boulder',
+                stemHeightRatio: 0.48, neckWidth: 0.34, capOverhang: 1.28, capTiltDeg: 16, plinthFlare: 0.44
+            }),
+            createRock2Layer('cliff_block', {
+                name: 'Wind-Carved Yardang Prow',
+                combineMode: 'union',
+                stoneTone: 'redSlate',
+                seed: 7049,
+                posX: 2.6, posY: 0.0, posZ: -0.9,
+                yawDeg: -22,
+                width: 2.2, height: 3.6, length: 4.8,
+                cliffProfile: 'yardang_fin',
+                basalUndercut: 0.34, overhangLean: 0.24, roundness: 0.16
+            })
+        ]
+    },
+    {
+        id: 'stack-floating-islands',
+        name: '10 · Floating Sky Islands (Array)',
+        badge: 'FLOATING',
+        buildLayers: () => [
+            createRock2Layer('floating_rock', {
+                name: 'Primary Sky Island Sanctuary',
+                combineMode: 'union',
+                stoneTone: 'granite',
+                seed: 9137,
+                posX: 0.0, posY: 0.0, posZ: 0.0,
+                width: 5.4, height: 5.0, length: 4.8,
+                floatingStyle: 'sky_island',
+                hoverHeight: 2.6, keelRatio: 0.64, keelSharpness: 0.78, topFlatness: 0.86, rimOverhang: 0.36, keelSpurs: 3
+            }),
+            createRock2Layer('floating_rock', {
+                name: 'Drifting Satellite Shards',
+                combineMode: 'union',
+                stoneTone: 'limestone',
+                seed: 9411,
+                width: 2.1, height: 2.7, length: 1.9,
+                floatingStyle: 'stalactite_dagger',
+                hoverHeight: 3.4, keelRatio: 0.70, keelSharpness: 0.86, topFlatness: 0.52, keelSpurs: 2,
+                generator: createRock2Generator('array', {
+                    arrayMode: 'radial',
+                    radialCount: 4,
+                    ringRadius: 4.8,
+                    arcAngleDeg: 300,
+                    spacingJitter: 0.32,
+                    posJitter: 0.45,
+                    scaleVariation: 0.28,
+                    heightVariation: 0.30,
+                    yawJitterDeg: 180,
+                    tiltJitterDeg: 10,
+                    shapeVariety: 0.85,
                     uniqueSeeds: 1
                 })
             })
@@ -1763,12 +2036,18 @@ function buildMutatedInstanceParams(rockType, layerParams, inst)
     out.length = Math.max(0.08, (layerParams.length ?? 4.0) * inst.scaleZ);
     out.seed   = ((layerParams.seed ?? 2104) + (inst.seedOffset || 0)) >>> 0;
 
-    // When mixing a slab or small rock into a boulder array, adapt vertical ratio naturally
+    // When mixing a slab, hoodoo, pedestal or small rock into a mixed pool, adapt vertical ratio naturally
     if (rockType !== layerParams._sourceType)
     {
+        const defaults = getRock2NodeSpec(rockType).defaults;
+        for (const [dk, dv] of Object.entries(defaults))
+        {
+            if (out[dk] === undefined) out[dk] = dv;
+        }
         if (rockType === 'rock_slab') out.height *= 0.42;
         else if (rockType === 'small_rock') { out.width *= 0.62; out.height *= 0.55; out.length *= 0.62; }
-        else if (rockType === 'spire_pinnacle') { out.width *= 0.65; out.height *= 1.35; out.length *= 0.65; }
+        else if (rockType === 'spire_pinnacle' || rockType === 'hoodoo_column') { out.width *= 0.65; out.height *= 1.35; out.length *= 0.65; }
+        else if (rockType === 'pedestal_rock') { out.width *= 0.85; out.height *= 1.12; out.length *= 0.85; }
     }
 
     const v = clamp(inst.shapeVariety ?? 0.0, 0.0, 1.0);
@@ -1793,17 +2072,18 @@ function buildMutatedInstanceParams(rockType, layerParams, inst)
     }
     else if (rockType === 'cliff_block')
     {
-        if (v > 0.50 && mrng.float() < v * 0.65)
+        if (v > 0.50 && mrng.float() < v * 0.60 && out.cliffProfile !== 'exfoliation_dome' && out.cliffProfile !== 'yardang_fin')
         {
             const profiles = ['vertical', 'overhang', 'rampart', 'mesa', 'prow'];
             out.cliffProfile = profiles[mrng.int(0, profiles.length)];
         }
-        out.facetCount   = clamp(Math.round((out.facetCount ?? 11) + mrng.signed() * 5 * v), 9, 18);
-        out.roundness    = clamp((out.roundness ?? 0.14) + mrng.signed() * 0.09 * v, 0.03, 0.42);
-        out.overhangLean = clamp((out.overhangLean ?? 0.08) + mrng.signed() * 0.22 * v, -0.35, 0.45);
-        out.batterTaper  = clamp((out.batterTaper ?? 0.14) + mrng.signed() * 0.20 * v, -0.25, 0.48);
-        out.crestSlope   = clamp((out.crestSlope ?? 0.08) + mrng.signed() * 0.26 * v, -0.40, 0.40);
-        out.prowWedge    = clamp((out.prowWedge ?? 0.15) + mrng.signed() * 0.22 * v, 0.02, 0.52);
+        out.facetCount    = clamp(Math.round((out.facetCount ?? 11) + mrng.signed() * 5 * v), 9, 18);
+        out.roundness     = clamp((out.roundness ?? 0.14) + mrng.signed() * 0.09 * v, 0.03, 0.58);
+        out.overhangLean  = clamp((out.overhangLean ?? 0.08) + mrng.signed() * 0.22 * v, -0.35, 0.48);
+        out.basalUndercut = clamp((out.basalUndercut ?? 0.0) + mrng.signed() * 0.14 * v, 0.0, 0.55);
+        out.batterTaper   = clamp((out.batterTaper ?? 0.14) + mrng.signed() * 0.20 * v, -0.25, 0.48);
+        out.crestSlope    = clamp((out.crestSlope ?? 0.08) + mrng.signed() * 0.26 * v, -0.40, 0.40);
+        out.prowWedge     = clamp((out.prowWedge ?? 0.15) + mrng.signed() * 0.22 * v, 0.02, 0.52);
     }
     else if (rockType === 'smooth_rock')
     {
@@ -1845,11 +2125,54 @@ function buildMutatedInstanceParams(rockType, layerParams, inst)
     }
     else if (rockType === 'spire_pinnacle')
     {
-        out.facetSides = clamp(Math.round((out.facetSides ?? 7) + mrng.signed() * 3 * v), 4, 12);
-        out.taper      = clamp((out.taper ?? 0.58) + mrng.signed() * 0.22 * v, 0.15, 0.85);
-        out.waistPinch = clamp((out.waistPinch ?? 0.0) + mrng.signed() * 0.25 * v, -0.20, 0.50);
-        out.twistDeg   = clamp((out.twistDeg ?? 14) + mrng.signed() * 28 * v, -70, 70);
-        out.bendX      = clamp((out.bendX ?? 0.10) + mrng.signed() * 0.20 * v, -0.35, 0.35);
+        out.facetSides   = clamp(Math.round((out.facetSides ?? 7) + mrng.signed() * 3 * v), 4, 12);
+        out.taper        = clamp((out.taper ?? 0.58) + mrng.signed() * 0.22 * v, 0.15, 0.85);
+        out.buttressRibs = clamp(Math.round((out.buttressRibs ?? 0) + (mrng.float() < 0.45 * v ? mrng.int(-1, 2) : 0)), 0, 5);
+        out.fluteDepth   = clamp((out.fluteDepth ?? 0.0) + mrng.signed() * 0.14 * v, 0.0, 0.50);
+        out.waistPinch   = clamp((out.waistPinch ?? 0.0) + mrng.signed() * 0.25 * v, -0.20, 0.50);
+        out.twistDeg     = clamp((out.twistDeg ?? 14) + mrng.signed() * 28 * v, -70, 70);
+        out.bendX        = clamp((out.bendX ?? 0.10) + mrng.signed() * 0.20 * v, -0.35, 0.35);
+    }
+    else if (rockType === 'hoodoo_column')
+    {
+        if (v > 0.45 && mrng.float() < v * 0.70)
+        {
+            const styles = ['bulb_cap', 'turret', 'totem', 'fin_spire'];
+            out.hoodooStyle = styles[mrng.int(0, styles.length)];
+        }
+        out.ringCount  = clamp(Math.round((out.ringCount ?? 5) + mrng.signed() * 2.5 * v), 2, 8);
+        out.ringSwell  = clamp((out.ringSwell ?? 0.22) + mrng.signed() * 0.12 * v, 0.06, 0.42);
+        out.neckPinch  = clamp((out.neckPinch ?? 0.36) + mrng.signed() * 0.16 * v, 0.12, 0.60);
+        out.capSize    = clamp((out.capSize ?? 1.12) + mrng.signed() * 0.26 * v, 0.70, 1.50);
+        out.taper      = clamp((out.taper ?? 0.24) + mrng.signed() * 0.22 * v, -0.10, 0.62);
+        out.leanX      = clamp((out.leanX ?? 0.06) + mrng.signed() * 0.16 * v, -0.30, 0.30);
+        out.roundness  = clamp((out.roundness ?? 0.30) + mrng.signed() * 0.18 * v, 0.08, 0.68);
+    }
+    else if (rockType === 'pedestal_rock')
+    {
+        if (v > 0.50 && mrng.float() < v * 0.65)
+        {
+            const styles = ['balanced_boulder', 'desert_mushroom', 'caprock_table', 'anvil_prow'];
+            out.pedestalStyle = styles[mrng.int(0, styles.length)];
+        }
+        out.stemHeightRatio = clamp((out.stemHeightRatio ?? 0.48) + mrng.signed() * 0.12 * v, 0.30, 0.68);
+        out.neckWidth       = clamp((out.neckWidth ?? 0.36) + mrng.signed() * 0.14 * v, 0.20, 0.65);
+        out.capOverhang     = clamp((out.capOverhang ?? 1.22) + mrng.signed() * 0.26 * v, 0.85, 1.65);
+        out.capTiltDeg      = clamp((out.capTiltDeg ?? 14) + mrng.signed() * 18 * v, -32, 32);
+        out.capOffset       = clamp((out.capOffset ?? 0.08) + mrng.signed() * 0.20 * v, -0.35, 0.35);
+    }
+    else if (rockType === 'floating_rock')
+    {
+        if (v > 0.50 && mrng.float() < v * 0.60)
+        {
+            const styles = ['sky_island', 'torn_monolith', 'stalactite_dagger', 'hover_ledge'];
+            out.floatingStyle = styles[mrng.int(0, styles.length)];
+        }
+        out.hoverHeight   = Math.max(0.15, (out.hoverHeight ?? 2.4) + mrng.signed() * 1.15 * v);
+        out.keelRatio     = clamp((out.keelRatio ?? 0.62) + mrng.signed() * 0.14 * v, 0.35, 0.80);
+        out.keelSharpness = clamp((out.keelSharpness ?? 0.74) + mrng.signed() * 0.18 * v, 0.25, 0.94);
+        out.rimOverhang   = clamp((out.rimOverhang ?? 0.32) + mrng.signed() * 0.18 * v, 0.05, 0.65);
+        out.keelSkew      = clamp((out.keelSkew ?? 0.10) + mrng.signed() * 0.25 * v, -0.42, 0.42);
     }
     else if (rockType === 'basalt_column')
     {
@@ -1931,12 +2254,18 @@ function compilePlainPrimitive(opts)
     const refH = Math.max(0.15, opts.refH ?? (localMaxY - localMinY));
     const taper = clamp(opts.taper ?? 0.0, -0.75, 0.92);
     const pinch = clamp(opts.pinch ?? 0.0, -0.50, 0.72);
+    const pinchHeightNorm = clamp(opts.pinchHeightNorm ?? 0.34, 0.04, 0.94);
+    const ringFreq = clamp(opts.ringFreq ?? 0.0, 0.0, 12.0);
+    const ringAmp = clamp(opts.ringAmp ?? 0.0, 0.0, 0.48);
+    const ringPhase = opts.ringPhase ?? 0.0;
     const twistRad = (opts.twistDeg ?? 0.0) * DEG2RAD;
     const bendX = clamp(opts.bendX ?? 0.0, -0.75, 0.75);
     const bendZ = clamp(opts.bendZ ?? 0.0, -0.75, 0.75);
     const skewX = clamp(opts.skewX ?? 0.0, -0.75, 0.75);
 
-    const flareScale = (taper < 0 ? (1.0 + Math.abs(taper) * 0.85) : 1.08) * (pinch < 0 ? (1.0 + Math.abs(pinch) * 0.65) : 1.02);
+    const flareScale = (taper < 0 ? (1.0 + Math.abs(taper) * 0.85) : 1.08)
+                     * (pinch < 0 ? (1.0 + Math.abs(pinch) * 0.65) : 1.02)
+                     * (ringAmp > 0 ? (1.0 + ringAmp * 1.18) : 1.0);
     const shiftPadX = (Math.abs(bendX) + Math.abs(skewX) * 0.6) * refH;
     const shiftPadZ = Math.abs(bendZ) * refH;
     const padR = Math.hypot(Math.max(Math.abs(localMinX), Math.abs(localMaxX)), Math.max(Math.abs(localMinZ), Math.abs(localMaxZ)));
@@ -1976,11 +2305,13 @@ function compilePlainPrimitive(opts)
     const kLse = clamp(minSpan * (0.012 + 0.24 * roundness * roundness), 0.004, minSpan * 0.34);
     const baseBevel = clamp(minSpan * (0.015 + 0.14 * roundness), 0.005, 0.35);
 
-    const hasDeform = Math.abs(taper) > 1e-4 || Math.abs(pinch) > 1e-4 || Math.abs(twistRad) > 1e-4
-                   || Math.abs(bendX) > 1e-4 || Math.abs(bendZ) > 1e-4 || Math.abs(skewX) > 1e-4;
-    const deformStrength = Math.abs(taper) * 0.35 + Math.abs(pinch) * 0.45 + Math.abs(twistRad) * 0.20
+    const hasDeform = Math.abs(taper) > 1e-4 || Math.abs(pinch) > 1e-4 || ringAmp > 1e-4
+                   || Math.abs(twistRad) > 1e-4 || Math.abs(bendX) > 1e-4 || Math.abs(bendZ) > 1e-4 || Math.abs(skewX) > 1e-4;
+    const deformStrength = Math.abs(taper) * 0.35 + Math.abs(pinch) * 0.45
+                         + ringAmp * Math.max(0.85, ringFreq * 0.26)
+                         + Math.abs(twistRad) * 0.20
                          + (Math.abs(bendX) + Math.abs(bendZ) + Math.abs(skewX)) * 0.40;
-    const deformPenalty = hasDeform ? clamp(1.0 / (1.0 + deformStrength), 0.48, 1.0) : 1.0;
+    const deformPenalty = hasDeform ? clamp(1.0 / (1.0 + deformStrength), 0.42, 1.0) : 1.0;
 
     return {
         cx, cy, cz, radius,
@@ -1991,11 +2322,13 @@ function compilePlainPrimitive(opts)
         kLse, baseBevel,
         sqRx, sqRy, sqRz, sqCy,
         sqWeight, sqExpH, sqExpV,
-        primOp: 0,
+        primOp: opts.primOp ?? -1.0,
         sharpBase: opts.sharpBase ? 1.0 : 0.0,
         flatBaseCut: clamp(opts.flatBaseCut ?? 0.0, 0.0, 1.0),
         baseY, refH,
-        taper, pinch, twistRad, bendX, bendZ, skewX,
+        taper, pinch, pinchHeightNorm,
+        ringFreq, ringAmp, ringPhase,
+        twistRad, bendX, bendZ, skewX,
         hasDeform, deformPenalty
     };
 }
@@ -2184,13 +2517,138 @@ function buildSingleCliffBlock(p, worldR, worldPivot, rng)
     const facets = clamp(Math.round(p.facetCount ?? 10), 6, 20);
     const roundness = p.roundness ?? 0.14;
     const prow = clamp(p.prowWedge ?? 0.15, 0.0, 0.65);
+    const basalUndercut = clamp(p.basalUndercut ?? 0.0, 0.0, 0.62);
+    const crestSlope = p.crestSlope ?? 0.08;
 
     let overhang = p.overhangLean ?? 0.08;
     let taper = p.batterTaper ?? 0.14;
+    let pinch = basalUndercut;
 
-    if (profile === 'overhang') { overhang = Math.max(overhang, 0.32); taper = Math.min(taper, -0.14); }
-    else if (profile === 'rampart') { overhang = Math.min(overhang, -0.24); taper = Math.max(taper, 0.30); }
-    else if (profile === 'prow') { overhang += 0.18; }
+    if (profile === 'overhang')
+    {
+        overhang = Math.max(overhang, 0.32);
+        taper = Math.min(taper, -0.14);
+    }
+    else if (profile === 'rampart')
+    {
+        overhang = Math.min(overhang, -0.24);
+        taper = Math.max(taper, 0.30);
+    }
+    else if (profile === 'prow')
+    {
+        overhang += 0.18;
+    }
+
+    // Saharan Wind-Carved Yardang Fin: aerodynamic prow nose at +Z, tapered leeward dorsal spine at -Z, aeolian foot undercut
+    if (profile === 'yardang_fin')
+    {
+        const finRx = rx * 0.72;
+        const finRz = rz * 1.18;
+        const bound = Math.max(finRx, finRz, h) * 1.8;
+        let poly = createBoxPoly(-bound, 0.0, -bound, bound, h * 1.08, bound, 0);
+
+        //Sharp converging windward prow (+Z) + streamlined side flanks + tapered leeward tail (-Z)
+        const prowSharp = 0.52 + prow * 0.38;
+        poly = clipPolyByHalfSpace(poly, vnorm([ prowSharp, -0.06, 0.72]), finRx * 0.92 + finRz * 0.36, 0);
+        poly = clipPolyByHalfSpace(poly, vnorm([-prowSharp, -0.06, 0.72]), finRx * 0.92 + finRz * 0.36, 0);
+        poly = clipPolyByHalfSpace(poly, vnorm([ 0.96, 0.14, -0.26]), finRx * 0.84, 0);
+        poly = clipPolyByHalfSpace(poly, vnorm([-0.96, 0.14, -0.26]), finRx * 0.84, 0);
+        poly = clipPolyByHalfSpace(poly, vnorm([ 0.0,  0.34, -0.94]), finRz * 0.95, 0);
+        poly = clipPolyByHalfSpace(poly, vnorm([ 0.0,  0.12,  0.99]), finRz * 1.04, 0);
+
+        // Pitched dorsal ridge spine
+        const ridgeTilt = crestSlope * 0.35;
+        poly = clipPolyByHalfSpace(poly, vnorm([ 0.42 - ridgeTilt, 0.90, -0.12]), h * 0.88, 0);
+        poly = clipPolyByHalfSpace(poly, vnorm([-0.42 - ridgeTilt, 0.90, -0.12]), h * 0.88, 0);
+
+        const extra = Math.max(0, facets - 8);
+        for (let i = 0; i < extra; i++)
+        {
+            const a = rng.float() * Math.PI * 2;
+            const n = vnorm([Math.cos(a) * 0.88, 0.18 + rng.float() * 0.30, Math.sin(a) * 0.65]);
+            const d = Math.hypot(finRx * n[0], h * 0.55 * n[1], finRz * n[2]) * rng.range(1.02, 1.18);
+            const next = clipPolyByHalfSpace(poly, n, d, 0);
+            if (next) poly = next;
+        }
+
+        return compilePlainPrimitive({
+            poly,
+            R: worldR,
+            pivot: worldPivot,
+            roundness: clamp(roundness * 1.15, 0.03, 0.65),
+            sharpBase: true,
+            baseY: 0.0,
+            refH: h,
+            taper: taper * 0.65 + 0.12,
+            pinch: clamp(0.28 + basalUndercut * 0.65, 0.18, 0.68),
+            pinchHeightNorm: 0.16,
+            bendZ: overhang + 0.16
+        });
+    }
+
+    // Granite Exfoliation Half-Dome: smooth convex granite batholith back/crown + sheer Yosemite-style split headwall
+    if (profile === 'exfoliation_dome')
+    {
+        const domeRound = clamp(0.52 + roundness * 0.65, 0.42, 0.94);
+        const bf = buildStrikeDipFrame(rng.signed() * 0.16, 0.06);
+        let domePoly = sculptGeologicalParentPoly(
+            [0, h * 0.48, -rz * 0.08],
+            [rx * 1.04, h * 0.56, rz * 1.08],
+            bf,
+            rng,
+            {
+                jointDispersion: 0.07 + prow * 0.10,
+                cornerBlunt: 0.94,
+                flatBaseY: 0.0,
+                extraBevelCuts: Math.max(5, facets - 1)
+            }
+        );
+        if (domePoly && Math.abs(crestSlope) > 0.01)
+        {
+            const capN = vnorm([-crestSlope * 0.36, 1.0, -0.05]);
+            const next = clipPolyByHalfSpace(domePoly, capN, capN[1] * h * 0.97, 0);
+            if (next) domePoly = next;
+        }
+
+        const domeRoot = compilePlainPrimitive({
+            poly: domePoly,
+            R: worldR,
+            pivot: worldPivot,
+            roundness: domeRound,
+            sharpBase: true,
+            flatBaseCut: 1.0,
+            sqWeight: 0.68,
+            sqRx: rx * 1.02, sqRy: h * 0.54, sqRz: rz * 1.06, sqCy: h * 0.46,
+            sqExpH: 0.98, sqExpV: 0.96,
+            primOp: -1.0,
+            baseY: 0.0,
+            refH: h,
+            taper: clamp(taper * 0.55 + 0.20, -0.15, 0.58),
+            pinch,
+            pinchHeightNorm: 0.14,
+            bendZ: overhang * 0.30
+        });
+
+        // Sheer glacial split headwall cutter across the +Z front (angled slightly so both the sheer face & arched dome shoulder read from front-3/4 view)
+        const faceZ = rz * (0.28 - prow * 0.22);
+        const cBound = Math.max(rx, rz, h) * 1.7;
+        let cutPoly = createBoxPoly(-cBound, -0.25, faceZ - rz * 0.15, cBound, h * 1.25, faceZ + cBound, 0);
+        const headwallN = vnorm([-0.14 - prow * 0.12, overhang * 0.24 - 0.06, -1.0]);
+        cutPoly = clipPolyByHalfSpace(cutPoly, headwallN, -(faceZ) * headwallN[2] + headwallN[1] * h * 0.48, 0);
+
+        const faceCutter = compilePlainPrimitive({
+            poly: cutPoly,
+            R: worldR,
+            pivot: worldPivot,
+            roundness: clamp(roundness * 0.30, 0.015, 0.14),
+            sharpBase: false,
+            primOp: -2.0 - clamp(0.025 + roundness * 0.07, 0.015, 0.11),
+            baseY: 0.0,
+            refH: h
+        });
+
+        return faceCutter ? [domeRoot, faceCutter] : domeRoot;
+    }
 
     const bf = buildStrikeDipFrame(rng.signed() * 0.25, 0.10 + prow * 0.32);
     let poly = sculptGeologicalParentPoly(
@@ -2206,9 +2664,9 @@ function buildSingleCliffBlock(p, worldR, worldPivot, rng)
         }
     );
 
-    if (poly && (profile === 'mesa' || Math.abs(p.crestSlope ?? 0) > 0.02))
+    if (poly && (profile === 'mesa' || Math.abs(crestSlope) > 0.01))
     {
-        const capN = vnorm([-(p.crestSlope ?? 0.08) * 0.35, 1.0, rng.signed() * 0.04]);
+        const capN = vnorm([-crestSlope * 0.35, 1.0, rng.signed() * 0.04]);
         const next = clipPolyByHalfSpace(poly, capN, capN[1] * h * (profile === 'mesa' ? 0.90 : 0.96), 0);
         if (next) poly = next;
     }
@@ -2222,6 +2680,8 @@ function buildSingleCliffBlock(p, worldR, worldPivot, rng)
         baseY: 0.0,
         refH: h,
         taper,
+        pinch,
+        pinchHeightNorm: 0.15,
         bendZ: overhang
     });
 }
@@ -2274,45 +2734,58 @@ function buildSingleSpirePinnacle(p, worldR, worldPivot, rng)
     const rz = p.length * 0.5;
     const style = p.spireStyle || 'horn';
     const sides = clamp(Math.round(p.facetSides ?? 7), 4, 14);
-    const roundness = p.roundness ?? 0.16;
+    let roundness = p.roundness ?? 0.16;
 
     let taper = p.taper ?? 0.58;
     let pinch = p.waistPinch ?? 0.0;
     let flatCap = p.flatCap ?? 0.08;
     let bendX = p.bendX ?? 0.10;
+    const twistDeg = p.twistDeg ?? 14;
+    const userRibs = clamp(Math.round(p.buttressRibs ?? 0), 0, 5);
+    const userFlute = clamp(p.fluteDepth ?? 0.0, 0.0, 0.55);
 
     if (style === 'needle') { taper = Math.max(taper, 0.72); flatCap = Math.min(flatCap, 0.04); }
+    else if (style === 'karst_razor') { taper = Math.max(taper, 0.68); roundness = Math.min(roundness, 0.12); flatCap *= 0.35; }
+    else if (style === 'cathedral_organ') { taper = Math.max(taper, 0.52); roundness = Math.min(roundness, 0.22); }
     else if (style === 'hoodoo') { pinch = Math.max(pinch, 0.42); taper = Math.min(taper, 0.05); flatCap = Math.max(flatCap, 0.22); }
     else if (style === 'butte') { taper = clamp(taper * 0.4, 0.05, 0.32); flatCap = Math.max(flatCap, 0.48); bendX *= 0.25; }
+
+    const ribCount = style === 'cathedral_organ' ? (2 + userRibs) : userRibs;
+    const fluteAmt = style === 'karst_razor' ? clamp(0.24 + userFlute * 0.72, 0.0, 0.68) : userFlute;
 
     const bound = Math.max(rx, rz, h) * 1.5;
     let poly = createBoxPoly(-bound, 0.0, -bound, bound, h * 1.15, bound, 0);
     const rot0 = rng.float() * Math.PI * 2;
+    const coreScale = ribCount > 0 ? 0.80 : 1.0;
+
     for (let s = 0; s < sides; s++)
     {
         const ang = rot0 + (s * Math.PI * 2) / sides + rng.signed() * 0.10;
         const dx = Math.cos(ang), dz = Math.sin(ang);
-        const rad = Math.hypot(rx * dx, rz * dz) * rng.range(0.88, 1.08);
+        const aspect = style === 'karst_razor' ? (0.72 + 0.48 * Math.abs(dx)) : 1.0;
+        const rad = Math.hypot(rx * dx, rz * dz) * coreScale * aspect * rng.range(0.88, 1.08);
         const n = vnorm([dx, rng.signed() * 0.06, dz]);
         poly = clipPolyByHalfSpace(poly, n, rad, 0);
     }
 
-    if (flatCap > 0.12)
+    if (flatCap > 0.14)
     {
-        const capN = vnorm([rng.signed() * 0.12, 1.0, rng.signed() * 0.12]);
-        poly = clipPolyByHalfSpace(poly, capN, h * (1.0 - 0.18 * flatCap), 0);
+        const capN = vnorm([rng.signed() * 0.10, 1.0, rng.signed() * 0.10]);
+        poly = clipPolyByHalfSpace(poly, capN, h * (1.0 - 0.22 * flatCap), 0);
     }
     else
     {
+        const tipScale = 1.0 - 0.28 * flatCap;
+        const slopeH = style === 'karst_razor' ? 0.68 : 0.55;
         for (let k = 0; k < 4; k++)
         {
             const ang = rot0 + 0.4 + k * (Math.PI * 0.5);
-            const n = vnorm([Math.cos(ang) * 0.55, 0.84, Math.sin(ang) * 0.55]);
-            poly = clipPolyByHalfSpace(poly, n, h * 0.86, 0);
+            const n = vnorm([Math.cos(ang) * slopeH, 0.84, Math.sin(ang) * slopeH]);
+            poly = clipPolyByHalfSpace(poly, n, h * 0.86 * tipScale, 0);
         }
     }
 
-    return compilePlainPrimitive({
+    const corePrim = compilePlainPrimitive({
         poly,
         R: worldR,
         pivot: worldPivot,
@@ -2321,13 +2794,608 @@ function buildSingleSpirePinnacle(p, worldR, worldPivot, rng)
         sqWeight: style === 'hoodoo' ? 0.35 * roundness : 0.0,
         sqRx: rx, sqRy: h * 0.5, sqRz: rz, sqCy: h * 0.5,
         sqExpH: 0.90, sqExpV: 0.75,
+        primOp: -1.0,
         baseY: 0.0,
         refH: h,
         taper,
         pinch,
-        twistDeg: p.twistDeg ?? 14,
+        twistDeg,
         bendX
     });
+    if (!corePrim) return null;
+
+    const parts = [corePrim];
+
+    // Clustered vertical cathedral organ-pipe buttress ribs
+    if (ribCount > 0)
+    {
+        const ribBlend = Math.min(rx, rz) * (0.06 + 0.14 * roundness);
+        for (let r = 0; r < ribCount; r++)
+        {
+            const rAng = rot0 + (r * Math.PI * 2) / ribCount + rng.signed() * 0.14;
+            const dx = Math.cos(rAng), dz = Math.sin(rAng);
+            const dist = 0.56 + rng.float() * 0.14;
+            const ox = dx * rx * dist;
+            const oz = dz * rz * dist;
+            const ribH = h * (0.48 + ((r * 37) % 5) * 0.075 + rng.float() * 0.06);
+            const ribRx = rx * rng.range(0.32, 0.42);
+            const ribRz = rz * rng.range(0.32, 0.42);
+
+            const rBound = Math.max(ribRx, ribRz) * 1.8;
+            let rPoly = createBoxPoly(ox - rBound, 0.0, oz - rBound, ox + rBound, ribH * 1.1, oz + rBound, 0);
+            const rSides = 6;
+            for (let s = 0; s < rSides; s++)
+            {
+                const a = rAng + (s * Math.PI * 2) / rSides;
+                const nx = Math.cos(a), nz = Math.sin(a);
+                const rr = Math.hypot(ribRx * nx, ribRz * nz);
+                rPoly = clipPolyByHalfSpace(rPoly, [nx, 0, nz], nx * ox + nz * oz + rr, 0);
+            }
+            // Steep gothic gable cap on each organ pipe
+            const capN = vnorm([dx * 0.48, 0.88, dz * 0.48]);
+            rPoly = clipPolyByHalfSpace(rPoly, capN, capN[0] * ox + capN[1] * ribH * 0.94 + capN[2] * oz, 0);
+
+            const ribPrim = compilePlainPrimitive({
+                poly: rPoly,
+                R: worldR,
+                pivot: worldPivot,
+                roundness: roundness * 0.75,
+                sharpBase: true,
+                primOp: ribBlend,
+                baseY: 0.0,
+                refH: h,
+                taper: taper * 0.72,
+                pinch: pinch * 0.5,
+                twistDeg,
+                bendX
+            });
+            if (ribPrim) parts.push(ribPrim);
+        }
+    }
+
+    // Vertical concave Tsingy karst dissolution flute channels (built in spire-local space so taper/twist/bend track the shaft 1:1!)
+    if (fluteAmt > 0.008)
+    {
+        const fluteCount = clamp(Math.round(sides * 0.65), 3, 5);
+        const minR = Math.min(rx, rz);
+        const fluteBevel = minR * (0.05 + 0.09 * roundness);
+        for (let f = 0; f < fluteCount; f++)
+        {
+            const fAng = rot0 + (Math.PI / fluteCount) + (f * Math.PI * 2) / fluteCount;
+            const dx = Math.cos(fAng), dz = Math.sin(fAng);
+            const surfR = Math.hypot(rx * dx, rz * dz) * coreScale;
+            const fRad = minR * (0.18 + 0.12 * fluteAmt);
+            const cx = dx * (surfR + fRad * (0.74 - 0.56 * fluteAmt));
+            const cz = dz * (surfR + fRad * (0.74 - 0.56 * fluteAmt));
+
+            const fb = fRad * 1.6;
+            let fPoly = createBoxPoly(cx - fb, h * 0.04, cz - fb, cx + fb, h * 0.84, cz + fb, 0);
+            for (let s = 0; s < 6; s++)
+            {
+                const a = fAng + (s * Math.PI * 2) / 6;
+                const nx = Math.cos(a), nz = Math.sin(a);
+                fPoly = clipPolyByHalfSpace(fPoly, [nx, 0, nz], nx * cx + nz * cz + fRad, 0);
+            }
+            // Tapered top & bottom terminations so flutes emerge and fade smoothly along the rock face
+            fPoly = clipPolyByHalfSpace(fPoly, vnorm([-dx * 0.55, 0.84, -dz * 0.55]), (-dx * 0.55) * cx + 0.84 * (h * 0.82) + (-dz * 0.55) * cz, 0);
+
+            const flutePrim = compilePlainPrimitive({
+                poly: fPoly,
+                R: worldR,
+                pivot: worldPivot,
+                roundness: 0.72,
+                sharpBase: false,
+                primOp: -2.0 - fluteBevel,
+                baseY: 0.0,
+                refH: h,
+                taper,
+                pinch,
+                twistDeg,
+                bendX
+            });
+            if (flutePrim) parts.push(flutePrim);
+        }
+    }
+
+    return parts.length === 1 ? parts[0] : parts;
+}
+
+function buildSingleHoodooColumn(p, worldR, worldPivot, rng)
+{
+    const style = p.hoodooStyle || 'bulb_cap';
+    const h = Math.max(0.4, p.height ?? 6.4);
+    const rx = Math.max(0.12, (p.width ?? 2.2) * 0.5) * (style === 'fin_spire' ? 0.72 : 1.0);
+    const rz = Math.max(0.12, (p.length ?? 2.1) * 0.5) * (style === 'fin_spire' ? 1.24 : 1.0);
+    const ringCount = clamp(Math.round(p.ringCount ?? 5), 2, 9);
+    const ringSwell = clamp(p.ringSwell ?? 0.22, 0.0, 0.44);
+    const neckPinch = clamp(p.neckPinch ?? 0.36, 0.0, 0.65);
+    const capSize = clamp(p.capSize ?? 1.12, 0.55, 1.60);
+    const taper = clamp(p.taper ?? 0.24, -0.25, 0.75);
+    const basalApron = clamp(p.basalApron ?? 0.34, 0.0, 0.80);
+    const leanX = clamp(p.leanX ?? 0.06, -0.40, 0.40);
+    const roundness = clamp(p.roundness ?? 0.30, 0.04, 0.80);
+
+    const parts = [];
+    const rot0 = rng.float() * Math.PI * 2;
+
+    // 1. Continuous fluted badlands shaft from y = 0 up into the crown (guarantees zero detached floating caps!)
+    const shaftTop = h * 0.90;
+    const sBound = Math.max(rx, rz, h) * 1.5;
+    let shaftPoly = createBoxPoly(-sBound, 0.0, -sBound, sBound, shaftTop, sBound, 0);
+    const shaftSides = style === 'turret' ? 8 : 9;
+    for (let s = 0; s < shaftSides; s++)
+    {
+        const ang = rot0 + (s * Math.PI * 2) / shaftSides + rng.signed() * 0.08;
+        const dx = Math.cos(ang), dz = Math.sin(ang);
+        const rad = Math.hypot(rx * dx, rz * dz) * rng.range(0.86, 1.04);
+        shaftPoly = clipPolyByHalfSpace(shaftPoly, vnorm([dx, rng.signed() * 0.04, dz]), rad, 0);
+    }
+
+    const ringFreq = (style === 'totem' ? ringCount * 0.72 : ringCount * 0.54);
+    const ringAmp = style === 'totem' ? Math.min(0.44, ringSwell * 1.22 + 0.03) : ringSwell;
+    const shaftPrim = compilePlainPrimitive({
+        poly: shaftPoly,
+        R: worldR,
+        pivot: worldPivot,
+        roundness,
+        sharpBase: true,
+        sqWeight: clamp(0.18 + roundness * 0.42, 0.08, 0.62),
+        sqRx: rx * 0.92, sqRy: shaftTop * 0.5, sqRz: rz * 0.92, sqCy: shaftTop * 0.5,
+        sqExpH: 0.94, sqExpV: 0.45,
+        primOp: -1.0,
+        baseY: 0.0,
+        refH: h,
+        taper,
+        pinch: neckPinch,
+        pinchHeightNorm: 0.79,
+        ringFreq,
+        ringAmp,
+        ringPhase: 0.55 + rng.float() * 1.4,
+        bendX: leanX
+    });
+    if (!shaftPrim) return null;
+    parts.push(shaftPrim);
+
+    // 2. Flared grounded badlands mudstone apron at the base (y = 0 .. apronH)
+    if (basalApron > 0.005)
+    {
+        const apronH = h * (0.14 + 0.16 * basalApron);
+        const apRx = rx * (1.06 + 0.58 * basalApron);
+        const apRz = rz * (1.06 + 0.58 * basalApron);
+        const bfAp = buildStrikeDipFrame(rot0, 0.12);
+        const apPoly = sculptGeologicalParentPoly(
+            [0, apronH * 0.46, 0],
+            [apRx, apronH * 0.54, apRz],
+            bfAp,
+            rng,
+            {
+                jointDispersion: 0.16,
+                cornerBlunt: 0.74 + 0.20 * roundness,
+                flatBaseY: 0.0,
+                extraBevelCuts: 5
+            }
+        );
+        const apPrim = compilePlainPrimitive({
+            poly: apPoly,
+            R: worldR,
+            pivot: worldPivot,
+            roundness: clamp(roundness * 1.1, 0.06, 0.78),
+            sharpBase: true,
+            primOp: h * 0.045,
+            baseY: 0.0,
+            refH: apronH,
+            taper: 0.48
+        });
+        if (apPrim) parts.push(apPrim);
+    }
+
+    // 3. Sculpted multi-faceted weathered hoodoo crown (tracks shaft leanX at crown height!)
+    const crownBaseFrac = style === 'fin_spire' ? 0.74 : 0.77;
+    const crownCy = h * (0.5 * (crownBaseFrac + 1.0));
+    const crownRy = h * (0.5 * (1.0 - crownBaseFrac) + 0.03);
+    const topWidthScale = Math.max(0.38, 1.0 - taper * 0.45) * capSize;
+    const crownRx = rx * topWidthScale * (style === 'fin_spire' ? 0.82 : 1.04);
+    const crownRz = rz * topWidthScale * (style === 'fin_spire' ? 1.12 : 1.02);
+
+    const hNormCrown = crownCy / h;
+    const crownShiftX = leanX * hNormCrown * hNormCrown * h;
+    const crownPivot = forwardRock2Point(worldR, worldPivot, crownShiftX, crownCy, 0.0);
+    const crownTiltR = mulMat3(worldR, buildRock2EulerMatrix3(0, rng.signed() * 5, -leanX * 16));
+
+    const bfCrown = buildStrikeDipFrame(rot0 + 0.4, style === 'turret' ? 0.08 : 0.24);
+    let crownPoly = sculptGeologicalParentPoly(
+        [0, 0, 0],
+        [crownRx, crownRy, crownRz],
+        bfCrown,
+        rng,
+        {
+            jointDispersion: style === 'turret' ? 0.12 : 0.22,
+            cornerBlunt: style === 'bulb_cap' ? 0.88 : 0.70,
+            flatBaseY: null,
+            extraBevelCuts: 7
+        }
+    );
+
+    // Pitched weathered roof facets so hoodoo crowns never look like flat square mortarboards
+    if (crownPoly)
+    {
+        const roofSlope = style === 'turret' ? 0.24 : (style === 'fin_spire' ? 0.62 : 0.40);
+        for (let k = 0; k < 3; k++)
+        {
+            const a = rot0 + k * 2.094 + rng.signed() * 0.2;
+            const n = vnorm([Math.cos(a) * roofSlope, 0.92, Math.sin(a) * roofSlope]);
+            const next = clipPolyByHalfSpace(crownPoly, n, crownRy * (style === 'fin_spire' ? 0.76 : 0.86), 0);
+            if (next) crownPoly = next;
+        }
+    }
+
+    const crownBlend = style === 'turret'
+        ? h * 0.016
+        : h * (0.028 + 0.045 * roundness);
+
+    const crownPrim = compilePlainPrimitive({
+        poly: crownPoly,
+        R: crownTiltR,
+        pivot: crownPivot,
+        roundness: style === 'turret' ? roundness * 0.65 : roundness,
+        sharpBase: false,
+        sqWeight: (style === 'bulb_cap' || style === 'totem') ? clamp(0.32 + roundness * 0.35, 0.15, 0.68) : 0.0,
+        sqRx: crownRx * 0.95, sqRy: crownRy * 0.92, sqRz: crownRz * 0.95, sqCy: 0.0,
+        sqExpH: 0.94, sqExpV: 0.88,
+        primOp: crownBlend,
+        baseY: -crownRy,
+        refH: crownRy * 2.0,
+        taper: style === 'fin_spire' ? 0.42 : (style === 'turret' ? -0.10 : 0.12)
+    });
+    if (crownPrim) parts.push(crownPrim);
+
+    return parts;
+}
+
+function buildSinglePedestalRock(p, worldR, worldPivot, rng)
+{
+    const style = p.pedestalStyle || 'balanced_boulder';
+    const h = Math.max(0.4, p.height ?? 5.2);
+    const rx = Math.max(0.14, (p.width ?? 3.4) * 0.5);
+    const rz = Math.max(0.14, (p.length ?? 3.2) * 0.5);
+
+    const stemRatio = clamp(p.stemHeightRatio ?? 0.48, 0.25, 0.74);
+    const neckWidth = clamp(p.neckWidth ?? 0.36, 0.18, 0.80);
+    const capOverhang = clamp(p.capOverhang ?? 1.22, 0.70, 1.75);
+    const capTiltDeg = clamp(p.capTiltDeg ?? 14, -36, 36);
+    const capOffset = clamp(p.capOffset ?? 0.08, -0.45, 0.45);
+    const stemRibs = clamp(p.stemRibs ?? 0.14, 0.0, 0.38);
+    const plinthFlare = clamp(p.plinthFlare ?? 0.38, 0.0, 0.85);
+    const roundness = clamp(p.roundness ?? 0.26, 0.04, 0.85);
+
+    const parts = [];
+    const rot0 = rng.float() * Math.PI * 2;
+
+    // 1. Concave-tapered mudstone pedestal stem (grounded at y = 0, penetrating slightly into the caprock)
+    const stemTop = h * stemRatio;
+    const stemH = stemTop + h * 0.07;
+    const stemRx = rx * (0.58 + 0.28 * neckWidth);
+    const stemRz = rz * (0.58 + 0.28 * neckWidth);
+    const sBound = Math.max(stemRx, stemRz, stemH) * 1.5;
+    let stemPoly = createBoxPoly(-sBound, 0.0, -sBound, sBound, stemH, sBound, 0);
+    for (let s = 0; s < 8; s++)
+    {
+        const ang = rot0 + (s * Math.PI * 2) / 8 + rng.signed() * 0.08;
+        const dx = Math.cos(ang), dz = Math.sin(ang);
+        const rad = Math.hypot(stemRx * dx, stemRz * dz) * rng.range(0.90, 1.06);
+        stemPoly = clipPolyByHalfSpace(stemPoly, [dx, 0, dz], rad, 0);
+    }
+
+    const stemPrim = compilePlainPrimitive({
+        poly: stemPoly,
+        R: worldR,
+        pivot: worldPivot,
+        roundness: clamp(0.22 + roundness * 0.55, 0.08, 0.80),
+        sharpBase: true,
+        sqWeight: style === 'desert_mushroom' ? 0.55 : 0.25,
+        sqRx: stemRx * 0.94, sqRy: stemH * 0.5, sqRz: stemRz * 0.94, sqCy: stemH * 0.5,
+        sqExpH: 0.95, sqExpV: 0.42,
+        primOp: -1.0,
+        baseY: 0.0,
+        refH: stemH,
+        taper: clamp(0.45 * (1.0 - neckWidth), 0.04, 0.45),
+        pinch: clamp((1.0 - neckWidth) * 0.68, 0.06, 0.62),
+        pinchHeightNorm: 0.84,
+        ringFreq: 3.6,
+        ringAmp: stemRibs,
+        ringPhase: 0.8,
+        skewX: capOffset * 0.28
+    });
+    if (!stemPrim) return null;
+    parts.push(stemPrim);
+
+    // 2. Stepped basal plinth flare
+    if (plinthFlare > 0.005)
+    {
+        const plH = h * (0.12 + 0.12 * plinthFlare);
+        const plRx = stemRx * (1.15 + 0.72 * plinthFlare);
+        const plRz = stemRz * (1.15 + 0.72 * plinthFlare);
+        const bfPl = buildStrikeDipFrame(rot0 + 0.3, 0.10);
+        const plPoly = sculptGeologicalParentPoly(
+            [0, plH * 0.46, 0],
+            [plRx, plH * 0.55, plRz],
+            bfPl,
+            rng,
+            {
+                jointDispersion: 0.16,
+                cornerBlunt: 0.72 + 0.20 * roundness,
+                flatBaseY: 0.0,
+                extraBevelCuts: 5
+            }
+        );
+        const plPrim = compilePlainPrimitive({
+            poly: plPoly,
+            R: worldR,
+            pivot: worldPivot,
+            roundness: clamp(roundness * 0.95, 0.06, 0.75),
+            sharpBase: true,
+            primOp: h * 0.04,
+            baseY: 0.0,
+            refH: plH,
+            taper: 0.42
+        });
+        if (plPrim) parts.push(plPrim);
+    }
+
+    // 3. Perched Balanced Boulder / Mushroom Dome / Caprock Table / Cantilevered Anvil Prow
+    const capSpanY = Math.max(0.25, h - stemTop);
+    let capRy = capSpanY * 0.54;
+    let capRx = rx * capOverhang * 0.86;
+    let capRz = rz * capOverhang * 0.86;
+    let sqW = 0.0;
+    let capBlend = h * 0.016;
+    let capSkewX = 0.0;
+
+    if (style === 'desert_mushroom')
+    {
+        capRy *= 0.86;
+        capRx *= 1.06;
+        capRz *= 1.06;
+        sqW = clamp(0.55 + roundness * 0.38, 0.42, 0.92);
+        capBlend = h * (0.055 + 0.04 * roundness);
+    }
+    else if (style === 'caprock_table')
+    {
+        capRy *= 0.62;
+        capRx *= 1.18;
+        capRz *= 1.14;
+        capBlend = h * 0.020;
+    }
+    else if (style === 'anvil_prow')
+    {
+        capRx *= 1.24;
+        capRz *= 0.82;
+        capSkewX = 0.34;
+        capBlend = h * 0.018;
+    }
+
+    const shiftX = capOffset * rx * 1.15 + (style === 'anvil_prow' ? rx * 0.22 : 0.0);
+    const capCy = stemTop + capRy * 0.86;
+    const capPivot = forwardRock2Point(worldR, worldPivot, shiftX, capCy, 0.0);
+    const capR = mulMat3(worldR, buildRock2EulerMatrix3(0, rng.signed() * 4, -capTiltDeg));
+
+    const bfCap = buildStrikeDipFrame(rot0 + 0.7, style === 'caprock_table' ? 0.05 : 0.24);
+    let capPoly = sculptGeologicalParentPoly(
+        [0, 0, 0],
+        [capRx, capRy, capRz],
+        bfCap,
+        rng,
+        {
+            jointDispersion: style === 'caprock_table' ? 0.10 : 0.22,
+            cornerBlunt: style === 'desert_mushroom' ? 0.92 : (0.68 + 0.24 * roundness),
+            flatBaseY: null,
+            extraBevelCuts: 8
+        }
+    );
+
+    if (capPoly && style === 'caprock_table')
+    {
+        const nextTop = clipPolyByHalfSpace(capPoly, [0, 1, 0], capRy * 0.72, 0);
+        if (nextTop) capPoly = nextTop;
+        const nextBot = clipPolyByHalfSpace(capPoly, [0, -1, 0], capRy * 0.78, 0);
+        if (nextBot) capPoly = nextBot;
+    }
+
+    const capPrim = compilePlainPrimitive({
+        poly: capPoly,
+        R: capR,
+        pivot: capPivot,
+        roundness: style === 'desert_mushroom' ? Math.max(roundness, 0.55) : roundness,
+        sharpBase: false,
+        sqWeight: sqW,
+        sqRx: capRx * 0.96, sqRy: capRy * 0.94, sqRz: capRz * 0.96, sqCy: 0.0,
+        sqExpH: 0.96, sqExpV: style === 'desert_mushroom' ? 0.88 : 0.72,
+        primOp: capBlend,
+        baseY: -capRy,
+        refH: capRy * 2.0,
+        taper: style === 'desert_mushroom' ? 0.28 : (style === 'caprock_table' ? -0.18 : 0.06),
+        skewX: capSkewX
+    });
+    if (capPrim) parts.push(capPrim);
+
+    return parts;
+}
+
+function buildSingleFloatingRock(p, worldR, worldPivot, rng)
+{
+    const style = p.floatingStyle || 'sky_island';
+    const h = Math.max(0.45, p.height ?? 4.6);
+    let rx = Math.max(0.15, (p.width ?? 4.8) * 0.5);
+    let rz = Math.max(0.15, (p.length ?? 4.4) * 0.5);
+
+    const hoverHeight = Math.max(0.0, p.hoverHeight ?? 2.4);
+    let keelRatio = clamp(p.keelRatio ?? 0.62, 0.25, 0.82);
+    let keelSharp = clamp(p.keelSharpness ?? 0.74, 0.10, 0.95);
+    let topFlatness = clamp(p.topFlatness ?? 0.82, 0.0, 1.0);
+    const rimOverhang = clamp(p.rimOverhang ?? 0.32, 0.0, 0.75);
+    const keelSpurs = clamp(Math.round(p.keelSpurs ?? 3), 0, 4);
+    const keelSkew = clamp(p.keelSkew ?? 0.10, -0.50, 0.50);
+    const roundness = clamp(p.roundness ?? 0.18, 0.04, 0.72);
+
+    if (style === 'torn_monolith')
+    {
+        topFlatness *= 0.32;
+        keelSharp = clamp(keelSharp * 0.85, 0.15, 0.92);
+    }
+    else if (style === 'stalactite_dagger')
+    {
+        rx *= 0.76;
+        rz *= 0.76;
+        keelRatio = clamp(keelRatio + 0.12, 0.40, 0.86);
+        keelSharp = Math.max(keelSharp, 0.84);
+    }
+    else if (style === 'hover_ledge')
+    {
+        rx *= 1.18;
+        keelRatio = clamp(keelRatio * 0.78, 0.25, 0.68);
+        topFlatness = Math.max(topFlatness, 0.78);
+    }
+
+    const keelH = Math.max(0.18, h * keelRatio);
+    const deckH = Math.max(0.16, h - keelH);
+
+    // Anchor local y = 0 at the equatorial rim so tilting rotates naturally around the sky island's mid-air center!
+    const floatPivot = [worldPivot[0], worldPivot[1] + hoverHeight + keelH, worldPivot[2]];
+    const rot0 = rng.float() * Math.PI * 2;
+    const parts = [];
+
+    // 1. Upper Plateau / Crag Rim Deck (spans local y in [-deckOverlap .. +deckH])
+    const deckRx = rx * (1.0 + rimOverhang * 0.38);
+    const deckRz = rz * (1.0 + rimOverhang * 0.38);
+    const deckOverlap = Math.min(keelH * 0.32, deckH * 0.45);
+    const deckCy = (deckH - deckOverlap) * 0.5;
+    const deckRy = (deckH + deckOverlap) * 0.55;
+
+    const bfDeck = buildStrikeDipFrame(rot0, 0.14);
+    let deckPoly = sculptGeologicalParentPoly(
+        [style === 'hover_ledge' ? rx * 0.16 : 0, deckCy, 0],
+        [deckRx, deckRy, deckRz],
+        bfDeck,
+        rng,
+        {
+            jointDispersion: 0.18,
+            cornerBlunt: 0.68 + 0.24 * roundness,
+            flatBaseY: null,
+            extraBevelCuts: 8
+        }
+    );
+
+    if (deckPoly)
+    {
+        // Plateau truncation plane controlled continuously by topFlatness (0 = crag peak, 1 = flat sky-island plateau)
+        const capHeight = deckH * (1.04 - 0.34 * topFlatness);
+        const capSlope = (1.0 - topFlatness) * 0.38;
+        const capN = vnorm([rng.signed() * capSlope, 1.0, rng.signed() * capSlope]);
+        const nextTop = clipPolyByHalfSpace(deckPoly, capN, capHeight * capN[1], 0);
+        if (nextTop) deckPoly = nextTop;
+    }
+
+    const deckPrim = compilePlainPrimitive({
+        poly: deckPoly,
+        R: worldR,
+        pivot: floatPivot,
+        roundness,
+        sharpBase: false,
+        sqWeight: roundness > 0.45 ? (roundness - 0.45) * 1.1 : 0.0,
+        sqRx: deckRx * 0.94, sqRy: deckRy * 0.90, sqRz: deckRz * 0.94, sqCy: deckCy,
+        sqExpH: 0.92, sqExpV: 0.68,
+        primOp: -1.0,
+        baseY: -deckOverlap,
+        refH: deckH + deckOverlap,
+        taper: -(0.12 + rimOverhang * 0.35),
+        skewX: style === 'hover_ledge' ? 0.24 : keelSkew * 0.20
+    });
+    if (!deckPrim) return null;
+    parts.push(deckPrim);
+
+    // 2. Inverted Multi-Faceted Stalactite / Torn Bedrock Root Keel (local y in [-keelH .. +keelOverlap])
+    const keelOverlap = Math.min(deckH * 0.45, keelH * 0.28);
+    const kBound = Math.max(rx, rz, keelH) * 1.8;
+    let keelPoly = createBoxPoly(-kBound, -keelH, -kBound, kBound, keelOverlap, kBound, 0);
+
+    const tipSkewX = keelSkew * rx * 0.78;
+    const tipSkewZ = rng.signed() * rz * 0.14;
+    const keelSides = 8;
+    for (let s = 0; s < keelSides; s++)
+    {
+        const ang = rot0 + 0.2 + (s * Math.PI * 2) / keelSides + rng.signed() * 0.09;
+        const dx = Math.cos(ang), dz = Math.sin(ang);
+        const rTop = Math.hypot(rx * dx, rz * dz) * rng.range(0.86, 1.04);
+        const rBot = rTop * Math.max(0.04, 1.0 - keelSharp * 0.95);
+        const uBot = (dx * tipSkewX + dz * tipSkewZ) + rBot;
+        const du = rTop - uBot;
+        const L = Math.max(1e-4, Math.hypot(keelH, du));
+        const n = [(dx * keelH) / L, -du / L, (dz * keelH) / L];
+        const d = (rTop * keelH) / L;
+        const next = clipPolyByHalfSpace(keelPoly, n, d, 0);
+        if (next) keelPoly = next;
+    }
+
+    const keelBlend = Math.min(rx, h) * (0.045 + 0.10 * roundness);
+    const keelPrim = compilePlainPrimitive({
+        poly: keelPoly,
+        R: worldR,
+        pivot: floatPivot,
+        roundness: roundness * 0.75,
+        sharpBase: false,
+        primOp: keelBlend,
+        baseY: -keelH,
+        refH: keelH + keelOverlap
+    });
+    if (keelPrim) parts.push(keelPrim);
+
+    // 3. Secondary Asymmetric Hanging Root Spurs around the underbelly
+    for (let sp = 0; sp < keelSpurs; sp++)
+    {
+        const sAng = rot0 + 0.55 + (sp * Math.PI * 2) / Math.max(1, keelSpurs) + rng.signed() * 0.22;
+        const dx = Math.cos(sAng), dz = Math.sin(sAng);
+        const radialDist = 0.46 + rng.float() * 0.18;
+        const ox = dx * rx * radialDist;
+        const oz = dz * rz * radialDist;
+        const spurDepth = keelH * (0.44 + ((sp * 29) % 3) * 0.11 + rng.float() * 0.08);
+        const spurTop = keelOverlap * 0.75;
+        const spurRx = rx * rng.range(0.28, 0.38);
+        const spurRz = rz * rng.range(0.28, 0.38);
+
+        const sb = Math.max(spurRx, spurRz, spurDepth) * 1.8;
+        let sPoly = createBoxPoly(ox - sb, -spurDepth, oz - sb, ox + sb, spurTop, oz + sb, 0);
+        const tipX = ox + keelSkew * spurRx * 0.9;
+        const tipZ = oz;
+        for (let k = 0; k < 6; k++)
+        {
+            const a = sAng + (k * Math.PI * 2) / 6;
+            const nx0 = Math.cos(a), nz0 = Math.sin(a);
+            const rt = Math.hypot(spurRx * nx0, spurRz * nz0);
+            const rb = rt * Math.max(0.08, 1.0 - keelSharp * 0.88);
+            const uTop = nx0 * ox + nz0 * oz + rt;
+            const uBot = nx0 * tipX + nz0 * tipZ + rb;
+            const du = uTop - uBot;
+            const L = Math.max(1e-4, Math.hypot(spurDepth, du));
+            const n = [(nx0 * spurDepth) / L, -du / L, (nz0 * spurDepth) / L];
+            const d = (uTop * spurDepth) / L;
+            const next = clipPolyByHalfSpace(sPoly, n, d, 0);
+            if (next) sPoly = next;
+        }
+
+        const spurPrim = compilePlainPrimitive({
+            poly: sPoly,
+            R: worldR,
+            pivot: floatPivot,
+            roundness: roundness * 0.80,
+            sharpBase: false,
+            primOp: keelBlend * 0.85,
+            baseY: -spurDepth,
+            refH: spurDepth + spurTop
+        });
+        if (spurPrim) parts.push(spurPrim);
+    }
+
+    return parts;
 }
 
 function buildSingleRockSlab(p, worldR, worldPivot, rng)
@@ -2453,6 +3521,9 @@ function buildAtomicBaseRockPrimitive(type, p, worldR, worldPivot)
         case 'cliff_block':        return buildSingleCliffBlock(p, worldR, worldPivot, rng);
         case 'basalt_column':      return buildSingleBasaltColumn(p, worldR, worldPivot, rng);
         case 'spire_pinnacle':     return buildSingleSpirePinnacle(p, worldR, worldPivot, rng);
+        case 'hoodoo_column':      return buildSingleHoodooColumn(p, worldR, worldPivot, rng);
+        case 'pedestal_rock':      return buildSinglePedestalRock(p, worldR, worldPivot, rng);
+        case 'floating_rock':      return buildSingleFloatingRock(p, worldR, worldPivot, rng);
         case 'rock_slab':          return buildSingleRockSlab(p, worldR, worldPivot, rng);
         case 'custom_sculpt_rock': return buildSingleCustomSculptRock(p, worldR, worldPivot, rng);
         case 'big_boulder':
@@ -2473,10 +3544,10 @@ export function compileRock2Stack(doc)
     const allPrimitives = [];
     let totalPlanes = 0;
 
-    let minX = Infinity, minY = 0.0, minZ = Infinity;
+    let minX = Infinity, minY = Infinity, minZ = Infinity;
     let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
 
-    const MAX_STACK_PRIMITIVES = 160;
+    const MAX_STACK_PRIMITIVES = 256;
 
     for (let li = 0; li < layers.length; li++)
     {
@@ -2494,6 +3565,7 @@ export function compileRock2Stack(doc)
         if (room <= 0) break;
 
         const layerPrims = [];
+        let builtInstances = 0;
         for (let k = 0; k < instances.length && layerPrims.length < room; k++)
         {
             const inst = instances[k];
@@ -2504,8 +3576,26 @@ export function compileRock2Stack(doc)
             const instRockType = inst.rockType || spec.type;
             const instParams = buildMutatedInstanceParams(instRockType, p, inst);
 
-            const pr = buildAtomicBaseRockPrimitive(instRockType, instParams, worldR, worldPivot);
-            if (pr) layerPrims.push(pr);
+            const built = buildAtomicBaseRockPrimitive(instRockType, instParams, worldR, worldPivot);
+            if (!built) continue;
+
+            if (Array.isArray(built))
+            {
+                const validParts = built.filter(Boolean);
+                if (validParts.length === 0 || layerPrims.length + validParts.length > MAX_STACK_PRIMITIVES) break;
+                validParts[0].primOp = -1.0;
+                for (let pi = 0; pi < validParts.length; pi++)
+                {
+                    layerPrims.push(validParts[pi]);
+                }
+                builtInstances++;
+            }
+            else
+            {
+                built.primOp = -1.0;
+                layerPrims.push(built);
+                builtInstances++;
+            }
         }
 
         if (layerPrims.length === 0) continue;
@@ -2517,7 +3607,7 @@ export function compileRock2Stack(doc)
             allPrimitives.push(pr);
             totalPlanes += pr.numPlanes;
 
-            if (lyr.combineMode !== 'subtract' || compiledLayers.length === 0)
+            if ((lyr.combineMode !== 'subtract' || compiledLayers.length === 0) && pr.primOp > -1.5)
             {
                 if (pr.minX < minX) minX = pr.minX;
                 if (pr.maxX > maxX) maxX = pr.maxX;
@@ -2534,7 +3624,7 @@ export function compileRock2Stack(doc)
             name: lyr.name,
             type: spec.type,
             generatorType: lyr.generator?.type || 'none',
-            instanceCount: layerPrims.length,
+            instanceCount: builtInstances,
             combineOp: ROCK2_COMBINE_OP_CODE[lyr.combineMode] ?? 0,
             blendRadius: clamp(lyr.blendRadius ?? 0.35, 0.0, 4.0),
             intraBlend: clamp(intraBlend ?? 0.0, 0.0, 3.0),
@@ -2555,7 +3645,7 @@ export function compileRock2Stack(doc)
     const margin = span * 0.08 + 0.25;
     const bounds = {
         minX: minX - margin,
-        minY: Math.min(0.0, minY - margin * 0.5),
+        minY: minY > 0.15 ? (minY - margin) : Math.min(0.0, minY - margin * 0.5),
         minZ: minZ - margin,
         maxX: maxX + margin,
         maxY: maxY + margin,
@@ -2615,9 +3705,16 @@ export function evalRock2PrimitiveSdf(prim, wx, wy, wz)
         }
 
         const sTap = Math.max(0.16, 1.0 - prim.taper * (h - 0.35));
-        const pRel = (h - 0.34) / 0.25;
+        const pH = prim.pinchHeightNorm ?? 0.34;
+        const pRel = (h - pH) / 0.22;
         const sPinch = 1.0 - prim.pinch * Math.exp(-pRel * pRel);
-        const s = clamp(sTap * sPinch, 0.16, 2.40);
+        let sRing = 1.0;
+        if ((prim.ringAmp ?? 0.0) > 1e-4 && (prim.ringFreq ?? 0.0) > 0.05)
+        {
+            const hc = clamp(h, 0.0, 1.0);
+            sRing = 1.0 + prim.ringAmp * Math.sin(hc * prim.ringFreq * 6.283185307179586 + (prim.ringPhase ?? 0.0));
+        }
+        const s = clamp(sTap * sPinch * sRing, 0.14, 2.50);
         qx = x1 / s;
         qz = z1 / s;
         scaleFactor = Math.min(1.0, s) * prim.deformPenalty;
@@ -2717,15 +3814,53 @@ export function evalRock2StackSdf(compiledStack, wx, wy, wz, outColor = null)
     {
         const lyr = compiledLayers[li];
         let dLyr = 1e9;
+        let dInst = 1e9;
+        let hasInst = false;
         const ib = lyr.intraBlend;
 
         for (let k = 0; k < lyr.blockCount; k++)
         {
             const prim = primitives[lyr.blockStart + k];
+            const pOp = prim.primOp ?? -1.0;
             const lb = Math.hypot(wx - prim.cx, wy - prim.cy, wz - prim.cz) - prim.radius;
-            if (lb > dLyr + ib) continue;
-            const dP = evalRock2PrimitiveSdf(prim, wx, wy, wz);
-            dLyr = dLyr > 1e8 ? dP : (ib > 1e-4 ? sminPoly(dLyr, dP, ib) : Math.min(dLyr, dP));
+            const lbCons = lb > 0.0 ? lb * 0.25 : lb;
+
+            if (pOp > -1.5 && pOp < -0.5)
+            {
+                if (hasInst)
+                {
+                    dLyr = dLyr > 1e8 ? dInst : (ib > 1e-4 ? sminPoly(dLyr, dInst, ib) : Math.min(dLyr, dInst));
+                }
+                hasInst = true;
+                if (lbCons > dLyr + ib + 0.25)
+                {
+                    dInst = lbCons;
+                }
+                else
+                {
+                    dInst = evalRock2PrimitiveSdf(prim, wx, wy, wz);
+                }
+            }
+            else if (pOp >= 0.0)
+            {
+                const subB = pOp;
+                if (lbCons > Math.min(dInst, dLyr + ib) + subB + 0.25) continue;
+                const dP = evalRock2PrimitiveSdf(prim, wx, wy, wz);
+                dInst = dInst > 1e8 ? dP : (subB > 1e-4 ? sminPoly(dInst, dP, subB) : Math.min(dInst, dP));
+                hasInst = true;
+            }
+            else
+            {
+                const cutB = Math.max(0.0, -pOp - 2.0);
+                if (!hasInst || dInst > dLyr + ib + 0.25 || lbCons > Math.max(0.0, -dInst) + cutB + 0.25) continue;
+                const dP = evalRock2PrimitiveSdf(prim, wx, wy, wz);
+                dInst = smaxPoly(dInst, -dP, cutB);
+            }
+        }
+
+        if (hasInst)
+        {
+            dLyr = dLyr > 1e8 ? dInst : (ib > 1e-4 ? sminPoly(dLyr, dInst, ib) : Math.min(dLyr, dInst));
         }
 
         const lr = lyr.color[0], lg = lyr.color[1], lbCol = lyr.color[2];
@@ -2788,7 +3923,7 @@ export function packRock2StackGpuBuffers(compiledStack)
     const totalPlanes = Math.max(1, compiledStack.totalPlanes);
 
     const layerTexData = new Float32Array(numLayers * 2 * 4);
-    const blockTexData = new Float32Array(numBlocks * 10 * 4);
+    const blockTexData = new Float32Array(numBlocks * 11 * 4);
     const planeTexData = new Float32Array(totalPlanes * 4);
 
     for (let li = 0; li < compiledLayers.length; li++)
@@ -2809,7 +3944,7 @@ export function packRock2StackGpuBuffers(compiledStack)
     for (let i = 0; i < primitives.length; i++)
     {
         const b = primitives[i];
-        const off = i * 40;
+        const off = i * 44;
 
         blockTexData[off + 0] = b.cx;
         blockTexData[off + 1] = b.cy;
@@ -2833,7 +3968,7 @@ export function packRock2StackGpuBuffers(compiledStack)
         blockTexData[off + 24] = b.sqWeight;
         blockTexData[off + 25] = b.sqExpH;
         blockTexData[off + 26] = b.sqExpV;
-        blockTexData[off + 27] = b.primOp;
+        blockTexData[off + 27] = b.primOp ?? -1.0;
 
         blockTexData[off + 28] = b.baseY;
         blockTexData[off + 29] = b.refH;
@@ -2849,6 +3984,11 @@ export function packRock2StackGpuBuffers(compiledStack)
         blockTexData[off + 37] = b.flatBaseCut;
         blockTexData[off + 38] = b.hasDeform ? 1.0 : 0.0;
         blockTexData[off + 39] = b.deformPenalty;
+
+        blockTexData[off + 40] = b.ringFreq ?? 0.0;
+        blockTexData[off + 41] = b.ringAmp ?? 0.0;
+        blockTexData[off + 42] = b.ringPhase ?? 0.0;
+        blockTexData[off + 43] = b.pinchHeightNorm ?? 0.34;
 
         for (let p = 0; p < b.numPlanes; p++)
         {
@@ -2868,7 +4008,7 @@ export function packRock2StackGpuBuffers(compiledStack)
         layerTexWidth: 2,
         layerTexHeight: numLayers,
         layerTexData,
-        blockTexWidth: 10,
+        blockTexWidth: 11,
         blockTexHeight: numBlocks,
         blockTexData,
         planeTexWidth: 1,
@@ -2896,6 +4036,7 @@ export function bakeRock2StackQefMesh(compiledStack, options = {})
             for (let i = 0; i < primitives.length; i++)
             {
                 const b = primitives[i];
+                if (b.primOp <= -2.0) continue;
                 if (Math.hypot(cx - b.cx, cy - b.cy, cz - b.cz) - b.radius <= margin)
                 {
                     return true;

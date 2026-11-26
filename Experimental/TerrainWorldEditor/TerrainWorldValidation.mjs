@@ -1283,15 +1283,13 @@ Suite('27. Controllable Split System & Base Rock Form Generator reshape proporti
     assert.ok(BasaltQef.sdfStats.triangles > 2000, 'Custom-formed Sea-Gorge Columnar Basalt must QEF-bake cleanly');
 });
 
-// 28. RockFormation 2.0: 8 Atomic Single Base Rocks + Composable Per-Layer Spline/Array/Splatter/Scatter Generators + Single Viewport CSS
-Suite('28. RockFormation 2.0: 8 atomic single base rocks (zero arches), per-layer Spline/Array/Splatter/Scatter generators, CSG stack, QEF mesh & viewport CSS', () =>
+// 28. RockFormation 2.0: 11 Atomic Single Base Rocks + Composable Per-Layer Spline/Array/Splatter/Scatter Generators + Single Viewport CSS
+Suite('28. RockFormation 2.0: 11 atomic single base rocks, per-layer Spline/Array/Splatter/Scatter generators, CSG stack, QEF mesh & viewport CSS', () =>
 {
-    // 0. Assert zero arches in base catalog or starter stacks, and assert CSS pane exclusivity (no split viewport!)
-    assert.equal(ROCK2_NODE_CATALOG.length, 8, 'RockFormation 2.0 must expose 8 atomic plain base rock nodes (zero arches)');
+    // 0. Assert 11 plain base rock nodes and CSS pane exclusivity (no split viewport!)
+    assert.equal(ROCK2_NODE_CATALOG.length, 11, 'RockFormation 2.0 must expose 11 atomic plain base rock nodes');
     assert.equal(ROCK2_NODE_CATALOG.some(N => N.type.includes('arch') || N.name.toLowerCase().includes('arch')), false,
-        'RockFormation 2.0 catalog must contain zero arch nodes');
-    assert.equal(ROCK2_STARTER_STACKS.some(S => S.id.includes('arch') || S.name.toLowerCase().includes('arch')), false,
-        'RockFormation 2.0 starter stacks must contain zero arch presets');
+        'RockFormation 2.0 base rock catalog must contain zero hardcoded arch base nodes');
 
     const CssText = readFileSync(new URL('./TerrainWorldEditor.css', import.meta.url), 'utf8');
     const PaneFracBlock = CssText.match(/#PaneFracture,\s*#CanvasFracture\s*\{[^}]*\}/);
@@ -1303,7 +1301,7 @@ Suite('28. RockFormation 2.0: 8 atomic single base rocks (zero arches), per-laye
     assert.ok(/\.terrain-stage-grid\.mode-rock2[\s\S]*?\.stage-pane-fracture\s*\{\s*display:\s*none\s*!important/.test(CssText),
         'mode-rock2 must hide .stage-pane-fracture with !important');
 
-    // 1. Validate every Base Rock Node is a SINGLE atomic plain rock when generator='none' (zero hardcoded multi-rock loops!)
+    // 1. Validate every Base Rock Node is a SINGLE atomic plain rock instance when generator='none' (zero hardcoded multi-rock loops!)
     for (const Node of ROCK2_NODE_CATALOG)
     {
         const Doc = {
@@ -1312,7 +1310,9 @@ Suite('28. RockFormation 2.0: 8 atomic single base rocks (zero arches), per-laye
         };
         const Compiled = compileRock2Stack(Doc);
         assert.equal(Compiled.compiledLayers.length, 1, `${Node.type}: must compile 1 active layer`);
-        assert.equal(Compiled.primitives.length, 1, `${Node.type}: base rock without generator must emit EXACTLY 1 plain rock primitive`);
+        assert.equal(Compiled.compiledLayers[0].instanceCount, 1, `${Node.type}: base rock without generator must emit EXACTLY 1 rock instance`);
+        const RootBlocks = Compiled.primitives.filter(pr => pr.primOp > -1.5 && pr.primOp < -0.5);
+        assert.equal(RootBlocks.length, 1, `${Node.type}: base rock without generator must have EXACTLY 1 instance root primitive`);
 
         // Verify all UI controls in Node.controlGroups map to real defaults (zero dead controls!)
         for (const Grp of Node.controlGroups)
@@ -1347,7 +1347,8 @@ Suite('28. RockFormation 2.0: 8 atomic single base rocks (zero arches), per-laye
         assert.ok(MaxD > 0.25, `${Node.type}: must have positive exterior SDF field (maxD=${MaxD.toFixed(4)})`);
 
         const Packed = packRock2StackGpuBuffers(Compiled);
-        assert.equal(Packed.numBlocks, 1);
+        assert.equal(Packed.blockTexWidth, 11, 'Packed GPU block texture width must be 11 RGBA32F columns');
+        assert.equal(Packed.numBlocks, Compiled.primitives.length);
         for (let k = 0; k < Packed.blockTexData.length; k++)
         {
             assert.ok(Number.isFinite(Packed.blockTexData[k]), `${Node.type}: packed blockTexData must be finite`);
@@ -1357,10 +1358,12 @@ Suite('28. RockFormation 2.0: 8 atomic single base rocks (zero arches), per-laye
     // 2. Validate Composable Per-Layer Generators (`spline`, `array`, `splatter`, `scatter`) on arbitrary Base Rocks!
     const GenTests = [
         ['cliff_block', createRock2Generator('spline', { splinePreset: 'arc', count: 6, intraBlend: 0.24 }), 6],
+        ['hoodoo_column', createRock2Generator('spline', { splinePreset: 'arc', count: 5, intraBlend: 0.20 }), 5],
         ['smooth_rock', createRock2Generator('spline', { splinePreset: 'scurve', knots: buildRock2SplinePresetKnots('scurve'), count: 7, intraBlend: 0.0 }), 7],
         ['spire_pinnacle', createRock2Generator('spline', { splinePreset: 'ring', closedLoop: 1, knots: buildRock2SplinePresetKnots('ring'), count: 8 }), 8],
         ['cliff_block', createRock2Generator('spline', { splinePreset: 'box_canyon', knots: buildRock2SplinePresetKnots('box_canyon'), count: 9 }), 9],
         ['big_boulder', createRock2Generator('array', { arrayMode: 'line', countX: 6, startX: -5, endX: 5 }), 6],
+        ['floating_rock', createRock2Generator('array', { arrayMode: 'radial', radialCount: 5 }), 5],
         ['small_rock', createRock2Generator('array', { arrayMode: 'grid2d', countX: 3, countZ: 4 }), 12],
         ['cliff_block', createRock2Generator('array', { arrayMode: 'grid3d', countX: 2, countY: 2, countZ: 2 }), 8],
         ['basalt_column', createRock2Generator('array', { arrayMode: 'hex', hexRings: 2 }), 19],
@@ -1376,7 +1379,7 @@ Suite('28. RockFormation 2.0: 8 atomic single base rocks (zero arches), per-laye
         const Eval = evaluateRock2GeneratorInstances(Gen, { seed: 101, width: 1.2, height: 1.0, length: 1.2 }, BaseType);
         assert.equal(Eval.instances.length, ExpectedCount, `${BaseType} + ${Gen.type}: expected ${ExpectedCount} instances`);
         const Comp = compileRock2Stack({ layers: [createRock2Layer(BaseType, { generator: Gen })] });
-        assert.equal(Comp.primitives.length, ExpectedCount, `${BaseType} + ${Gen.type}: must compile ${ExpectedCount} SDF primitives`);
+        assert.equal(Comp.compiledLayers[0].instanceCount, ExpectedCount, `${BaseType} + ${Gen.type}: must compile ${ExpectedCount} rock instances`);
     }
 
     // 3. Validate Composable CSG Layer Stack Operations: union, smooth_union, chamfer_union, subtract, intersect + Solo/Mute
@@ -1424,7 +1427,7 @@ Suite('28. RockFormation 2.0: 8 atomic single base rocks (zero arches), per-laye
     assert.ok(Number.isFinite(evalRock2StackSdf(StackAllOps, 0.2, 1.0, 0.1)), 'Chamfer & Intersect stack modes must evaluate finite SDF');
 
     // 4. Validate Starter Stacks, Pure-SDF QEF Dual-Contour Mesh Extraction (0 Mesh->SDF), GLB/OBJ/STL export & JSON round-trip
-    assert.equal(ROCK2_STARTER_STACKS.length, 7, 'Must provide 7 starter stacks (Canyon Spline + Varied Array + Hex + Single + Scatter)');
+    assert.equal(ROCK2_STARTER_STACKS.length, 10, 'Must provide 10 starter stacks (including Bryce Hoodoos, Balanced Pedestal & Floating Sky Islands)');
     const OutcropDoc = createDefaultRock2Document('stack-cliff-outcrop');
     const OutcropCompiled = compileRock2Stack(OutcropDoc);
     assert.equal(OutcropCompiled.compiledLayers[0].generatorType, 'spline');
@@ -1562,4 +1565,182 @@ Suite('29. Interactive 3D Spline knot editing + Varied Non-Cloned Array rocks wi
     assert.ok(NodeTypesUsed.size >= 2, `mixed_boulders pool must mix multiple plain rock archetypes along the array (got ${[...NodeTypesUsed].join(', ')})`);
 });
 
-console.log(`\nAll ${Passed}/29 Open-World SDF Terrain & Pure-SDF Rock Formation 1.0 + 2.0 Studio validation suites passed!`);
+// 30. Step A Plain Pure-SDF Base Shapes: Hoodoo Column, Pedestal / Balanced Rock, Floating Rock / Sky Island, Karst/Cathedral Spires & Yardang/Half-Dome Cliffs
+Suite('30. Step A Plain Pure-SDF Base Shapes: Hoodoos, Pedestals, Elevated Floating Rocks, Karst/Organ Spires, Yardang/Half-Dome Cliffs & Zero Dead Controls', () =>
+{
+    // A. Hoodoo Column: continuous shaft from ground into crown + harmonic pinch-and-swell rings + clean QEF bake across all 4 styles
+    for (const Style of ['bulb_cap', 'turret', 'totem', 'fin_spire'])
+    {
+        const Doc = {
+            layers: [createRock2Layer('hoodoo_column', {
+                hoodooStyle: Style,
+                width: 2.2, height: 6.4, length: 2.1,
+                ringCount: 5, ringSwell: 0.24, neckPinch: 0.38, capSize: 1.18, leanX: 0.0
+            })]
+        };
+        const Comp = compileRock2Stack(Doc);
+        // Verify continuous solid stone along centerline from y = 0.2m up to y = 5.8m (zero air gap / floating detached cap!)
+        for (let y = 0.25; y <= 5.75; y += 0.35)
+        {
+            const dCenter = evalRock2StackSdf(Comp, 0.0, y, 0.0);
+            assert.ok(dCenter < 0.0, `Hoodoo (${Style}) must have continuous unbroken stone spine at y=${y.toFixed(2)}m (got d=${dCenter.toFixed(4)})`);
+        }
+        const Baked = bakeRock2StackQefMesh(Comp, { resolution: 52 });
+        assert.equal(Baked.sdfStats.meshToSdfCount, 0, 'Hoodoo QEF bake must use 0 Mesh->SDF');
+        assert.ok(Baked.sdfStats.triangles > 600, `Hoodoo (${Style}) must bake a rich watertight QEF mesh`);
+    }
+
+    // B. Pedestal / Balanced Rock: narrow eroded throat neck < wide overhanging caprock & plinth across all 4 styles
+    const measureXHalfWidthAtY = (compiled, y) =>
+    {
+        let maxInsideX = 0.0;
+        for (let x = 0.02; x <= 3.6; x += 0.04)
+        {
+            if (evalRock2StackSdf(compiled, x, y, 0.0) <= 0.0 || evalRock2StackSdf(compiled, -x, y, 0.0) <= 0.0)
+            {
+                maxInsideX = x;
+            }
+        }
+        return maxInsideX;
+    };
+
+    for (const Style of ['balanced_boulder', 'desert_mushroom', 'caprock_table', 'anvil_prow'])
+    {
+        const Doc = {
+            layers: [createRock2Layer('pedestal_rock', {
+                pedestalStyle: Style,
+                width: 3.4, height: 5.2, length: 3.2,
+                stemHeightRatio: 0.50, neckWidth: 0.32, capOverhang: 1.32, capTiltDeg: 10, capOffset: 0.0, plinthFlare: 0.45
+            })]
+        };
+        const Comp = compileRock2Stack(Doc);
+        const wPlinth = measureXHalfWidthAtY(Comp, 0.25);
+        const wNeck   = measureXHalfWidthAtY(Comp, 2.25);
+        const wCap    = measureXHalfWidthAtY(Comp, 3.65);
+        assert.ok(wNeck > 0.15 && wCap > wNeck * 1.28 && wPlinth > wNeck * 1.15,
+            `Pedestal (${Style}) must pinch at throat (plinth=${wPlinth.toFixed(2)}, neck=${wNeck.toFixed(2)}, cap=${wCap.toFixed(2)})`);
+        const Baked = bakeRock2StackQefMesh(Comp, { resolution: 52 });
+        assert.ok(Baked.sdfStats.triangles > 600, `Pedestal (${Style}) must extract clean QEF mesh`);
+    }
+
+    // C. Floating Rock / Sky Island: strictly elevated above Y = 0 (zero floor clip!), wide plateau rim & tapered stalactite root keel
+    for (const Style of ['sky_island', 'torn_monolith', 'stalactite_dagger', 'hover_ledge'])
+    {
+        const HoverH = 3.2;
+        const RockH = 4.8;
+        const Doc = {
+            layers: [createRock2Layer('floating_rock', {
+                floatingStyle: Style,
+                width: 4.8, height: RockH, length: 4.4,
+                hoverHeight: HoverH, keelRatio: 0.62, keelSharpness: 0.80, topFlatness: 0.85, rimOverhang: 0.35, keelSpurs: 3
+            })]
+        };
+        const Comp = compileRock2Stack(Doc);
+        assert.ok(Comp.bounds.minY > 1.2, `Floating rock (${Style}) volume bounds must wrap elevated island tightly (bounds.minY=${Comp.bounds.minY.toFixed(2)})`);
+        assert.ok(evalRock2StackSdf(Comp, 0.0, 0.0, 0.0) > 1.5, `Floating rock (${Style}) must remain in mid-air with empty space at Y=0`);
+
+        const Baked = bakeRock2StackQefMesh(Comp, { resolution: 56 });
+        let minVertY = Infinity, maxVertY = -Infinity;
+        const pos = Baked.mesh.positions;
+        for (let i = 1; i < pos.length; i += 3)
+        {
+            if (pos[i] < minVertY) minVertY = pos[i];
+            if (pos[i] > maxVertY) maxVertY = pos[i];
+        }
+        assert.ok(minVertY >= HoverH - 0.22, `Floating rock (${Style}) lowest QEF vertex (${minVertY.toFixed(2)}m) must respect hoverHeight=${HoverH}m`);
+        assert.ok(maxVertY > HoverH + RockH * 0.65, `Floating rock (${Style}) crown (${maxVertY.toFixed(2)}m) must reach full island height`);
+
+        if (Style === 'sky_island')
+        {
+            const rimY = HoverH + RockH * 0.64;
+            const tipNearY = HoverH + RockH * 0.10;
+            const wRim = measureXHalfWidthAtY(Comp, rimY);
+            const wTip = measureXHalfWidthAtY(Comp, tipNearY);
+            assert.ok(wRim > wTip * 1.85, `Sky island rim (${wRim.toFixed(2)}m) must flare far wider than stalactite root tip (${wTip.toFixed(2)}m)`);
+        }
+    }
+
+    // D. Enriched Spire (`karst_razor`, `cathedral_organ`) & Cliff (`yardang_fin`, `exfoliation_dome`) + 3 new Starter Stacks
+    for (const SpireStyle of ['karst_razor', 'cathedral_organ'])
+    {
+        const Comp = compileRock2Stack({ layers: [createRock2Layer('spire_pinnacle', { spireStyle: SpireStyle, buttressRibs: 3, fluteDepth: 0.25 })] });
+        const Baked = bakeRock2StackQefMesh(Comp, { resolution: 50 });
+        assert.ok(Baked.sdfStats.triangles > 650, `Enriched spire (${SpireStyle}) must bake cleanly (${Baked.sdfStats.triangles} tris)`);
+    }
+    for (const CliffProf of ['yardang_fin', 'exfoliation_dome'])
+    {
+        const Comp = compileRock2Stack({ layers: [createRock2Layer('cliff_block', { cliffProfile: CliffProf, basalUndercut: 0.30 })] });
+        const Baked = bakeRock2StackQefMesh(Comp, { resolution: 50 });
+        assert.ok(Baked.sdfStats.triangles > 650, `Enriched cliff (${CliffProf}) must bake cleanly (${Baked.sdfStats.triangles} tris)`);
+    }
+    for (const StarterId of ['stack-bryce-hoodoos', 'stack-pedestal-outcrop', 'stack-floating-islands'])
+    {
+        const Doc = createDefaultRock2Document(StarterId);
+        const Comp = compileRock2Stack(Doc);
+        const Baked = bakeRock2StackQefMesh(Comp, { resolution: 48 });
+        assert.equal(Baked.sdfStats.meshToSdfCount, 0);
+        assert.ok(Baked.sdfStats.triangles > 900, `Starter stack "${StarterId}" must QEF-bake cleanly (${Baked.sdfStats.triangles} tris)`);
+    }
+
+    // E. Automated Zero-Dead-Controls Proof across all Step A Base Nodes & new controls
+    const sampleGridSignature = doc =>
+    {
+        const comp = compileRock2Stack(doc);
+        const out = new Float64Array(9 * 9 * 9);
+        let p = 0;
+        for (let iz = 0; iz < 9; iz++)
+        {
+            const wz = -4.0 + (iz / 8) * 8.0;
+            for (let iy = 0; iy < 9; iy++)
+            {
+                const wy = (iy / 8) * 11.0;
+                for (let ix = 0; ix < 9; ix++)
+                {
+                    const wx = -4.0 + (ix / 8) * 8.0;
+                    out[p++] = evalRock2StackSdf(comp, wx, wy, wz);
+                }
+            }
+        }
+        return out;
+    };
+
+    const CheckNodes = ['hoodoo_column', 'pedestal_rock', 'floating_rock', 'spire_pinnacle', 'cliff_block'];
+    for (const NodeType of CheckNodes)
+    {
+        const Spec = ROCK2_NODE_CATALOG.find(n => n.type === NodeType);
+        const BaseSig = sampleGridSignature({ layers: [createRock2Layer(NodeType, { seed: 5150 })] });
+
+        for (const Grp of Spec.controlGroups)
+        {
+            for (const Ctrl of Grp.controls)
+            {
+                let NextVal;
+                if (Ctrl.type === 'select')
+                {
+                    const Cur = String(Spec.defaults[Ctrl.key]);
+                    const Alt = Ctrl.options.find(o => String(o[1]) !== Cur);
+                    NextVal = Alt[1];
+                }
+                else
+                {
+                    const Cur = Number(Spec.defaults[Ctrl.key]);
+                    const Span = Ctrl.max - Ctrl.min;
+                    NextVal = (Cur + Span * 0.35 <= Ctrl.max) ? (Cur + Math.max(Ctrl.step, Span * 0.35)) : (Cur - Math.max(Ctrl.step, Span * 0.35));
+                    if (Ctrl.decimals === 0) NextVal = Math.round(NextVal);
+                }
+
+                const ModSig = sampleGridSignature({ layers: [createRock2Layer(NodeType, { seed: 5150, [Ctrl.key]: NextVal })] });
+                let MaxDelta = 0.0;
+                for (let i = 0; i < BaseSig.length; i++)
+                {
+                    const d = Math.abs(ModSig[i] - BaseSig[i]);
+                    if (d > MaxDelta) MaxDelta = d;
+                }
+                assert.ok(MaxDelta > 1e-3,
+                    `Zero-dead-controls check failed: ${NodeType}.${Ctrl.key} (${Spec.defaults[Ctrl.key]} -> ${NextVal}) produced maxDelta=${MaxDelta}`);
+            }
+        }
+    }
+});
+
+console.log(`\nAll ${Passed}/30 Open-World SDF Terrain & Pure-SDF Rock Formation 1.0 + 2.0 Studio validation suites passed!`);

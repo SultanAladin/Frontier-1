@@ -4724,6 +4724,7 @@ class TerrainWorldStudioApp
 
             for (const Ctrl of GrpSpec.controls)
             {
+                if (typeof Ctrl.showWhen === 'function' && !Ctrl.showWhen(P)) continue;
                 if (Ctrl.type === 'select')
                 {
                     Grp.Body.appendChild(MakeSelectRow(

@@ -44,7 +44,10 @@ export const GlyphPaths = {
     Download:  '<path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>',
     Activity:  '<path d="M3 12h4l3-8 4 16 3-8h4"/>',
     Arch:      '<path d="M4 20V12a8 8 0 0 1 16 0v8h-4v-7a4 4 0 0 0-8 0v7z"/>',
-    Copy:      '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>'
+    Copy:      '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+    Hoodoo:    '<path d="M7 21l1.5-4.5-1-2.5 1.8-2.8-1.1-2.4L12 3l3.8 5.8-1.1 2.4 1.8 2.8-1 2.5L17 21z"/><path d="M8.2 11.2h7.6M7.5 16.5h9"/>',
+    Pedestal:  '<path d="M5 7.5L8.5 4h7L19 7.5 16.5 11h-9z"/><path d="M10.2 11L9 18.5 7 21h10l-2-2.5L13.8 11"/>',
+    FloatingIsland: '<path d="M3.5 8.5L7 6.5h10l3.5 2-2.5 4.2-3 2.8L12 20.5l-3-5-3-2.8z"/><path d="M4 8.5h16"/><path d="M8.5 22.2h7"/>'
 };
 
 export function ConstructGlyph(Name, ClassName = 'glyph')
