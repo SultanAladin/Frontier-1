@@ -20,7 +20,10 @@ import {
     buildRock2SplineArcTable,
     evaluateRock2GeneratorInstances,
     getOrCreateRock2InstanceOverride,
-    normalizeSplineKnots
+    normalizeSplineKnots,
+    isRock2ModifierType,
+    computeRock2FaultBasis,
+    rock2FaultNormalToStrikeDip
 } from './RockFormationStackEngine.js';
 
 const FULLSCREEN_VS = `#version 300 es
@@ -37,6 +40,7 @@ const ROCK2_BAKE_FS = `#version 300 es
 precision highp float;
 precision highp int;
 precision highp sampler2D;
+precision highp sampler3D;
 
 in vec2 vNdc;
 out vec4 outSdf; // (d, colR, colG, colB)
@@ -44,7 +48,11 @@ out vec4 outSdf; // (d, colR, colG, colB)
 uniform sampler2D uLayerTex;
 uniform sampler2D uBlockTex;
 uniform sampler2D uPlaneTex;
-uniform int uNumLayers;
+uniform sampler3D uPrevVol;
+uniform int uHasPrevVol;
+uniform int uLayerStart;
+uniform int uLayerCount;
+uniform int uForceFirstUnion;
 uniform vec3 uVolMin;
 uniform vec3 uVolMax;
 uniform float uSliceZNorm;
@@ -192,23 +200,30 @@ void main() {
     vec2 uv = vNdc * 0.5 + 0.5;
     vec3 p = mix(uVolMin, uVolMax, vec3(uv.x, uv.y, uSliceZNorm));
 
-    if (uNumLayers <= 0) {
-        outSdf = vec4(10.0, 0.58, 0.57, 0.55);
-        return;
-    }
-
     float dAcc = 1e9;
     vec3 colAcc = vec3(0.58, 0.57, 0.55);
     bool hasBase = false;
 
-    for (int li = 0; li < 28; li++) {
-        if (li >= uNumLayers) break;
+    if (uHasPrevVol == 1) {
+        vec4 prev = textureLod(uPrevVol, vec3(uv.x, uv.y, uSliceZNorm), 0.0);
+        dAcc = prev.x;
+        colAcc = prev.yzw;
+        hasBase = dAcc < 1e8;
+    } else if (uLayerCount <= 0) {
+        outSdf = vec4(10.0, 0.58, 0.57, 0.55);
+        return;
+    }
+
+    for (int idx = 0; idx < 28; idx++) {
+        if (idx >= uLayerCount) break;
+        int li = uLayerStart + idx;
         vec4 lm0 = texelFetch(uLayerTex, ivec2(0, li), 0); // (bStart, bCount, combineOp, blendRadius)
         vec4 lm1 = texelFetch(uLayerTex, ivec2(1, li), 0); // (colR, colG, colB, intraBlend)
 
         int bStart = int(lm0.x + 0.5);
         int bCount = int(lm0.y + 0.5);
         int combineOp = int(lm0.z + 0.5);
+        if (uForceFirstUnion == 1 && !hasBase) combineOp = 0;
         float blendR = lm0.w;
         vec3 lyrCol = lm1.rgb;
         float intraBlend = lm1.w;
@@ -284,6 +299,313 @@ void main() {
         }
     }
 
+    outSdf = vec4(dAcc, colAcc);
+}
+`;
+
+const ROCK2_FAULT_MOD_FS = `#version 300 es
+precision highp float;
+precision highp int;
+precision highp sampler2D;
+precision highp sampler3D;
+
+in vec2 vNdc;
+out vec4 outSdf;
+
+uniform sampler3D uSrcVol;
+uniform sampler2D uModMetaTex;
+uniform sampler2D uFaultPlaneTex;
+uniform sampler2D uFaultBlockTex;
+uniform int uModIndex;
+uniform vec3 uVolMin;
+uniform vec3 uVolMax;
+uniform float uSliceZNorm;
+
+float smaxPoly(float a, float b, float k) {
+    if (k <= 1e-5) return max(a, b);
+    float h = max(k - abs(a - b), 0.0) / k;
+    return max(a, b) + h * h * k * 0.25;
+}
+
+vec4 sampleSrcVol(vec3 q) {
+    vec3 uvw = (q - uVolMin) / (uVolMax - uVolMin);
+    vec3 clamped = clamp(uvw, vec3(0.004), vec3(0.996));
+    vec4 v = textureLod(uSrcVol, clamped, 0.0);
+    vec3 over = max(vec3(0.0), max(uVolMin - q, q - uVolMax));
+    return vec4(v.x + length(over), v.yzw);
+}
+
+float hashFault2D01(int ix, int iy, int seedU) {
+    uint h = uint(ix) * 374761393u + uint(iy) * 668265263u + uint(seedU) * 1442695041u;
+    h = (h ^ (h >> 13u)) * 1274126177u;
+    h = h ^ (h >> 16u);
+    return float(h) * (1.0 / 4294967296.0);
+}
+
+float faultValueNoise2DSigned(float x, float y, int seedU) {
+    float fx0 = floor(x);
+    float fy0 = floor(y);
+    int ix = int(fx0);
+    int iy = int(fy0);
+    float fx = x - fx0;
+    float fy = y - fy0;
+    float ux = fx * fx * (3.0 - 2.0 * fx);
+    float uy = fy * fy * (3.0 - 2.0 * fy);
+
+    float n00 = hashFault2D01(ix, iy, seedU);
+    float n10 = hashFault2D01(ix + 1, iy, seedU);
+    float n01 = hashFault2D01(ix, iy + 1, seedU);
+    float n11 = hashFault2D01(ix + 1, iy + 1, seedU);
+
+    float nx0 = mix(n00, n10, ux);
+    float nx1 = mix(n01, n11, ux);
+    return mix(nx0, nx1, uy) * 2.0 - 1.0;
+}
+
+float evalFaultRoughness(
+    float u, float v, int planeSeed,
+    float macroAmp, float macroWave,
+    float microAmp, float microFreq,
+    int octaves, float rtAniso
+) {
+    float su = u / rtAniso;
+    float sv = v * rtAniso;
+    float disp = 0.0;
+
+    if (macroAmp > 1e-5) {
+        float invW = 1.0 / max(0.25, macroWave);
+        disp += macroAmp * faultValueNoise2DSigned(su * invW, sv * invW, planeSeed);
+    }
+
+    if (microAmp > 1e-5) {
+        float freq = microFreq;
+        float amp = microAmp;
+        float qu = su;
+        float qv = sv;
+        for (int oct = 0; oct < 4; oct++) {
+            if (oct >= octaves) break;
+            int sOct = planeSeed + (oct + 1) * 7919;
+            float n = faultValueNoise2DSigned(qu * freq, qv * freq, sOct);
+            float ridged = 1.0 - 2.0 * abs(n);
+            disp += amp * (0.55 * n + 0.45 * ridged);
+            float ru = qu * 0.80 - qv * 0.60;
+            float rv = qu * 0.60 + qv * 0.80;
+            qu = ru;
+            qv = rv;
+            freq *= 2.03;
+            amp *= 0.50;
+        }
+    }
+    return disp;
+}
+
+float evalFaultPlaneSdf(
+    int planeRow, vec3 q,
+    float macroAmp, float macroWave,
+    float microAmp, float microFreq,
+    int octaves, float rtAniso, float roughPenalty
+) {
+    vec4 pl0 = texelFetch(uFaultPlaneTex, ivec2(0, planeRow), 0); // (ox, oy, oz, offset)
+    vec4 pl1 = texelFetch(uFaultPlaneTex, ivec2(1, planeRow), 0); // (nx, ny, nz, seed)
+    vec3 r = q - pl0.xyz;
+    float nDist = dot(r, pl1.xyz) - pl0.w;
+    if (macroAmp <= 1e-5 && microAmp <= 1e-5) return nDist;
+
+    vec4 pl2 = texelFetch(uFaultPlaneTex, ivec2(2, planeRow), 0); // strike
+    vec4 pl3 = texelFetch(uFaultPlaneTex, ivec2(3, planeRow), 0); // dip
+    float u = dot(r, pl2.xyz);
+    float v = dot(r, pl3.xyz);
+    int pSeed = int(pl1.w + 0.5);
+    float rough = evalFaultRoughness(u, v, pSeed, macroAmp, macroWave, microAmp, microFreq, octaves, rtAniso);
+    return (nDist + rough) * roughPenalty;
+}
+
+void main() {
+    vec2 uv = vNdc * 0.5 + 0.5;
+    vec3 p = mix(uVolMin, uVolMax, vec3(uv.x, uv.y, uSliceZNorm));
+
+    vec4 m0 = texelFetch(uModMetaTex, ivec2(0, uModIndex), 0); // (pStart, pCount, bStart, bCount)
+    vec4 m1 = texelFetch(uModMetaTex, ivec2(1, uModIndex), 0); // (macroAmp, macroWave, microAmp, microFreq)
+    vec4 m2 = texelFetch(uModMetaTex, ivec2(2, uModIndex), 0); // (octaves, aniso, roughPenalty, crackGapWidth)
+    vec4 m3 = texelFetch(uModMetaTex, ivec2(3, uModIndex), 0); // (lipChamfer, vTaperDepth, tipSharpness, useCustomTone)
+    vec4 m4 = texelFetch(uModMetaTex, ivec2(4, uModIndex), 0); // (faceR, faceG, faceB, splitModeCode)
+
+    int pStart = int(m0.x + 0.5);
+    int bStart = int(m0.z + 0.5);
+    int bCount = int(m0.w + 0.5);
+
+    float macroAmp = m1.x;
+    float macroWave = m1.y;
+    float microAmp = m1.z;
+    float microFreq = m1.w;
+    int octaves = int(m2.x + 0.5);
+    float rtAniso = sqrt(max(0.20, m2.y));
+    float roughPenalty = m2.z;
+    float halfGap = 0.5 * m2.w;
+
+    float lipChamfer = m3.x;
+    float vTaperDepth = m3.y;
+    float tipSharpness = m3.z;
+    bool useCustomTone = m3.w > 0.5;
+    bool isBlind = vTaperDepth > 1e-3;
+
+    float slipWeight = 1.0;
+    if (isBlind) {
+        float dBase0 = sampleSrcVol(p).x;
+        float depth0 = max(0.0, -dBase0);
+        float uSlip = clamp(1.0 - depth0 / (vTaperDepth * 1.35), 0.0, 1.0);
+        slipWeight = uSlip * uSlip;
+    }
+
+    float bestD = 1e9;
+    vec3 bestCol = vec3(0.58, 0.57, 0.55);
+    float bestSeam = 0.0;
+
+    for (int bi = 0; bi < 81; bi++) {
+        if (bi >= bCount) break;
+        int bRow = bStart + bi;
+        vec4 br0 = texelFetch(uFaultBlockTex, ivec2(0, bRow), 0);
+        vec4 br1 = texelFetch(uFaultBlockTex, ivec2(1, bRow), 0);
+        vec4 br2 = texelFetch(uFaultBlockTex, ivec2(2, bRow), 0);
+        vec4 bf  = texelFetch(uFaultBlockTex, ivec2(3, bRow), 0);
+
+        vec3 q = vec3(
+            dot(br0.xyz, p) + br0.w,
+            dot(br1.xyz, p) + br1.w,
+            dot(br2.xyz, p) + br2.w
+        );
+        if (isBlind && slipWeight < 0.9999) {
+            q = mix(p, q, slipWeight);
+        }
+
+        vec4 srcSample = sampleSrcVol(q);
+        float dRock = srcSample.x;
+        float dBlk = dRock;
+        float seamMask = 0.0;
+
+        float fArr[4];
+        fArr[0] = bf.x; fArr[1] = bf.y; fArr[2] = bf.z; fArr[3] = bf.w;
+
+        if (!isBlind) {
+            for (int fi = 0; fi < 4; fi++) {
+                float fc = fArr[fi];
+                if (abs(fc) < 0.5) continue;
+                int pIdx = int(abs(fc) + 0.5) - 1;
+                float sgn = fc > 0.0 ? 1.0 : -1.0;
+                float phi = evalFaultPlaneSdf(pStart + pIdx, q, macroAmp, macroWave, microAmp, microFreq, octaves, rtAniso, roughPenalty);
+                float dCut = sgn * phi + halfGap;
+                float prev = dBlk;
+                dBlk = lipChamfer > 1e-4 ? smaxPoly(dBlk, dCut, lipChamfer) : max(dBlk, dCut);
+                if (abs(dCut - dRock) < lipChamfer + 0.08 || dBlk > prev + 1e-4) {
+                    seamMask = max(seamMask, clamp(1.0 - abs(dCut) / max(0.06, lipChamfer + 0.06), 0.0, 1.0));
+                }
+            }
+        } else {
+            float depth = max(0.0, -dRock);
+            float u = depth / vTaperDepth;
+            float taper = u < 1.0 ? pow(max(0.0, 1.0 - u), tipSharpness) : 0.0;
+            float aEff = max(0.012, halfGap) * taper;
+            float rEff = lipChamfer * clamp(1.0 - u, 0.0, 1.0);
+            float tipFloor = depth - vTaperDepth;
+
+            for (int fi = 0; fi < 4; fi++) {
+                float fc = fArr[fi];
+                if (abs(fc) < 0.5) continue;
+                int pIdx = int(abs(fc) + 0.5) - 1;
+                float sgn = fc > 0.0 ? 1.0 : -1.0;
+                float phi = evalFaultPlaneSdf(pStart + pIdx, q, macroAmp, macroWave, microAmp, microFreq, octaves, rtAniso, roughPenalty);
+                float dSlot = max(-sgn * phi - aEff, tipFloor);
+                float dCut = -dSlot;
+                float prev = dBlk;
+                dBlk = rEff > 1e-4 ? smaxPoly(dBlk, dCut, rEff) : max(dBlk, dCut);
+                if (u < 1.0 && (abs(dCut - dRock) < rEff + 0.06 || dBlk > prev + 1e-4)) {
+                    seamMask = max(seamMask, clamp(1.0 - abs(dCut) / max(0.06, rEff + 0.06), 0.0, 1.0));
+                }
+            }
+        }
+
+        if (dBlk < bestD) {
+            bestD = dBlk;
+            bestCol = srcSample.yzw;
+            bestSeam = seamMask;
+        }
+    }
+
+    if (bestSeam > 1e-3) {
+        vec3 targetTone = useCustomTone ? m4.rgb : clamp(bestCol * vec3(0.84, 0.83, 0.82) + vec3(0.04, 0.035, 0.03), 0.0, 1.0);
+        bestCol = mix(bestCol, targetTone, bestSeam * (useCustomTone ? 0.88 : 0.65));
+    }
+
+    outSdf = vec4(bestD, bestCol);
+}
+`;
+
+const ROCK2_COMBINE_VOL_FS = `#version 300 es
+precision highp float;
+precision highp sampler3D;
+
+in vec2 vNdc;
+out vec4 outSdf;
+
+uniform sampler3D uPrevVol;
+uniform sampler3D uLayerVol;
+uniform int uHasPrevVol;
+uniform int uCombineOp;
+uniform float uBlendRadius;
+uniform float uSliceZNorm;
+
+float sminPoly(float a, float b, float k) {
+    if (k <= 1e-5) return min(a, b);
+    float h = max(k - abs(a - b), 0.0) / k;
+    return min(a, b) - h * h * k * 0.25;
+}
+float smaxPoly(float a, float b, float k) {
+    if (k <= 1e-5) return max(a, b);
+    float h = max(k - abs(a - b), 0.0) / k;
+    return max(a, b) + h * h * k * 0.25;
+}
+float chamferMin(float a, float b, float r) {
+    float m = min(a, b);
+    if (r <= 1e-5) return m;
+    return min(m, (a + b - r) * 0.70710678);
+}
+
+void main() {
+    vec2 uv = vNdc * 0.5 + 0.5;
+    vec3 uvw = vec3(uv.x, uv.y, uSliceZNorm);
+    vec4 lyr = textureLod(uLayerVol, uvw, 0.0);
+    float dLyr = lyr.x;
+    vec3 lyrCol = lyr.yzw;
+
+    if (uHasPrevVol == 0) {
+        outSdf = (uCombineOp == 3) ? vec4(10.0, 0.58, 0.57, 0.55) : lyr;
+        return;
+    }
+
+    vec4 prev = textureLod(uPrevVol, uvw, 0.0);
+    float dAcc = prev.x;
+    vec3 colAcc = prev.yzw;
+
+    if (uCombineOp == 0) {
+        if (dLyr < dAcc) { dAcc = dLyr; colAcc = lyrCol; }
+    } else if (uCombineOp == 1) {
+        float w = uBlendRadius > 1e-4 ? clamp(0.5 + 0.5 * (dAcc - dLyr) / uBlendRadius, 0.0, 1.0) : (dLyr < dAcc ? 1.0 : 0.0);
+        dAcc = sminPoly(dAcc, dLyr, uBlendRadius);
+        colAcc = mix(colAcc, lyrCol, w);
+    } else if (uCombineOp == 2) {
+        float w = uBlendRadius > 1e-4 ? clamp(0.5 + 0.5 * (dAcc - dLyr) / uBlendRadius, 0.0, 1.0) : (dLyr < dAcc ? 1.0 : 0.0);
+        dAcc = chamferMin(dAcc, dLyr, uBlendRadius);
+        colAcc = mix(colAcc, lyrCol, w);
+    } else if (uCombineOp == 3) {
+        float p0 = dAcc;
+        dAcc = smaxPoly(dAcc, -dLyr, uBlendRadius);
+        float cutW = smoothstep(0.0, max(0.02, uBlendRadius + 0.04), dAcc - p0);
+        colAcc = mix(colAcc, lyrCol, cutW * 0.65);
+    } else if (uCombineOp == 4) {
+        float w = dLyr > dAcc ? 1.0 : 0.0;
+        dAcc = smaxPoly(dAcc, dLyr, uBlendRadius);
+        colAcc = mix(colAcc, lyrCol, w * 0.5);
+    }
     outSdf = vec4(dAcc, colAcc);
 }
 `;
@@ -666,6 +988,8 @@ export class RockFormation2Viewport
         gl.getExtension('OES_texture_float_linear');
 
         this.bakeProg = this._linkProgram(FULLSCREEN_VS, ROCK2_BAKE_FS);
+        this.faultModProg = this._linkProgram(FULLSCREEN_VS, ROCK2_FAULT_MOD_FS);
+        this.combineVolProg = this._linkProgram(FULLSCREEN_VS, ROCK2_COMBINE_VOL_FS);
         this.rayProg = this._linkProgram(FULLSCREEN_VS, ROCK2_RAYMARCH_FS);
         this.meshProg = this._linkProgram(ROCK2_MESH_VS, ROCK2_MESH_FS);
 
@@ -673,15 +997,24 @@ export class RockFormation2Viewport
         this.layerTex = this._create2DDataTex();
         this.blockTex = this._create2DDataTex();
         this.planeTex = this._create2DDataTex();
+        this.modMetaTex = this._create2DDataTex();
+        this.faultPlaneTex = this._create2DDataTex();
+        this.faultBlockTex = this._create2DDataTex();
 
-        this.sdfVolTex = this._create3DVolumeTex(this.volRes);
+        this.sdfVolTexA = this._create3DVolumeTex(this.volRes);
+        this.sdfVolTexB = this._create3DVolumeTex(this.volRes);
+        this.sdfVolScratchA = this._create3DVolumeTex(this.volRes);
+        this.sdfVolScratchB = this._create3DVolumeTex(this.volRes);
+        this.sdfVolTex = this.sdfVolTexA;
+        this._gpuPasses = [];
+
         this.bakeFbo = gl.createFramebuffer();
         this.gpuVolBakeSupported = false;
 
         if (this.extColorBufferFloat)
         {
             gl.bindFramebuffer(gl.FRAMEBUFFER, this.bakeFbo);
-            gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, this.sdfVolTex, 0, 0);
+            gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, this.sdfVolTexA, 0, 0);
             this.gpuVolBakeSupported = (gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE);
             gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         }
@@ -725,6 +1058,7 @@ export class RockFormation2Viewport
 
         const packed = packRock2StackGpuBuffers(compiledStack);
         this.numLayers = packed.numLayers;
+        this._gpuPasses = packed.gpuPasses || [{ kind: 'plain', layerStart: 0, layerCount: packed.numLayers, hasPrevVol: false }];
 
         gl.bindTexture(gl.TEXTURE_2D, this.layerTex);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, packed.layerTexWidth, packed.layerTexHeight, 0, gl.RGBA, gl.FLOAT, packed.layerTexData);
@@ -734,6 +1068,15 @@ export class RockFormation2Viewport
 
         gl.bindTexture(gl.TEXTURE_2D, this.planeTex);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, packed.planeTexWidth, packed.planeTexHeight, 0, gl.RGBA, gl.FLOAT, packed.planeTexData);
+
+        gl.bindTexture(gl.TEXTURE_2D, this.modMetaTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, packed.modMetaTexWidth, packed.modMetaTexHeight, 0, gl.RGBA, gl.FLOAT, packed.modMetaTexData);
+
+        gl.bindTexture(gl.TEXTURE_2D, this.faultPlaneTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, packed.faultPlaneTexWidth, packed.faultPlaneTexHeight, 0, gl.RGBA, gl.FLOAT, packed.faultPlaneTexData);
+
+        gl.bindTexture(gl.TEXTURE_2D, this.faultBlockTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, packed.faultBlockTexWidth, packed.faultBlockTexHeight, 0, gl.RGBA, gl.FLOAT, packed.faultBlockTexData);
 
         if (this.gpuVolBakeSupported)
         {
@@ -750,16 +1093,22 @@ export class RockFormation2Viewport
         }
     }
 
-    _bakeVolumeGpu()
+    _runVolumeSlices(prog, targetVolTex)
     {
         const gl = this.gl;
         const res = this.volRes;
+        const uSliceLoc = gl.getUniformLocation(prog, 'uSliceZNorm');
+        for (let z = 0; z < res; z++)
+        {
+            gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, targetVolTex, 0, z);
+            gl.uniform1f(uSliceLoc, (z + 0.5) / res);
+            gl.drawArrays(gl.TRIANGLES, 0, 3);
+        }
+    }
 
-        gl.bindFramebuffer(gl.FRAMEBUFFER, this.bakeFbo);
-        gl.viewport(0, 0, res, res);
-        gl.disable(gl.DEPTH_TEST);
-        gl.disable(gl.BLEND);
-
+    _bakePlainSubpass(targetVol, prevVol, hasPrevVol, layerStart, layerCount, forceFirstUnion = false)
+    {
+        const gl = this.gl;
         gl.useProgram(this.bakeProg);
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, this.layerTex);
@@ -773,18 +1122,132 @@ export class RockFormation2Viewport
         gl.bindTexture(gl.TEXTURE_2D, this.planeTex);
         gl.uniform1i(gl.getUniformLocation(this.bakeProg, 'uPlaneTex'), 2);
 
-        gl.uniform1i(gl.getUniformLocation(this.bakeProg, 'uNumLayers'), this.numLayers);
+        gl.activeTexture(gl.TEXTURE3);
+        gl.bindTexture(gl.TEXTURE_3D, prevVol);
+        gl.uniform1i(gl.getUniformLocation(this.bakeProg, 'uPrevVol'), 3);
+
+        gl.uniform1i(gl.getUniformLocation(this.bakeProg, 'uHasPrevVol'), hasPrevVol ? 1 : 0);
+        gl.uniform1i(gl.getUniformLocation(this.bakeProg, 'uLayerStart'), layerStart);
+        gl.uniform1i(gl.getUniformLocation(this.bakeProg, 'uLayerCount'), layerCount);
+        gl.uniform1i(gl.getUniformLocation(this.bakeProg, 'uForceFirstUnion'), forceFirstUnion ? 1 : 0);
         gl.uniform3fv(gl.getUniformLocation(this.bakeProg, 'uVolMin'), this.volMin);
         gl.uniform3fv(gl.getUniformLocation(this.bakeProg, 'uVolMax'), this.volMax);
 
-        const uSliceLoc = gl.getUniformLocation(this.bakeProg, 'uSliceZNorm');
+        this._runVolumeSlices(this.bakeProg, targetVol);
+    }
+
+    _bakeFaultModifierSubpass(targetVol, srcVol, modIndex)
+    {
+        const gl = this.gl;
+        gl.useProgram(this.faultModProg);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_3D, srcVol);
+        gl.uniform1i(gl.getUniformLocation(this.faultModProg, 'uSrcVol'), 0);
+
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, this.modMetaTex);
+        gl.uniform1i(gl.getUniformLocation(this.faultModProg, 'uModMetaTex'), 1);
+
+        gl.activeTexture(gl.TEXTURE2);
+        gl.bindTexture(gl.TEXTURE_2D, this.faultPlaneTex);
+        gl.uniform1i(gl.getUniformLocation(this.faultModProg, 'uFaultPlaneTex'), 2);
+
+        gl.activeTexture(gl.TEXTURE3);
+        gl.bindTexture(gl.TEXTURE_2D, this.faultBlockTex);
+        gl.uniform1i(gl.getUniformLocation(this.faultModProg, 'uFaultBlockTex'), 3);
+
+        gl.uniform1i(gl.getUniformLocation(this.faultModProg, 'uModIndex'), modIndex);
+        gl.uniform3fv(gl.getUniformLocation(this.faultModProg, 'uVolMin'), this.volMin);
+        gl.uniform3fv(gl.getUniformLocation(this.faultModProg, 'uVolMax'), this.volMax);
+
+        this._runVolumeSlices(this.faultModProg, targetVol);
+    }
+
+    _bakeCombineVolSubpass(targetVol, prevVol, layerVol, hasPrevVol, combineOp, blendRadius)
+    {
+        const gl = this.gl;
+        gl.useProgram(this.combineVolProg);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_3D, prevVol);
+        gl.uniform1i(gl.getUniformLocation(this.combineVolProg, 'uPrevVol'), 0);
+
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_3D, layerVol);
+        gl.uniform1i(gl.getUniformLocation(this.combineVolProg, 'uLayerVol'), 1);
+
+        gl.uniform1i(gl.getUniformLocation(this.combineVolProg, 'uHasPrevVol'), hasPrevVol ? 1 : 0);
+        gl.uniform1i(gl.getUniformLocation(this.combineVolProg, 'uCombineOp'), combineOp);
+        gl.uniform1f(gl.getUniformLocation(this.combineVolProg, 'uBlendRadius'), blendRadius);
+
+        this._runVolumeSlices(this.combineVolProg, targetVol);
+    }
+
+    _bakeVolumeGpu()
+    {
+        const gl = this.gl;
+        const res = this.volRes;
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.bakeFbo);
+        gl.viewport(0, 0, res, res);
+        gl.disable(gl.DEPTH_TEST);
+        gl.disable(gl.BLEND);
         gl.bindVertexArray(this.emptyVao);
-        for (let z = 0; z < res; z++)
+
+        let curVol = this.sdfVolTexA;
+        let nextVol = this.sdfVolTexB;
+        let hasValidMain = false;
+
+        const passes = this._gpuPasses || [];
+        if (passes.length === 0)
         {
-            gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, this.sdfVolTex, 0, z);
-            gl.uniform1f(uSliceLoc, (z + 0.5) / res);
-            gl.drawArrays(gl.TRIANGLES, 0, 3);
+            this._bakePlainSubpass(curVol, nextVol, false, 0, 0, false);
+            this.sdfVolTex = curVol;
         }
+        else
+        {
+            for (let pi = 0; pi < passes.length; pi++)
+            {
+                const pass = passes[pi];
+                if (pass.kind === 'plain')
+                {
+                    this._bakePlainSubpass(nextVol, curVol, hasValidMain && pass.hasPrevVol, pass.layerStart, pass.layerCount, false);
+                    const tmp = curVol; curVol = nextVol; nextVol = tmp;
+                    hasValidMain = true;
+                }
+                else if (pass.kind === 'split_fault')
+                {
+                    if (!hasValidMain)
+                    {
+                        this._bakePlainSubpass(curVol, nextVol, false, 0, 0, false);
+                        hasValidMain = true;
+                    }
+                    this._bakeFaultModifierSubpass(nextVol, curVol, pass.modIndex);
+                    const tmp = curVol; curVol = nextVol; nextVol = tmp;
+                }
+                else if (pass.kind === 'single_layer_mod')
+                {
+                    let sCur = this.sdfVolScratchA;
+                    let sNext = this.sdfVolScratchB;
+                    this._bakePlainSubpass(sCur, sNext, false, pass.layerIndex, 1, true);
+                    for (let m = 0; m < pass.modIndices.length; m++)
+                    {
+                        this._bakeFaultModifierSubpass(sNext, sCur, pass.modIndices[m]);
+                        const st = sCur; sCur = sNext; sNext = st;
+                    }
+                    this._bakeCombineVolSubpass(nextVol, curVol, sCur, hasValidMain && pass.hasPrevVol, pass.combineOp, pass.blendRadius);
+                    const tmp = curVol; curVol = nextVol; nextVol = tmp;
+                    hasValidMain = true;
+                }
+            }
+            this.sdfVolTex = curVol;
+        }
+
+        gl.activeTexture(gl.TEXTURE3);
+        gl.bindTexture(gl.TEXTURE_3D, null);
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_3D, null);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_3D, null);
         gl.bindVertexArray(null);
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     }
@@ -796,9 +1259,10 @@ export class RockFormation2Viewport
         if (this.volRes !== res)
         {
             this.volRes = res;
-            gl.deleteTexture(this.sdfVolTex);
-            this.sdfVolTex = this._create3DVolumeTex(res);
+            gl.deleteTexture(this.sdfVolTexA);
+            this.sdfVolTexA = this._create3DVolumeTex(res);
         }
+        this.sdfVolTex = this.sdfVolTexA;
 
         const buf = new Float32Array(res * res * res * 4);
         const col = { r: 0.58, g: 0.57, b: 0.55 };
@@ -1039,9 +1503,11 @@ export class RockFormation2Viewport
                 bestDist = d;
                 best = {
                     id: `rot_seg_${seg.rotKey}`,
-                    kind: 'trs_rotate',
+                    kind: seg.handleKind || 'trs_rotate',
                     rotKey: seg.rotKey,
                     centerWorld: seg.centerWorld,
+                    strikeVec: seg.strikeVec || null,
+                    planeUpW: seg.planeUpW || null,
                     sx: px,
                     sy: py,
                     hitRadius: 10,
@@ -1337,6 +1803,126 @@ export class RockFormation2Viewport
                 const rect = this.canvas.getBoundingClientRect();
                 const sx = e.clientX - rect.left;
                 const sy = e.clientY - rect.top;
+
+                // --- 3D FAULT PLANE MODIFIER GIZMO HANDLERS (D1: `split_fault`) ---
+                if (h.kind === 'fault_origin_xz')
+                {
+                    const hitW = this._intersectHorizontalPlane(e.clientX, e.clientY, dg.anchorW, [0, 1, 0]);
+                    p.originX = Number(clamp((sp.originX ?? 0) + (hitW[0] - dg.startHitW[0]), -24.0, 24.0).toFixed(3));
+                    p.originZ = Number(clamp((sp.originZ ?? 0) + (hitW[2] - dg.startHitW[2]), -24.0, 24.0).toFixed(3));
+                    this.callbacks.onLiveGizmoEdit?.();
+                    return;
+                }
+                if (h.kind === 'fault_origin_y')
+                {
+                    const curS = this._projectRayOntoWorldAxis(e.clientX, e.clientY, h.centerWorld || dg.anchorW, [0, 1, 0]);
+                    p.originY = Number(clamp((sp.originY ?? 1.8) + (curS - dg.startAxisS), -8.0, 24.0).toFixed(3));
+                    this.callbacks.onLiveGizmoEdit?.();
+                    return;
+                }
+                if (h.kind === 'fault_move_axis')
+                {
+                    const curS = this._projectRayOntoWorldAxis(e.clientX, e.clientY, h.centerWorld || dg.anchorW, h.axisVec);
+                    const ds = curS - dg.startAxisS;
+                    p.originX = Number(clamp((sp.originX ?? 0) + h.axisVec[0] * ds, -24.0, 24.0).toFixed(3));
+                    p.originY = Number(clamp((sp.originY ?? 1.8) + h.axisVec[1] * ds, -8.0, 24.0).toFixed(3));
+                    p.originZ = Number(clamp((sp.originZ ?? 0) + h.axisVec[2] * ds, -24.0, 24.0).toFixed(3));
+                    this.callbacks.onLiveGizmoEdit?.();
+                    return;
+                }
+                if (h.kind === 'fault_normal_aim')
+                {
+                    const cW = h.centerWorld || [sp.originX ?? 0, sp.originY ?? 1.8, sp.originZ ?? 0];
+                    const hitW = this._intersectHorizontalPlane(e.clientX, e.clientY, dg.anchorW, h.planeUpW || [0, 1, 0]);
+                    const tipX = dg.anchorW[0] + (hitW[0] - dg.startHitW[0]) - cW[0];
+                    const tipY = Math.max(0.0, dg.anchorW[1] + (hitW[1] - dg.startHitW[1]) - cW[1]);
+                    const tipZ = dg.anchorW[2] + (hitW[2] - dg.startHitW[2]) - cW[2];
+                    const att = rock2FaultNormalToStrikeDip(tipX, tipY, tipZ);
+                    p.strikeYawDeg = att.strikeYawDeg;
+                    p.dipPitchDeg = att.dipPitchDeg;
+                    this.callbacks.onLiveGizmoEdit?.();
+                    return;
+                }
+                if (h.kind === 'fault_strike_ring')
+                {
+                    const cW = h.centerWorld || [sp.originX ?? 0, sp.originY ?? 1.8, sp.originZ ?? 0];
+                    const hitW = this._intersectHorizontalPlane(e.clientX, e.clientY, cW, [0, 1, 0]);
+                    const a0 = Math.atan2(dg.startHitW[0] - cW[0], dg.startHitW[2] - cW[2]);
+                    const a1 = Math.atan2(hitW[0] - cW[0], hitW[2] - cW[2]);
+                    let dRad = a1 - a0;
+                    if (dRad > Math.PI) dRad -= Math.PI * 2.0;
+                    if (dRad < -Math.PI) dRad += Math.PI * 2.0;
+                    let nextStrike = (sp.strikeYawDeg ?? 18.0) + dRad / DEG2RAD;
+                    while (nextStrike > 180.0) nextStrike -= 360.0;
+                    while (nextStrike < -180.0) nextStrike += 360.0;
+                    p.strikeYawDeg = Number(nextStrike.toFixed(1));
+                    this.callbacks.onLiveGizmoEdit?.();
+                    return;
+                }
+                if (h.kind === 'fault_dip_ring')
+                {
+                    const cW = h.centerWorld || [sp.originX ?? 0, sp.originY ?? 1.8, sp.originZ ?? 0];
+                    const strikeV = h.strikeVec || [0, 0, 1];
+                    const hAz = [strikeV[2], 0.0, -strikeV[0]];
+                    const cam = this._computeCameraBasis();
+                    const viewDot = Math.abs(cam.fwd[0] * strikeV[0] + cam.fwd[1] * strikeV[1] + cam.fwd[2] * strikeV[2]);
+                    if (viewDot > 0.22)
+                    {
+                        const hitW = this._intersectHorizontalPlane(e.clientX, e.clientY, cW, strikeV);
+                        const x0 = (dg.startHitW[0] - cW[0]) * hAz[0] + (dg.startHitW[2] - cW[2]) * hAz[2];
+                        const y0 = -(dg.startHitW[1] - cW[1]);
+                        const x1 = (hitW[0] - cW[0]) * hAz[0] + (hitW[2] - cW[2]) * hAz[2];
+                        const y1 = -(hitW[1] - cW[1]);
+                        let dRad = Math.atan2(y1, Math.max(0.05, x1)) - Math.atan2(y0, Math.max(0.05, x0));
+                        if (dRad > Math.PI) dRad -= Math.PI * 2.0;
+                        if (dRad < -Math.PI) dRad += Math.PI * 2.0;
+                        p.dipPitchDeg = Number(clamp((sp.dipPitchDeg ?? 68.0) + dRad / DEG2RAD, 0.0, 90.0).toFixed(1));
+                    }
+                    else
+                    {
+                        const dyPx = sy - dg.startSy;
+                        p.dipPitchDeg = Number(clamp((sp.dipPitchDeg ?? 68.0) + dyPx * 0.42, 0.0, 90.0).toFixed(1));
+                    }
+                    this.callbacks.onLiveGizmoEdit?.();
+                    return;
+                }
+                if (h.kind === 'fault_conj_angle')
+                {
+                    const dxPx = sx - dg.startSx;
+                    p.conjugateAngleDeg = Number(clamp((sp.conjugateAngleDeg ?? 62.0) + dxPx * 0.45, 20.0, 150.0).toFixed(1));
+                    this.callbacks.onLiveGizmoEdit?.();
+                    return;
+                }
+                if (h.kind === 'fault_slip_vec')
+                {
+                    const basis = computeRock2FaultBasis(sp.strikeYawDeg ?? 18.0, sp.dipPitchDeg ?? 68.0);
+                    const hitW = this._intersectHorizontalPlane(e.clientX, e.clientY, dg.anchorW, basis.normal);
+                    const invVis = 1.0 / Math.max(0.25, h.visScale || 1.0);
+                    const wx = (hitW[0] - dg.startHitW[0]) * invVis;
+                    const wy = (hitW[1] - dg.startHitW[1]) * invVis;
+                    const wz = (hitW[2] - dg.startHitW[2]) * invVis;
+                    const dStrike = wx * basis.strike[0] + wy * basis.strike[1] + wz * basis.strike[2];
+                    const dDip    = wx * basis.dip[0]    + wy * basis.dip[1]    + wz * basis.dip[2];
+                    p.strikeSlip = Number(clamp((sp.strikeSlip ?? 0.0) + dStrike, -6.0, 6.0).toFixed(3));
+                    p.dipSlip    = Number(clamp((sp.dipSlip ?? 0.0)    + dDip,    -6.0, 6.0).toFixed(3));
+                    this.callbacks.onLiveGizmoEdit?.();
+                    return;
+                }
+                if (h.kind === 'fault_heave_axis')
+                {
+                    const curS = this._projectRayOntoWorldAxis(e.clientX, e.clientY, h.centerWorld || dg.anchorW, h.axisVec);
+                    const ds = (curS - dg.startAxisS) / Math.max(0.25, h.visScale || 1.0);
+                    p.normalHeave = Number(clamp((sp.normalHeave ?? 0.0) + ds, -1.0, 6.0).toFixed(3));
+                    this.callbacks.onLiveGizmoEdit?.();
+                    return;
+                }
+                if (h.kind === 'fault_hinge_tilt')
+                {
+                    const dPx = (sx - dg.startSx) * 0.35 - (sy - dg.startSy) * 0.25;
+                    p.hingeTiltDeg = Number(clamp((sp.hingeTiltDeg ?? 0.0) + dPx, -65.0, 65.0).toFixed(1));
+                    this.callbacks.onLiveGizmoEdit?.();
+                    return;
+                }
 
                 // --- WHOLE-LAYER OR PER-INSTANCE TRS TRANSFORM GIZMO HANDLERS ---
                 const isInstEdit = dg.instIndex >= 0 && g && g.type !== 'none' && dg.startOv;
@@ -2373,6 +2959,561 @@ export class RockFormation2Viewport
         ctx.restore();
     }
 
+    _drawFaultBadge(ctx, sx, sy, label, strokeCol, isHov, radius = 9.5)
+    {
+        ctx.save();
+        ctx.fillStyle = isHov ? strokeCol : 'rgba(12, 15, 20, 0.92)';
+        ctx.strokeStyle = strokeCol;
+        ctx.lineWidth = isHov ? 2.4 : 1.8;
+        ctx.beginPath();
+        ctx.arc(sx, sy, isHov ? radius + 1.5 : radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = isHov ? '#0b0e12' : strokeCol;
+        ctx.font = '700 8.8px ui-sans-serif, system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(label, sx, sy + 0.5);
+        ctx.restore();
+    }
+
+    _draw3DProjectedDisc(ctx, cam, cssW, cssH, originW, uVec, vVec, radius, fillRgba, rimCol, lineWidth = 2.0, dashed = false)
+    {
+        const segs = 48;
+        const pts = [];
+        for (let i = 0; i <= segs; i++)
+        {
+            const a = (i / segs) * Math.PI * 2.0;
+            const ca = Math.cos(a), sa = Math.sin(a);
+            const wx = originW[0] + (uVec[0] * ca + vVec[0] * sa) * radius;
+            const wy = originW[1] + (uVec[1] * ca + vVec[1] * sa) * radius;
+            const wz = originW[2] + (uVec[2] * ca + vVec[2] * sa) * radius;
+            const p2 = this._projectWorldPoint(wx, wy, wz, cam, cssW, cssH);
+            if (!p2) return;
+            pts.push(p2);
+        }
+        if (pts.length < 4) return;
+
+        ctx.save();
+        if (fillRgba)
+        {
+            ctx.fillStyle = fillRgba;
+            ctx.beginPath();
+            ctx.moveTo(pts[0].sx, pts[0].sy);
+            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].sx, pts[i].sy);
+            ctx.closePath();
+            ctx.fill();
+        }
+        ctx.strokeStyle = rimCol;
+        ctx.lineWidth = lineWidth;
+        if (dashed) ctx.setLineDash([5, 4]);
+        ctx.beginPath();
+        ctx.moveTo(pts[0].sx, pts[0].sy);
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].sx, pts[i].sy);
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    _renderFaultModifierGizmo(ctx, cam, cssW, cssH, layer)
+    {
+        const p = layer.params || {};
+        const originW = [p.originX ?? 0.0, p.originY ?? 1.8, p.originZ ?? 0.0];
+        const pOrigin = this._projectWorldPoint(originW[0], originW[1], originW[2], cam, cssW, cssH);
+        if (!pOrigin) return;
+
+        const strikeYaw = p.strikeYawDeg ?? 18.0;
+        const dipPitch = p.dipPitchDeg ?? 68.0;
+        const basis = computeRock2FaultBasis(strikeYaw, dipPitch);
+        const sVec = basis.strike;
+        const dVec = basis.dip;
+        const nVec = basis.normal;
+
+        const sb = this.compiledStack?.bounds;
+        const maxSpan = sb
+            ? Math.max(3.2, sb.maxX - sb.minX, sb.maxY - sb.minY, sb.maxZ - sb.minZ)
+            : 5.5;
+        const discR = clamp(maxSpan * 0.36, 1.55, 4.4);
+
+        const compMod = this.compiledStack?.compiledModifiers?.find(m => m.id === layer.id) || null;
+        const splitMode = p.splitMode || 'single_plane';
+
+        // 1. MULTI-PLANE / CONJUGATE / RADIAL SECONDARY FAULT TRACES
+        if (splitMode === 'parallel_family' && compMod?.planes?.length > 1)
+        {
+            for (let i = 0; i < compMod.planes.length; i++)
+            {
+                const pl = compMod.planes[i];
+                if (Math.abs(pl.offset) < 1e-3 && i === ((compMod.planes.length / 2) | 0)) continue;
+                const plO = [
+                    pl.ox + pl.nx * pl.offset,
+                    pl.oy + pl.ny * pl.offset,
+                    pl.oz + pl.nz * pl.offset
+                ];
+                this._draw3DProjectedDisc(
+                    ctx, cam, cssW, cssH, plO,
+                    [pl.sx, pl.sy, pl.sz], [pl.dx, pl.dy, pl.dz], discR * 0.86,
+                    'rgba(251, 191, 36, 0.04)', 'rgba(251, 191, 36, 0.42)', 1.2, true
+                );
+            }
+        }
+        else if (splitMode === 'conjugate_pair' && compMod?.planes?.length >= 2)
+        {
+            const plB = compMod.planes[compMod.planes.length - 1];
+            const plBS = [plB.sx, plB.sy, plB.sz];
+            const plBD = [plB.dx, plB.dy, plB.dz];
+            this._draw3DProjectedDisc(
+                ctx, cam, cssW, cssH, originW,
+                plBS, plBD, discR * 0.92,
+                'rgba(251, 113, 133, 0.10)', 'rgba(251, 113, 133, 0.85)', 1.8, true
+            );
+            const conjTipW = [
+                originW[0] + plBD[0] * (discR * 0.88),
+                originW[1] + plBD[1] * (discR * 0.88),
+                originW[2] + plBD[2] * (discR * 0.88)
+            ];
+            const pConj = this._projectWorldPoint(conjTipW[0], conjTipW[1], conjTipW[2], cam, cssW, cssH);
+            if (pConj)
+            {
+                const isHovConj = (this._hoveredHandle?.id === 'fault_conj_angle') || (this._gizmoDrag?.handle?.id === 'fault_conj_angle');
+                this._drawFaultBadge(ctx, pConj.sx, pConj.sy, 'X∠', '#fb7185', isHovConj, 10.0);
+                this._screenHandles.push({
+                    id: 'fault_conj_angle',
+                    kind: 'fault_conj_angle',
+                    centerWorld: originW,
+                    anchorWorld: conjTipW,
+                    sx: pConj.sx,
+                    sy: pConj.sy,
+                    hitRadius: 14
+                });
+            }
+        }
+        else if (splitMode === 'radial_wedge' && compMod?.planes?.length >= 3)
+        {
+            ctx.save();
+            ctx.strokeStyle = 'rgba(251, 191, 36, 0.55)';
+            ctx.lineWidth = 1.4;
+            ctx.setLineDash([4, 3]);
+            for (let i = 0; i < compMod.planes.length; i++)
+            {
+                const pl = compMod.planes[i];
+                const spokeW = [
+                    originW[0] + pl.sx * discR,
+                    originW[1] + pl.sy * discR,
+                    originW[2] + pl.sz * discR
+                ];
+                const pSpoke = this._projectWorldPoint(spokeW[0], spokeW[1], spokeW[2], cam, cssW, cssH);
+                if (pSpoke)
+                {
+                    ctx.beginPath();
+                    ctx.moveTo(pOrigin.sx, pOrigin.sy);
+                    ctx.lineTo(pSpoke.sx, pSpoke.sy);
+                    ctx.stroke();
+                }
+            }
+            ctx.restore();
+        }
+
+        // 2. PRIMARY 3D FAULT PLANE DISC + STRIKE / DOWN-DIP GEOLOGICAL CROSSHAIRS
+        this._draw3DProjectedDisc(
+            ctx, cam, cssW, cssH, originW,
+            sVec, dVec, discR,
+            'rgba(245, 158, 11, 0.13)', '#fbbf24', 2.2, false
+        );
+
+        const sMinus = this._projectWorldPoint(originW[0] - sVec[0] * discR, originW[1] - sVec[1] * discR, originW[2] - sVec[2] * discR, cam, cssW, cssH);
+        const sPlus  = this._projectWorldPoint(originW[0] + sVec[0] * discR, originW[1] + sVec[1] * discR, originW[2] + sVec[2] * discR, cam, cssW, cssH);
+        const dPlus  = this._projectWorldPoint(originW[0] + dVec[0] * (discR * 0.78), originW[1] + dVec[1] * (discR * 0.78), originW[2] + dVec[2] * (discR * 0.78), cam, cssW, cssH);
+
+        ctx.save();
+        if (sMinus && sPlus)
+        {
+            ctx.strokeStyle = 'rgba(52, 211, 153, 0.62)';
+            ctx.lineWidth = 1.4;
+            ctx.setLineDash([6, 4]);
+            ctx.beginPath();
+            ctx.moveTo(sMinus.sx, sMinus.sy);
+            ctx.lineTo(sPlus.sx, sPlus.sy);
+            ctx.stroke();
+        }
+        if (dPlus)
+        {
+            ctx.strokeStyle = 'rgba(251, 113, 133, 0.72)';
+            ctx.lineWidth = 1.8;
+            ctx.setLineDash([]);
+            ctx.beginPath();
+            ctx.moveTo(pOrigin.sx, pOrigin.sy);
+            ctx.lineTo(dPlus.sx, dPlus.sy);
+            ctx.stroke();
+        }
+        ctx.restore();
+
+        // Optional world X/Y/Z Move mode (`W`) for precision fault origin positioning
+        if (this.gizmoToolMode === 'translate')
+        {
+            const moveLen = clamp(discR * 0.58, 1.15, 2.5);
+            const axes = [
+                { id: 'fault_mv_x', label: 'X', vec: [1, 0, 0], col: '#ff6b6b' },
+                { id: 'fault_mv_y', label: 'Y', vec: [0, 1, 0], col: '#7ee787' },
+                { id: 'fault_mv_z', label: 'Z', vec: [0, 0, 1], col: '#6cb6ff' }
+            ];
+            for (const ax of axes)
+            {
+                const tipW = [originW[0] + ax.vec[0] * moveLen, originW[1] + ax.vec[1] * moveLen, originW[2] + ax.vec[2] * moveLen];
+                const pTip = this._projectWorldPoint(tipW[0], tipW[1], tipW[2], cam, cssW, cssH);
+                if (!pTip) continue;
+                const isHov = (this._hoveredHandle?.id === ax.id) || (this._gizmoDrag?.handle?.id === ax.id);
+                ctx.save();
+                ctx.strokeStyle = ax.col;
+                ctx.lineWidth = isHov ? 3.2 : 2.3;
+                ctx.beginPath();
+                ctx.moveTo(pOrigin.sx, pOrigin.sy);
+                ctx.lineTo(pTip.sx, pTip.sy);
+                ctx.stroke();
+                ctx.restore();
+                this._drawFaultBadge(ctx, pTip.sx, pTip.sy, ax.label, ax.col, isHov, 8.5);
+                this._screenHandles.push({
+                    id: ax.id,
+                    kind: 'fault_move_axis',
+                    axisVec: ax.vec,
+                    centerWorld: originW,
+                    anchorWorld: tipW,
+                    sx: pTip.sx,
+                    sy: pTip.sy,
+                    hitRadius: 14
+                });
+            }
+        }
+
+        // 3. HORIZONTAL STRIKE COMPASS RING (`STR`) + VERTICAL DIP PROTRACTOR ARC (`DIP`)
+        const strikeRingR = discR * 0.90;
+        const ringSegs = 48;
+        let prevStrikeP = null, prevStrikeW = null;
+        const isStrikeHov = (this._hoveredHandle?.kind === 'fault_strike_ring') || (this._gizmoDrag?.handle?.kind === 'fault_strike_ring');
+        for (let i = 0; i <= ringSegs; i++)
+        {
+            const a = (i / ringSegs) * Math.PI * 2.0;
+            const wPt = [originW[0] + Math.sin(a) * strikeRingR, originW[1], originW[2] + Math.cos(a) * strikeRingR];
+            const p2 = this._projectWorldPoint(wPt[0], wPt[1], wPt[2], cam, cssW, cssH);
+            if (prevStrikeP && p2)
+            {
+                ctx.save();
+                ctx.strokeStyle = isStrikeHov ? '#6ee7b7' : 'rgba(52, 211, 153, 0.72)';
+                ctx.lineWidth = isStrikeHov ? 2.8 : 1.7;
+                ctx.beginPath();
+                ctx.moveTo(prevStrikeP.sx, prevStrikeP.sy);
+                ctx.lineTo(p2.sx, p2.sy);
+                ctx.stroke();
+                ctx.restore();
+
+                this._screenRotateSegs.push({
+                    rotKey: 'faultStrike',
+                    handleKind: 'fault_strike_ring',
+                    centerWorld: originW,
+                    planeUpW: [0, 1, 0],
+                    x0: prevStrikeP.sx, y0: prevStrikeP.sy,
+                    x1: p2.sx,          y1: p2.sy,
+                    w0: prevStrikeW,    w1: wPt
+                });
+            }
+            prevStrikeP = p2;
+            prevStrikeW = wPt;
+        }
+
+        const strikeHandleW = [originW[0] + sVec[0] * strikeRingR, originW[1], originW[2] + sVec[2] * strikeRingR];
+        const pStrikeH = this._projectWorldPoint(strikeHandleW[0], strikeHandleW[1], strikeHandleW[2], cam, cssW, cssH);
+        if (pStrikeH)
+        {
+            this._drawFaultBadge(ctx, pStrikeH.sx, pStrikeH.sy, 'STR', '#34d399', isStrikeHov, 10.5);
+            this._screenHandles.push({
+                id: 'fault_strike_ring',
+                kind: 'fault_strike_ring',
+                centerWorld: originW,
+                planeUpW: [0, 1, 0],
+                anchorWorld: strikeHandleW,
+                sx: pStrikeH.sx,
+                sy: pStrikeH.sy,
+                hitRadius: 15
+            });
+        }
+
+        // Dip Protractor Arc (0° horizontal -> 90° vertical down-dip in plane perpendicular to Strike)
+        const hAz = [sVec[2], 0.0, -sVec[0]];
+        const dipArcR = discR * 0.78;
+        const arcSegs = 24;
+        let prevDipP = null, prevDipW = null;
+        const isDipHov = (this._hoveredHandle?.kind === 'fault_dip_ring') || (this._gizmoDrag?.handle?.kind === 'fault_dip_ring');
+        for (let i = 0; i <= arcSegs; i++)
+        {
+            const a = (i / arcSegs) * (Math.PI * 0.5);
+            const ca = Math.cos(a), sa = Math.sin(a);
+            const wPt = [
+                originW[0] + hAz[0] * ca * dipArcR,
+                originW[1] - sa * dipArcR,
+                originW[2] + hAz[2] * ca * dipArcR
+            ];
+            const p2 = this._projectWorldPoint(wPt[0], wPt[1], wPt[2], cam, cssW, cssH);
+            if (prevDipP && p2)
+            {
+                ctx.save();
+                ctx.strokeStyle = isDipHov ? '#fda4af' : '#fb7185';
+                ctx.lineWidth = isDipHov ? 3.0 : 2.1;
+                ctx.beginPath();
+                ctx.moveTo(prevDipP.sx, prevDipP.sy);
+                ctx.lineTo(p2.sx, p2.sy);
+                ctx.stroke();
+                ctx.restore();
+
+                this._screenRotateSegs.push({
+                    rotKey: 'faultDip',
+                    handleKind: 'fault_dip_ring',
+                    centerWorld: originW,
+                    strikeVec: sVec,
+                    planeUpW: sVec,
+                    x0: prevDipP.sx, y0: prevDipP.sy,
+                    x1: p2.sx,       y1: p2.sy,
+                    w0: prevDipW,    w1: wPt
+                });
+            }
+            prevDipP = p2;
+            prevDipW = wPt;
+        }
+
+        const dipHandleW = [
+            originW[0] + dVec[0] * dipArcR,
+            originW[1] + dVec[1] * dipArcR,
+            originW[2] + dVec[2] * dipArcR
+        ];
+        const pDipH = this._projectWorldPoint(dipHandleW[0], dipHandleW[1], dipHandleW[2], cam, cssW, cssH);
+        if (pDipH)
+        {
+            this._drawFaultBadge(ctx, pDipH.sx, pDipH.sy, 'DIP', '#fb7185', isDipHov, 10.5);
+            this._screenHandles.push({
+                id: 'fault_dip_ring',
+                kind: 'fault_dip_ring',
+                centerWorld: originW,
+                strikeVec: sVec,
+                planeUpW: sVec,
+                anchorWorld: dipHandleW,
+                sx: pDipH.sx,
+                sy: pDipH.sy,
+                hitRadius: 15
+            });
+        }
+
+        // 4. GOLDEN FAULT NORMAL ARROW (`N`)
+        const normLen = clamp(discR * 0.68, 1.25, 2.8);
+        const normTipW = [
+            originW[0] + nVec[0] * normLen,
+            originW[1] + nVec[1] * normLen,
+            originW[2] + nVec[2] * normLen
+        ];
+        const pNormTip = this._projectWorldPoint(normTipW[0], normTipW[1], normTipW[2], cam, cssW, cssH);
+        if (pNormTip)
+        {
+            const isNormHov = (this._hoveredHandle?.id === 'fault_normal_aim') || (this._gizmoDrag?.handle?.id === 'fault_normal_aim');
+            const nCol = isNormHov ? '#fde68a' : '#f59e0b';
+            const ang = Math.atan2(pNormTip.sy - pOrigin.sy, pNormTip.sx - pOrigin.sx);
+
+            ctx.save();
+            ctx.strokeStyle = nCol;
+            ctx.lineWidth = isNormHov ? 3.4 : 2.6;
+            ctx.beginPath();
+            ctx.moveTo(pOrigin.sx, pOrigin.sy);
+            ctx.lineTo(pNormTip.sx, pNormTip.sy);
+            ctx.stroke();
+
+            const head = 11.0;
+            ctx.fillStyle = nCol;
+            ctx.beginPath();
+            ctx.moveTo(pNormTip.sx, pNormTip.sy);
+            ctx.lineTo(pNormTip.sx - head * Math.cos(ang - 0.42), pNormTip.sy - head * Math.sin(ang - 0.42));
+            ctx.lineTo(pNormTip.sx - head * Math.cos(ang + 0.42), pNormTip.sy - head * Math.sin(ang + 0.42));
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+
+            const bx = pNormTip.sx + Math.cos(ang) * 12;
+            const by = pNormTip.sy + Math.sin(ang) * 12;
+            this._drawFaultBadge(ctx, bx, by, 'N', nCol, isNormHov, 9.5);
+            this._screenHandles.push({
+                id: 'fault_normal_aim',
+                kind: 'fault_normal_aim',
+                centerWorld: originW,
+                planeUpW: [-cam.fwd[0], -cam.fwd[1], -cam.fwd[2]],
+                anchorWorld: normTipW,
+                sx: bx,
+                sy: by,
+                hitRadius: 16
+            });
+        }
+
+        // 5. KINEMATIC SLIP-VECTOR HANDLE (`SLIP`) + NORMAL HEAVE (`HV`) + HINGE TILT (`TLT`)
+        if (this.gizmoToolMode !== 'rotate')
+        {
+            const visScale = 1.15;
+            const nHeave = p.normalHeave ?? 0.0;
+            const sSlip = p.strikeSlip ?? 0.0;
+            const dSlip = p.dipSlip ?? 0.0;
+            const heaveBaseLen = 0.55 + nHeave * visScale;
+
+            const heaveTipW = [
+                originW[0] + nVec[0] * heaveBaseLen,
+                originW[1] + nVec[1] * heaveBaseLen,
+                originW[2] + nVec[2] * heaveBaseLen
+            ];
+            const pHeave = this._projectWorldPoint(heaveTipW[0], heaveTipW[1], heaveTipW[2], cam, cssW, cssH);
+            if (pHeave)
+            {
+                const isHvHov = (this._hoveredHandle?.id === 'fault_heave_axis') || (this._gizmoDrag?.handle?.id === 'fault_heave_axis');
+                this._drawFaultBadge(ctx, pHeave.sx, pHeave.sy, 'HV', '#a78bfa', isHvHov, 8.8);
+                this._screenHandles.push({
+                    id: 'fault_heave_axis',
+                    kind: 'fault_heave_axis',
+                    axisVec: nVec,
+                    visScale,
+                    centerWorld: originW,
+                    anchorWorld: heaveTipW,
+                    sx: pHeave.sx,
+                    sy: pHeave.sy,
+                    hitRadius: 13
+                });
+            }
+
+            // Slip-vector handle offset cleanly on the fault plane so it never collides with Origin when slip = 0
+            const slipAnchorBase = [
+                originW[0] + nVec[0] * (0.28 + nHeave * 0.65) - dVec[0] * 0.42,
+                originW[1] + nVec[1] * (0.28 + nHeave * 0.65) - dVec[1] * 0.42,
+                originW[2] + nVec[2] * (0.28 + nHeave * 0.65) - dVec[2] * 0.42
+            ];
+            const slipTipW = [
+                slipAnchorBase[0] + (sVec[0] * sSlip + dVec[0] * dSlip) * visScale,
+                slipAnchorBase[1] + (sVec[1] * sSlip + dVec[1] * dSlip) * visScale,
+                slipAnchorBase[2] + (sVec[2] * sSlip + dVec[2] * dSlip) * visScale
+            ];
+            const pSlipBase = this._projectWorldPoint(slipAnchorBase[0], slipAnchorBase[1], slipAnchorBase[2], cam, cssW, cssH);
+            const pSlipTip  = this._projectWorldPoint(slipTipW[0], slipTipW[1], slipTipW[2], cam, cssW, cssH);
+            if (pSlipBase && pSlipTip)
+            {
+                const isSlipHov = (this._hoveredHandle?.id === 'fault_slip_vec') || (this._gizmoDrag?.handle?.id === 'fault_slip_vec');
+                const slipCol = isSlipHov ? '#7dd3fc' : '#38bdf8';
+                ctx.save();
+                ctx.strokeStyle = slipCol;
+                ctx.lineWidth = isSlipHov ? 3.2 : 2.4;
+                ctx.beginPath();
+                ctx.moveTo(pSlipBase.sx, pSlipBase.sy);
+                ctx.lineTo(pSlipTip.sx, pSlipTip.sy);
+                ctx.stroke();
+                ctx.restore();
+
+                this._drawFaultBadge(ctx, pSlipTip.sx, pSlipTip.sy, 'SLIP', slipCol, isSlipHov, 11.5);
+                this._screenHandles.push({
+                    id: 'fault_slip_vec',
+                    kind: 'fault_slip_vec',
+                    normalVec: nVec,
+                    visScale,
+                    centerWorld: originW,
+                    planeUpW: nVec,
+                    anchorWorld: slipTipW,
+                    sx: pSlipTip.sx,
+                    sy: pSlipTip.sy,
+                    hitRadius: 16
+                });
+            }
+
+            // Hinge Tilt handle (`TLT`)
+            const tiltRad = (p.hingeTiltDeg ?? 0.0) * DEG2RAD;
+            const ct = Math.cos(tiltRad), st = Math.sin(tiltRad);
+            const tiltDist = discR * 0.56;
+            const tiltTipW = [
+                originW[0] + (-dVec[0] * ct + nVec[0] * st) * tiltDist,
+                originW[1] + (-dVec[1] * ct + nVec[1] * st) * tiltDist,
+                originW[2] + (-dVec[2] * ct + nVec[2] * st) * tiltDist
+            ];
+            const pTilt = this._projectWorldPoint(tiltTipW[0], tiltTipW[1], tiltTipW[2], cam, cssW, cssH);
+            if (pTilt)
+            {
+                const isTiltHov = (this._hoveredHandle?.id === 'fault_hinge_tilt') || (this._gizmoDrag?.handle?.id === 'fault_hinge_tilt');
+                this._drawFaultBadge(ctx, pTilt.sx, pTilt.sy, 'TLT', '#f472b6', isTiltHov, 9.5);
+                this._screenHandles.push({
+                    id: 'fault_hinge_tilt',
+                    kind: 'fault_hinge_tilt',
+                    centerWorld: originW,
+                    anchorWorld: tiltTipW,
+                    sx: pTilt.sx,
+                    sy: pTilt.sy,
+                    hitRadius: 14
+                });
+            }
+        }
+
+        // 6. FAULT ORIGIN HANDLE (`O`) + VERTICAL LIFT ARROW (`Y`)
+        if (this.gizmoToolMode !== 'translate')
+        {
+            const yLiftW = [originW[0], originW[1] + clamp(discR * 0.42, 0.75, 1.5), originW[2]];
+            const pYLift = this._projectWorldPoint(yLiftW[0], yLiftW[1], yLiftW[2], cam, cssW, cssH);
+            if (pYLift)
+            {
+                const isYHov = (this._hoveredHandle?.id === 'fault_origin_y') || (this._gizmoDrag?.handle?.id === 'fault_origin_y');
+                ctx.save();
+                ctx.strokeStyle = isYHov ? '#bbf7d0' : '#4ade80';
+                ctx.lineWidth = isYHov ? 2.8 : 2.0;
+                ctx.beginPath();
+                ctx.moveTo(pOrigin.sx, pOrigin.sy);
+                ctx.lineTo(pYLift.sx, pYLift.sy);
+                ctx.stroke();
+                ctx.restore();
+                this._drawFaultBadge(ctx, pYLift.sx, pYLift.sy, 'Y', '#4ade80', isYHov, 8.2);
+                this._screenHandles.push({
+                    id: 'fault_origin_y',
+                    kind: 'fault_origin_y',
+                    axisVec: [0, 1, 0],
+                    centerWorld: originW,
+                    anchorWorld: yLiftW,
+                    sx: pYLift.sx,
+                    sy: pYLift.sy,
+                    hitRadius: 13
+                });
+            }
+        }
+
+        const isOrigHov = (this._hoveredHandle?.id === 'fault_origin_xz') || (this._gizmoDrag?.handle?.id === 'fault_origin_xz');
+        this._drawFaultBadge(ctx, pOrigin.sx, pOrigin.sy, 'O', '#fbbf24', isOrigHov, 10.0);
+        this._screenHandles.push({
+            id: 'fault_origin_xz',
+            kind: 'fault_origin_xz',
+            planeUpW: [0, 1, 0],
+            centerWorld: originW,
+            anchorWorld: originW,
+            sx: pOrigin.sx,
+            sy: pOrigin.sy,
+            hitRadius: 15
+        });
+
+        // Live Geological Attitude / Kinematic Slip Readout Pill
+        const dragKind = this._gizmoDrag?.handle?.kind || '';
+        if (dragKind.startsWith('fault_'))
+        {
+            let pillTxt = `Strike ${(p.strikeYawDeg ?? 18).toFixed(1)}° · Dip ${(p.dipPitchDeg ?? 68).toFixed(1)}°`;
+            let pillCol = '#fbbf24';
+            if (dragKind === 'fault_slip_vec' || dragKind === 'fault_heave_axis' || dragKind === 'fault_hinge_tilt')
+            {
+                pillTxt = `Heave ${(p.normalHeave ?? 0).toFixed(2)}m · Strike-Slip ${(p.strikeSlip ?? 0).toFixed(2)}m · Dip-Slip ${(p.dipSlip ?? 0).toFixed(2)}m · Tilt ${(p.hingeTiltDeg ?? 0).toFixed(1)}°`;
+                pillCol = '#38bdf8';
+            }
+            else if (dragKind === 'fault_origin_xz' || dragKind === 'fault_origin_y' || dragKind === 'fault_move_axis')
+            {
+                pillTxt = `Fault Origin  X ${(p.originX ?? 0).toFixed(2)}m · Y ${(p.originY ?? 1.8).toFixed(2)}m · Z ${(p.originZ ?? 0).toFixed(2)}m`;
+                pillCol = '#4ade80';
+            }
+            else if (dragKind === 'fault_conj_angle')
+            {
+                pillTxt = `Conjugate X-Shear Inter-Angle  ${(p.conjugateAngleDeg ?? 62).toFixed(1)}°`;
+                pillCol = '#fb7185';
+            }
+            this._drawGizmoReadoutPill(ctx, pOrigin.sx, pOrigin.sy + 28, pillTxt, pillCol);
+        }
+    }
+
     _renderGizmoOverlay(cam)
     {
         const ov = this.overlayCanvas;
@@ -2399,6 +3540,15 @@ export class RockFormation2Viewport
 
         const layer = this.activeLayer;
         if (!this.showGizmos || !layer || !layer.enabled) return;
+
+        if (isRock2ModifierType(layer.type))
+        {
+            if (layer.type === 'split_fault')
+            {
+                this._renderFaultModifierGizmo(ctx, cam, cssW, cssH, layer);
+            }
+            return;
+        }
 
         const { R, pivot } = this._getLayerTransform(layer);
         const lSx = clamp(layer.params?.scaleX ?? 1.0, 0.12, 8.0);

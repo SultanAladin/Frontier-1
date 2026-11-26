@@ -39,7 +39,11 @@ import {
 } from './Engine/RockCliff/PureSdfFractureEngine.js';
 import {
     ROCK2_NODE_CATALOG,
+    ROCK2_MODIFIER_CATALOG,
     ROCK2_STARTER_STACKS,
+    isRock2ModifierType,
+    computeRock2FaultBasis,
+    rock2FaultNormalToStrikeDip,
     buildRock2SplinePresetKnots,
     buildRock2SplineArcTable,
     sampleRock2SplineAtNormalizedArc,
@@ -1430,7 +1434,7 @@ Suite('28. RockFormation 2.0: 11 atomic single base rocks, per-layer Spline/Arra
     assert.ok(Number.isFinite(evalRock2StackSdf(StackAllOps, 0.2, 1.0, 0.1)), 'Chamfer & Intersect stack modes must evaluate finite SDF');
 
     // 4. Validate Starter Stacks, Pure-SDF QEF Dual-Contour Mesh Extraction (0 Mesh->SDF), GLB/OBJ/STL export & JSON round-trip
-    assert.equal(ROCK2_STARTER_STACKS.length, 12, 'Must provide 12 starter stacks (including Moab Sandstone Arch & Sky Island + 3D Orbital Cloud)');
+    assert.ok(ROCK2_STARTER_STACKS.length >= 14, 'Must provide >= 14 starter stacks (including Moab Arch, Sky Island, Cleaved Jigsaw Monolith & Conjugate Fault Cliff)');
     const OutcropDoc = createDefaultRock2Document('stack-cliff-outcrop');
     const OutcropCompiled = compileRock2Stack(OutcropDoc);
     assert.equal(OutcropCompiled.compiledLayers[0].generatorType, 'spline');
@@ -2050,4 +2054,206 @@ Suite('32. Phase C: Multi-rock layers support non-destructive per-instance ray-p
     assert.ok(Baked.sdfStats.triangles > 800, `Customized multi-rock stack must bake valid QEF mesh (${Baked.sdfStats.triangles} tris)`);
 });
 
-console.log(`\nAll ${Passed}/32 Open-World SDF Terrain & Pure-SDF Rock Formation 1.0 + 2.0 Studio validation suites passed!`);
+Suite('33. Phase D · Modifier D1: Kinematic Split & Fault Plane (T^-1(p) Slip, 4 Modes, Blind V-Tip, Scope & QEF)', () =>
+{
+    assert.ok(ROCK2_MODIFIER_CATALOG.some(m => m.type === 'split_fault'), 'Catalog must register split_fault modifier');
+    assert.equal(isRock2ModifierType('split_fault'), true, 'split_fault must be recognized as a modifier type');
+    assert.equal(isRock2ModifierType('big_boulder'), false, 'Plain rock must not be flagged as a modifier');
+
+    // A. Orthonormal Geological Fault Frame + Normal -> Strike/Dip Round-Trip (used by 3D Normal Arrow Gizmo)
+    for (const [strikeIn, dipIn] of [[-135, 24], [-22.5, 58], [0, 75], [48, 36], [142, 84]])
+    {
+        const B = computeRock2FaultBasis(strikeIn, dipIn);
+        const lenS = Math.hypot(...B.strike), lenD = Math.hypot(...B.dip), lenN = Math.hypot(...B.normal);
+        assert.ok(Math.abs(lenS - 1) < 1e-6 && Math.abs(lenD - 1) < 1e-6 && Math.abs(lenN - 1) < 1e-6, 'Fault basis vectors must be unit length');
+        const dotSD = B.strike[0] * B.dip[0] + B.strike[1] * B.dip[1] + B.strike[2] * B.dip[2];
+        const dotSN = B.strike[0] * B.normal[0] + B.strike[1] * B.normal[1] + B.strike[2] * B.normal[2];
+        const dotDN = B.dip[0] * B.normal[0] + B.dip[1] * B.normal[1] + B.dip[2] * B.normal[2];
+        assert.ok(Math.abs(dotSD) < 1e-6 && Math.abs(dotSN) < 1e-6 && Math.abs(dotDN) < 1e-6, 'Fault basis must be mutually orthogonal');
+        assert.ok(Math.abs(B.strike[1]) < 1e-6 && B.dip[1] <= 1e-6 && B.normal[1] >= -1e-6, 'Strike horizontal, Dip downward, Normal upper-hemisphere');
+
+        const RT = rock2FaultNormalToStrikeDip(B.normal[0], B.normal[1], B.normal[2]);
+        assert.ok(Math.abs(RT.strikeYawDeg - strikeIn) <= 0.15, `Strike round-trip mismatch: ${RT.strikeYawDeg} vs ${strikeIn}`);
+        assert.ok(Math.abs(RT.dipPitchDeg - dipIn) <= 0.15, `Dip round-trip mismatch: ${RT.dipPitchDeg} vs ${dipIn}`);
+    }
+
+    // B. All 4 Split Modes + Family Distribution & Roughness / Kinematic Parameter Sensitivity
+    const BaseRock = createRock2Layer('big_boulder', {
+        posX: 0, posY: 0, posZ: 0,
+        params: { width: 4.8, height: 4.0, depth: 4.4, bevelRadius: 0.12, seed: 211 }
+    });
+    const IntactComp = compileRock2Stack({ layers: [BaseRock] });
+    const dCenterIntact = evalRock2StackSdf(IntactComp, 0.0, 1.8, 0.0);
+    assert.ok(dCenterIntact < -1.1, `Intact boulder core at (0, 1.8, 0) must be deep inside rock (got ${dCenterIntact.toFixed(3)})`);
+
+    // Mode 1: Single Custom Plane with Through-Cut & T^-1(p) Normal Heave + Dip-Slip + Jigsaw Roughness
+    const SingleMod = createRock2Layer('split_fault', {
+        params: {
+            splitMode: 'single_plane',
+            originX: 0.0, originY: 1.8, originZ: 0.0,
+            strikeYawDeg: 0.0, // normal = (+sin(90), cos(90), 0) = (+1, 0, 0) when dip = 90°!
+            dipPitchDeg: 90.0,
+            macroWavinessAmp: 0.18,
+            macroWavelength: 2.2,
+            microJaggednessAmp: 0.05,
+            microFrequency: 2.4,
+            octaves: 3,
+            anisotropyStretch: 1.35,
+            crackGapWidth: 0.16,
+            lipChamfer: 0.04,
+            vTaperDepth: 0.0,
+            normalHeave: 0.85,
+            strikeSlip: 0.30,
+            dipSlip: 0.45,
+            hingeTiltDeg: 8.0,
+            gravitySettle: 0.15,
+            seed: 505
+        }
+    });
+    const SingleComp = compileRock2Stack({ layers: [BaseRock, SingleMod] });
+    assert.equal(SingleComp.compiledModifiers.length, 1);
+    assert.equal(SingleComp.compiledModifiers[0].planes.length, 1);
+    assert.equal(SingleComp.compiledModifiers[0].blocks.length, 2);
+
+    // Along x = 0.35 (inside the dilated heave chasm between footwall x <= 0 and hanging wall shifted +0.85m along +X), SDF must be open air (> 0)!
+    const dInChasm = evalRock2StackSdf(SingleComp, 0.38, 1.8, 0.0);
+    assert.ok(dInChasm > 0.05, `Dilated fault chasm at x=0.38 must be open air > 0 (got ${dInChasm.toFixed(3)})`);
+
+    // Displaced hanging wall moved out beyond original boulder bound (+X) must now contain solid rock (< 0) AND ray-pick back to BaseRock!
+    let foundDisplacedInterior = false;
+    for (let tx = 1.6; tx <= 3.1; tx += 0.25)
+    {
+        if (evalRock2StackSdf(IntactComp, tx, 1.4, -0.3) > 0.05 && evalRock2StackSdf(SingleComp, tx, 1.4, -0.3) < -0.05)
+        {
+            foundDisplacedInterior = true;
+            break;
+        }
+    }
+    assert.ok(foundDisplacedInterior, 'Rigid T^-1(p) heave/slip/tilt must carry solid hanging-wall rock into previously empty +X space');
+
+    const PickDisplaced = pickRock2LayerAtRay(SingleComp, [6.0, 1.5, -0.3], [-1.0, 0.0, 0.0]);
+    assert.equal(PickDisplaced?.layerId, BaseRock.id, 'Ray-picking displaced hanging wall must pull back via T^-1(p) to true source rock layer');
+
+    // Mode 2: Parallel Fault Family (`planeCount = 4` -> 4 planes, 5 slab blocks)
+    const FamilyMod = createRock2Layer('split_fault', {
+        params: {
+            splitMode: 'parallel_family',
+            originX: 0.0, originY: 1.8, originZ: 0.0,
+            strikeYawDeg: 15.0, dipPitchDeg: 72.0,
+            planeCount: 4, spacing: 0.85, spacingJitter: 0.22, dipJitterDeg: 4.0,
+            crackGapWidth: 0.10, normalHeave: 0.14, dipSlip: 0.18, seed: 612
+        }
+    });
+    const FamCompA = compileRock2Stack({ layers: [BaseRock, FamilyMod] });
+    assert.equal(FamCompA.compiledModifiers[0].planes.length, 4, 'Parallel family must build 4 planes');
+    assert.equal(FamCompA.compiledModifiers[0].blocks.length, 5, 'Parallel family of 4 planes must partition into 5 slab blocks');
+    FamilyMod.params.spacing = 1.45;
+    const FamCompB = compileRock2Stack({ layers: [BaseRock, FamilyMod] });
+    assert.ok(Math.abs(evalRock2StackSdf(FamCompA, 0.9, 1.8, 0.2) - evalRock2StackSdf(FamCompB, 0.9, 1.8, 0.2)) > 1e-3, 'Family spacing must actively move fault slabs');
+
+    // Mode 3: Conjugate X-Shear Pair (`conjugate_pair` -> 2 intersecting sets, 4 quadrant blocks)
+    const ConjMod = createRock2Layer('split_fault', {
+        params: {
+            splitMode: 'conjugate_pair',
+            originX: 0.0, originY: 1.8, originZ: 0.0,
+            strikeYawDeg: 10.0, dipPitchDeg: 66.0, conjugateAngleDeg: 58.0,
+            planeCount: 2, crackGapWidth: 0.09, normalHeave: 0.12, dipSlip: 0.20, seed: 719
+        }
+    });
+    const ConjCompA = compileRock2Stack({ layers: [BaseRock, ConjMod] });
+    assert.equal(ConjCompA.compiledModifiers[0].planes.length, 2, '2-plane conjugate mode must emit Set A + Set B');
+    assert.equal(ConjCompA.compiledModifiers[0].blocks.length, 4, 'Conjugate X-shear pair must partition into 4 rigid wedges');
+    ConjMod.params.conjugateAngleDeg = 104.0;
+    const ConjCompB = compileRock2Stack({ layers: [BaseRock, ConjMod] });
+    assert.ok(Math.abs(evalRock2StackSdf(ConjCompA, -0.6, 2.5, 0.3) - evalRock2StackSdf(ConjCompB, -0.6, 2.5, 0.3)) > 1e-3, 'conjugateAngleDeg must rotate X-shear Set B');
+
+    // Mode 4: Radial / Wedge Cleave (`radial_wedge` -> N sector planes, N outward wedges)
+    const RadialMod = createRock2Layer('split_fault', {
+        params: {
+            splitMode: 'radial_wedge',
+            originX: 0.0, originY: 1.8, originZ: 0.0,
+            strikeYawDeg: 0.0, dipPitchDeg: 80.0,
+            planeCount: 5, spacingJitter: 0.15, dipJitterDeg: 3.0,
+            crackGapWidth: 0.08, normalHeave: 0.22, gravitySettle: 0.18, seed: 823
+        }
+    });
+    const RadialComp = compileRock2Stack({ layers: [BaseRock, RadialMod] });
+    assert.equal(RadialComp.compiledModifiers[0].planes.length, 5, 'Radial wedge mode must build 5 sector planes');
+    assert.equal(RadialComp.compiledModifiers[0].blocks.length, 5, 'Radial wedge mode must build 5 sector blocks');
+
+    // C. Blind V-Taper Arrest (`vTaperDepth > 0`) vs Through-Cut (`vTaperDepth = 0`) + `tipSharpness` & `lipChamfer`
+    const BlindMod = createRock2Layer('split_fault', {
+        params: {
+            splitMode: 'single_plane',
+            originX: 0.0, originY: 1.8, originZ: 0.0,
+            strikeYawDeg: 0.0, dipPitchDeg: 90.0,
+            macroWavinessAmp: 0.0, microJaggednessAmp: 0.0,
+            crackGapWidth: 0.28,
+            lipChamfer: 0.05,
+            vTaperDepth: 0.75,
+            tipSharpness: 1.35,
+            normalHeave: 0.0, strikeSlip: 0.0, dipSlip: 0.0,
+            hingeTiltDeg: 0.0, gravitySettle: 0.0
+        }
+    });
+    const BlindComp = compileRock2Stack({ layers: [BaseRock, BlindMod] });
+    let topSkinY = 4.2;
+    while (topSkinY > 1.8 && evalRock2StackSdf(IntactComp, 0.0, topSkinY, 0.0) > 0.0) topSkinY -= 0.05;
+    const dShallowCrack = evalRock2StackSdf(BlindComp, 0.0, topSkinY - 0.15, 0.0);
+    const dMidCrack     = evalRock2StackSdf(BlindComp, 0.0, topSkinY - 0.40, 0.0);
+    const dDeepCore     = evalRock2StackSdf(BlindComp, 0.0, 1.8, 0.0);
+    assert.ok(dShallowCrack > 0.06, `Blind V-crack must open outer skin within vTaperDepth (got ${dShallowCrack.toFixed(3)})`);
+    assert.ok(dShallowCrack > dMidCrack && dMidCrack > 0.01, `Blind V-crack aperture must taper inward (${dShallowCrack.toFixed(3)} -> ${dMidCrack.toFixed(3)})`);
+    assert.ok(dDeepCore < -0.50, `Blind V-crack must arrest cleanly before deep boulder core (got ${dDeepCore.toFixed(3)})`);
+
+    BlindMod.params.tipSharpness = 2.60;
+    const BlindSharpComp = compileRock2Stack({ layers: [BaseRock, BlindMod] });
+    const dMidSharp = evalRock2StackSdf(BlindSharpComp, 0.0, topSkinY - 0.40, 0.0);
+    assert.ok(dMidSharp < dMidCrack - 0.01, `Higher tipSharpness must narrow mid-depth V-taper (${dMidSharp.toFixed(3)} < ${dMidCrack.toFixed(3)})`);
+
+    // D. Scoped Modifier (`targetScope = 'single_layer'`) leaves untargeted rocks 100% untouched!
+    const LeftRock = createRock2Layer('big_boulder', { posX: -3.5, posY: 0, posZ: 0, params: { width: 2.6, height: 2.6, depth: 2.6 } });
+    const RightRock = createRock2Layer('big_boulder', { posX: 3.5, posY: 0, posZ: 0, params: { width: 2.6, height: 2.6, depth: 2.6 } });
+    const ScopedMod = createRock2Layer('split_fault', {
+        params: {
+            targetScope: 'single_layer',
+            targetLayerId: LeftRock.id,
+            splitMode: 'single_plane',
+            originX: -3.5, originY: 1.2, originZ: 0.0,
+            strikeYawDeg: 0.0, dipPitchDeg: 90.0,
+            crackGapWidth: 0.30, normalHeave: 0.65,
+            macroWavinessAmp: 0.0, microJaggednessAmp: 0.0
+        }
+    });
+    const TwoRocksIntact = compileRock2Stack({ layers: [LeftRock, RightRock] });
+    const TwoRocksScoped = compileRock2Stack({ layers: [LeftRock, RightRock, ScopedMod] });
+    assert.ok(evalRock2StackSdf(TwoRocksScoped, -3.3, 1.2, 0.0) > 0.02, 'Targeted LeftRock must be cleaved open');
+    const dRightBefore = evalRock2StackSdf(TwoRocksIntact, 3.5, 1.2, 0.0);
+    const dRightAfter  = evalRock2StackSdf(TwoRocksScoped, 3.5, 1.2, 0.0);
+    assert.ok(Math.abs(dRightBefore - dRightAfter) < 1e-6, `Untargeted RightRock must stay bit-identical (${dRightBefore} vs ${dRightAfter})`);
+
+    // E. Starter Stacks #13 & #14 + GPU Fault Packer + JSON v3 Round-Trip + QEF Dual-Contour Mesh (0 Mesh->SDF)
+    assert.ok(ROCK2_STARTER_STACKS.some(s => s.id === 'stack-cleaved-jigsaw-monolith'), 'Starter Stack #13 must exist');
+    assert.ok(ROCK2_STARTER_STACKS.some(s => s.id === 'stack-conjugate-fault-cliff'), 'Starter Stack #14 must exist');
+
+    const Starter13 = createDefaultRock2Document('stack-cleaved-jigsaw-monolith');
+    const Comp13 = compileRock2Stack(Starter13);
+    const Packed13 = packRock2StackGpuBuffers(Comp13);
+    assert.ok(Packed13.gpuPasses.some(p => p.kind === 'split_fault'), 'GPU packer must emit split_fault ping-pong pass');
+    assert.ok(Packed13.faultPlaneTexData.length >= 4 && Packed13.faultBlockTexData.length >= 8, 'GPU packer must pack fault plane & block textures');
+
+    const DocRT = deserializeRock2Document(JSON.parse(JSON.stringify(serializeRock2Document(Starter13))));
+    const Comp13RT = compileRock2Stack(DocRT);
+    for (const [px, py, pz] of [[0.0, 2.0, 0.0], [1.2, 2.4, -0.5], [-1.1, 1.5, 0.6]])
+    {
+        const dA = evalRock2StackSdf(Comp13, px, py, pz);
+        const dB = evalRock2StackSdf(Comp13RT, px, py, pz);
+        assert.ok(Math.abs(dA - dB) < 1e-6, `split_fault JSON round-trip mismatch at (${px},${py},${pz}): ${dA} vs ${dB}`);
+    }
+
+    const Baked13 = bakeRock2StackQefMesh(Comp13, { resolution: 52 });
+    assert.equal(Baked13.sdfStats.meshToSdfCount, 0, 'Modifier D1 QEF mesh extraction must perform ZERO Mesh->SDF conversions');
+    assert.ok(Baked13.sdfStats.triangles > 1000, `Cleaved monolith must extract rich manifold QEF mesh (${Baked13.sdfStats.triangles} tris)`);
+});
+
+console.log(`\nAll ${Passed}/33 Open-World SDF Terrain & Pure-SDF Rock Formation 1.0 + 2.0 Studio validation suites passed!`);

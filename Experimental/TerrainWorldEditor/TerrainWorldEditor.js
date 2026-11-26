@@ -64,9 +64,11 @@ import {
     ROCK2_COMBINE_MODES,
     ROCK2_STONE_TONES,
     ROCK2_NODE_CATALOG,
+    ROCK2_MODIFIER_CATALOG,
     ROCK2_STARTER_STACKS,
     ROCK2_ROCK_POOL_OPTIONS,
     ROCK2_ARCH_SPLINE_PRESETS,
+    isRock2ModifierType,
     getRock2NodeSpec,
     buildRock2SplinePresetKnots,
     normalizeSplineKnots,
@@ -528,14 +530,32 @@ class TerrainWorldStudioApp
         if (this.workspaceMode === 'rock2')
         {
             const Q = (this.outlinerSearch || '').toLowerCase();
+            const ModItems = ROCK2_MODIFIER_CATALOG.filter(M => !Q || M.name.toLowerCase().includes(Q) || M.shortBadge.toLowerCase().includes(Q) || M.desc.toLowerCase().includes(Q));
             const Items = ROCK2_NODE_CATALOG.filter(N => !Q || N.name.toLowerCase().includes(Q) || N.shortBadge.toLowerCase().includes(Q) || N.desc.toLowerCase().includes(Q));
-            if (TitleEl) TitleEl.textContent = 'Add Basic Rock Node';
-            if (CountEl) CountEl.textContent = String(Items.length);
+            if (TitleEl) TitleEl.textContent = 'Add Rock & SDF Modifiers';
+            if (CountEl) CountEl.textContent = String(ModItems.length + Items.length);
+
+            for (let M = 0; M < ModItems.length; M++)
+            {
+                const Mod = ModItems[M];
+                const Btn = MakeEl('button', 'quick-add-card rock2-mod-add-card');
+                Btn.type = 'button';
+                Btn.title = `Add ${Mod.name} Pure-SDF Modifier to cleave & displace rock layers below`;
+                const Icon = MakeEl('span', 'quick-add-icon', ConstructGlyph(Mod.glyph || 'SplitFault'));
+                const Copy = MakeEl('span', 'quick-add-copy', [
+                    MakeEl('strong', '', `+ ${Mod.name}`),
+                    MakeEl('small', '', Mod.desc)
+                ]);
+                const Badge = MakeEl('span', 'preset-badge mod-badge', Mod.shortBadge || 'MOD');
+                Btn.append(Icon, Copy, Badge);
+                Btn.addEventListener('click', () => this._addRock2Layer(Mod.type));
+                List.appendChild(Btn);
+            }
 
             for (let I = 0; I < Items.length; I++)
             {
                 const Node = Items[I];
-                const Btn = MakeEl('button', 'quick-add-card' + (I === 0 ? ' featured-spline' : ''));
+                const Btn = MakeEl('button', 'quick-add-card' + (I === 0 && ModItems.length === 0 ? ' featured-spline' : ''));
                 Btn.type = 'button';
                 Btn.title = `Add plain ${Node.name} SDF layer to the Layer Stack`;
                 const Icon = MakeEl('span', 'quick-add-icon', ConstructGlyph(Node.glyph));
@@ -3849,7 +3869,21 @@ class TerrainWorldStudioApp
             if (!Lyr || !Lyr.params) return;
             const SelInst = this.rock2.selectedInstanceIndex ?? -1;
             this._pushRock2UndoSnapshot();
-            if (SelInst >= 0 && Lyr.generator?.instanceOverrides && Lyr.generator.instanceOverrides[SelInst])
+            if (isRock2ModifierType(Lyr.type))
+            {
+                const B = this.rock2.compiled?.bounds;
+                Lyr.params.originX = B ? Number(((B.minX + B.maxX) * 0.5).toFixed(2)) : 0.0;
+                Lyr.params.originY = B ? Number((B.minY + (B.maxY - B.minY) * 0.45).toFixed(2)) : 1.8;
+                Lyr.params.originZ = B ? Number(((B.minZ + B.maxZ) * 0.5).toFixed(2)) : 0.0;
+                Lyr.params.strikeYawDeg = 18.0;
+                Lyr.params.dipPitchDeg = 68.0;
+                Lyr.params.normalHeave = 0.0;
+                Lyr.params.strikeSlip = 0.0;
+                Lyr.params.dipSlip = 0.0;
+                Lyr.params.hingeTiltDeg = 0.0;
+                Lyr.params.gravitySettle = 0.0;
+            }
+            else if (SelInst >= 0 && Lyr.generator?.instanceOverrides && Lyr.generator.instanceOverrides[SelInst])
             {
                 delete Lyr.generator.instanceOverrides[SelInst];
             }
@@ -3932,9 +3966,10 @@ class TerrainWorldStudioApp
         }
 
         const Lyr = this._getSelectedRock2Layer();
+        const IsMod = !!(Lyr && isRock2ModifierType(Lyr.type));
         const CompLyr = this.rock2?.compiled?.compiledLayers?.find(C => C.id === Lyr?.id);
         const RawN = CompLyr?.rawInstanceCount ?? 1;
-        const HasMulti = !!(Lyr && Lyr.generator && Lyr.generator.type !== 'none' && RawN > 1);
+        const HasMulti = !IsMod && !!(Lyr && Lyr.generator && Lyr.generator.type !== 'none' && RawN > 1);
         const SelInst = HasMulti ? (this.rock2?.selectedInstanceIndex ?? -1) : -1;
 
         const ScopeBtn = document.getElementById('rock2-tool-scope');
@@ -3949,12 +3984,22 @@ class TerrainWorldStudioApp
             ScopeLbl.textContent = SelInst >= 0 ? `Rock #${SelInst + 1}` : 'Layer';
         }
 
+        const ScaleBtn = document.getElementById('rock2-tool-scale');
+        if (ScaleBtn)
+        {
+            ScaleBtn.style.display = IsMod ? 'none' : '';
+        }
+        if (IsMod && this.rock2View?.gizmoToolMode === 'scale')
+        {
+            this.rock2View.setGizmoToolMode('path');
+        }
+
         const CurTool = this.rock2View?.gizmoToolMode || 'path';
         const EffTool = (SelInst >= 0 && CurTool === 'path') ? 'translate' : CurTool;
         document.getElementById('rock2-tool-path')?.classList.toggle('active', ShowGiz && SelInst < 0 && EffTool === 'path');
         document.getElementById('rock2-tool-move')?.classList.toggle('active', ShowGiz && EffTool === 'translate');
         document.getElementById('rock2-tool-rotate')?.classList.toggle('active', ShowGiz && EffTool === 'rotate');
-        document.getElementById('rock2-tool-scale')?.classList.toggle('active', ShowGiz && EffTool === 'scale');
+        ScaleBtn?.classList.toggle('active', ShowGiz && !IsMod && EffTool === 'scale');
     }
 
     _pushRock2UndoSnapshot()
@@ -4008,6 +4053,43 @@ class TerrainWorldStudioApp
         this._pushRock2UndoSnapshot();
         const Stack = this.rock2.stack;
         const Count = Stack.layers.length;
+
+        if (isRock2ModifierType(NodeType))
+        {
+            const B = this.rock2.compiled?.bounds;
+            const OrigX = B ? Number(((B.minX + B.maxX) * 0.5).toFixed(2)) : 0.0;
+            const OrigY = B ? Number((B.minY + (B.maxY - B.minY) * 0.45).toFixed(2)) : 1.85;
+            const OrigZ = B ? Number(((B.minZ + B.maxZ) * 0.5).toFixed(2)) : 0.0;
+
+            const ModLayer = createRock2Layer(NodeType, {
+                params: {
+                    originX: OrigX,
+                    originY: OrigY,
+                    originZ: OrigZ,
+                    strikeYawDeg: 22.0,
+                    dipPitchDeg: 70.0,
+                    crackGapWidth: 0.045,
+                    lipChamfer: 0.05,
+                    normalHeave: 0.08,
+                    dipSlip: 0.16,
+                    seed: 401 + Count * 97
+                }
+            });
+            Stack.layers.push(ModLayer);
+            this.rock2.selectedLayerId = ModLayer.id;
+            this.rock2.selectedInstanceIndex = -1;
+            if (this.rock2View)
+            {
+                this.rock2View.selectedInstanceIndex = -1;
+                this.rock2View.setGizmoToolMode('path');
+            }
+            this._rebuildRock2StackNow(false);
+            this._syncRock2ToolbarButtons();
+            this.refreshChrome();
+            this.rebuildInspector();
+            return;
+        }
+
         // Gently offset newly stacked rock layers when > 0 so they are immediately visible in 3D space!
         const Angle = Count * 2.15;
         const OffsetR = Count === 0 ? 0.0 : Math.min(2.2, 0.95 + Count * 0.25);
@@ -4025,6 +4107,7 @@ class TerrainWorldStudioApp
         Stack.layers.push(NewLayer);
         this.rock2.selectedLayerId = NewLayer.id;
         this._rebuildRock2StackNow(false);
+        this._syncRock2ToolbarButtons();
         this.refreshChrome();
         this.rebuildInspector();
     }
@@ -4066,7 +4149,15 @@ class TerrainWorldStudioApp
         if (Idx < 0) return;
         this._pushRock2UndoSnapshot();
         const Copy = cloneRock2Layer(Layers[Idx]);
-        Copy.params.posX = Number(((Copy.params.posX || 0) + 0.85).toFixed(2));
+        if (isRock2ModifierType(Copy.type))
+        {
+            Copy.params.originX = Number(((Copy.params.originX || 0) + 0.65).toFixed(2));
+            Copy.params.seed = (((Copy.params.seed || 401) + 137) % 9999) + 1;
+        }
+        else
+        {
+            Copy.params.posX = Number(((Copy.params.posX || 0) + 0.85).toFixed(2));
+        }
         Layers.splice(Idx + 1, 0, Copy);
         this.rock2.selectedLayerId = Copy.id;
         this._rebuildRock2StackNow(false);
@@ -4185,7 +4276,9 @@ class TerrainWorldStudioApp
         const Stack = this.rock2.stack;
         const Compiled = this.rock2.compiled;
         const Stats = this.rock2.qefStats;
-        const HasSolo = Stack.layers.some(L => L.enabled && L.solo);
+        const HasSoloRock = Stack.layers.some(L => L.enabled && L.solo && !isRock2ModifierType(L.type));
+        const HasSoloMod = !HasSoloRock && Stack.layers.some(L => L.enabled && L.solo && isRock2ModifierType(L.type));
+        const HasSolo = HasSoloRock || HasSoloMod;
 
         const LeftTitle = document.getElementById('left-panel-title');
         if (LeftTitle) LeftTitle.textContent = 'Layer Stack';
@@ -4194,21 +4287,26 @@ class TerrainWorldStudioApp
         if (StatLbl1) StatLbl1.textContent = 'Layers ON';
         if (StatLbl2) StatLbl2.textContent = 'Plain Blocks';
         const SearchInp = document.getElementById('scene-search');
-        if (SearchInp) SearchInp.placeholder = 'Filter stack or plain rock nodes…';
+        if (SearchInp) SearchInp.placeholder = 'Filter stack, rocks or fault modifiers…';
+        const ActiveModCount = Compiled ? (Compiled.compiledModifiers?.length || 0) : 0;
         const LeftFoot = document.getElementById('left-footer-label');
-        if (LeftFoot) LeftFoot.textContent = 'Plain Rock SDF Stack · Zero Surface Noise';
+        if (LeftFoot) LeftFoot.textContent = ActiveModCount > 0
+            ? `Pure-SDF Stack · ${ActiveModCount} Kinematic Modifier${ActiveModCount === 1 ? '' : 's'}`
+            : 'Plain Rock SDF Stack · Composable Modifiers';
         const StageTitle = document.getElementById('stage-bar-title');
         if (StageTitle) StageTitle.textContent = 'RockFormation 2.0 · Layer Stack';
         const InspFootL = document.getElementById('inspector-foot-left');
         const InspFootR = document.getElementById('inspector-foot-right');
-        if (InspFootL) InspFootL.textContent = 'Plain Basic Rock SDF · Zero Noise';
+        if (InspFootL) InspFootL.textContent = ActiveModCount > 0 ? 'Pure-SDF · T⁻¹(p) Rigid Faults' : 'Plain Basic Rock SDF · Pure-SDF';
         if (InspFootR) InspFootR.textContent = 'Composable Layer Stack';
 
-        const ActiveLayerCount = Compiled ? Compiled.compiledLayers.length : 0;
+        const ActiveLayerCount = (Compiled ? Compiled.compiledLayers.length : 0) + ActiveModCount;
         const TotalBlocks = Compiled ? Compiled.primitives.length : 0;
         document.getElementById('stat-terrains-on').textContent = String(ActiveLayerCount);
         document.getElementById('stat-layers-total').textContent = String(TotalBlocks);
-        document.getElementById('outliner-subtitle').textContent = `${Stack.layers.length} Layer${Stack.layers.length === 1 ? '' : 's'} · ${TotalBlocks} Plain Primitives`;
+        document.getElementById('outliner-subtitle').textContent = ActiveModCount > 0
+            ? `${Stack.layers.length} Nodes · ${TotalBlocks} Primitives · ${ActiveModCount} Fault Mod${ActiveModCount === 1 ? '' : 's'}`
+            : `${Stack.layers.length} Layer${Stack.layers.length === 1 ? '' : 's'} · ${TotalBlocks} Plain Primitives`;
 
         const Outliner = document.getElementById('OutlinerContent');
         Outliner.innerHTML = '';
@@ -4232,15 +4330,19 @@ class TerrainWorldStudioApp
         for (let I = 0; I < Stack.layers.length; I++)
         {
             const Lyr = Stack.layers[I];
+            const IsMod = isRock2ModifierType(Lyr.type);
             const Def = getRock2NodeSpec(Lyr.type);
             if (Q && !Lyr.name.toLowerCase().includes(Q) && !Def.name.toLowerCase().includes(Q)) continue;
 
             const IsSel = Lyr.id === this.rock2.selectedLayerId;
-            const IsMuted = !Lyr.enabled || (HasSolo && !Lyr.solo);
+            const IsMuted = !Lyr.enabled
+                || (IsMod
+                    ? (HasSoloMod ? !Lyr.solo : (HasSoloRock && !Lyr.solo && Lyr.params?.targetScope !== 'single_layer'))
+                    : (HasSoloRock && !Lyr.solo));
             const ToneKey = Lyr.params?.stoneTone || 'clay';
             const Tone = ROCK2_STONE_TONES[ToneKey] || ROCK2_STONE_TONES.clay;
 
-            const Card = MakeEl('div', 'rock2-layer-card' + (IsSel ? ' selected' : '') + (IsMuted ? ' muted' : ''));
+            const Card = MakeEl('div', 'rock2-layer-card' + (IsMod ? ' modifier-card' : '') + (IsSel ? ' selected' : '') + (IsMuted ? ' muted' : ''));
             Card.addEventListener('click', () =>
             {
                 this.rock2.selectedLayerId = Lyr.id;
@@ -4256,26 +4358,44 @@ class TerrainWorldStudioApp
             });
 
             const IdxBadge = MakeEl('span', 'rock2-layer-idx', `#${String(I + 1).padStart(2, '0')}`);
-            const Dot = MakeEl('span', 'rock2-tone-dot');
-            Dot.style.background = Tone.hex;
+            const Dot = MakeEl('span', 'rock2-tone-dot' + (IsMod ? ' mod-dot' : ''));
+            Dot.style.background = IsMod ? '#f59e0b' : Tone.hex;
             const NameEl = MakeEl('span', 'rock2-layer-name', Lyr.name);
             const TopRow = MakeEl('div', 'rock2-layer-top', [IdxBadge, Dot, NameEl]);
 
-            const OpLabel = I === 0 ? 'Base' : (OpShort[Lyr.combineMode] || 'Union');
-            const OpClass = I === 0 ? 'op-union' : `op-${Lyr.combineMode}`;
-            const OpPill = MakeEl('span', `rock2-op-pill ${OpClass}`, OpLabel);
-            const NodeTag = MakeEl('span', 'rock2-node-tag', Def.name);
-            const MetaItems = [OpPill, NodeTag];
-
-            const GenType = Lyr.generator?.type || 'none';
-            if (GenType !== 'none')
+            let MetaItems = [];
+            if (IsMod)
             {
-                const CompLyr = Compiled?.compiledLayers?.find(C => C.id === Lyr.id);
-                const InstN = CompLyr ? CompLyr.instanceCount : evaluateRock2GeneratorInstances(Lyr.generator, Lyr.params).instances.length;
-                const GenShort = GenType === 'array' && Lyr.generator?.arrayMode === 'hex'
-                    ? 'HEX'
-                    : (GenType === 'spline' && Lyr.generator?.splineMode === 'arch_span' ? 'ARCH' : GenType.toUpperCase());
-                MetaItems.push(MakeEl('span', 'rock2-gen-pill', `${GenShort} ×${InstN}`));
+                const ModeMap = {
+                    single_plane: 'SINGLE',
+                    parallel_family: `FAMILY ×${Math.max(2, Math.round(Lyr.params?.planeCount ?? 3))}`,
+                    conjugate_pair: 'X-SHEAR',
+                    radial_wedge: `RADIAL ×${Math.max(3, Math.round(Lyr.params?.planeCount ?? 3))}`
+                };
+                const ModeTag = ModeMap[Lyr.params?.splitMode] || 'FAULT';
+                const ModPill = MakeEl('span', 'rock2-op-pill op-modifier', 'MOD · FAULT');
+                const NodeTag = MakeEl('span', 'rock2-node-tag', ModeTag);
+                const TipPill = MakeEl('span', 'rock2-gen-pill mod-gen-pill', (Lyr.params?.vTaperDepth ?? 0) > 0.001 ? 'BLIND V' : 'CLEAVE');
+                MetaItems = [ModPill, NodeTag, TipPill];
+            }
+            else
+            {
+                const OpLabel = I === 0 ? 'Base' : (OpShort[Lyr.combineMode] || 'Union');
+                const OpClass = I === 0 ? 'op-union' : `op-${Lyr.combineMode}`;
+                const OpPill = MakeEl('span', `rock2-op-pill ${OpClass}`, OpLabel);
+                const NodeTag = MakeEl('span', 'rock2-node-tag', Def.name);
+                MetaItems = [OpPill, NodeTag];
+
+                const GenType = Lyr.generator?.type || 'none';
+                if (GenType !== 'none')
+                {
+                    const CompLyr = Compiled?.compiledLayers?.find(C => C.id === Lyr.id);
+                    const InstN = CompLyr ? CompLyr.instanceCount : evaluateRock2GeneratorInstances(Lyr.generator, Lyr.params).instances.length;
+                    const GenShort = GenType === 'array' && Lyr.generator?.arrayMode === 'hex'
+                        ? 'HEX'
+                        : (GenType === 'spline' && Lyr.generator?.splineMode === 'arch_span' ? 'ARCH' : GenType.toUpperCase());
+                    MetaItems.push(MakeEl('span', 'rock2-gen-pill', `${GenShort} ×${InstN}`));
+                }
             }
             const Meta = MakeEl('div', 'rock2-layer-meta', MetaItems);
 
@@ -4343,7 +4463,335 @@ class TerrainWorldStudioApp
                 ? `4³ Sparse Bricks: ${Stats.activeBricks} (${Stats.brickOccupancyPct.toFixed(1)}% occ)`
                 : `Active Layers: ${ActiveLayerCount}/${Stack.layers.length} · Plain Blocks: ${TotalBlocks}`;
         }
-        if (SlabStat) SlabStat.textContent = `SDF Planes: ${Compiled ? Compiled.totalPlanes : 0} · Zero Fractures · Zero Noise`;
+        if (SlabStat)
+        {
+            const FaultPlanes = Compiled?.compiledModifiers?.reduce((s, m) => s + (m.planes?.length || 0), 0) || 0;
+            SlabStat.textContent = FaultPlanes > 0
+                ? `SDF Planes: ${Compiled ? Compiled.totalPlanes : 0} · Fault Planes: ${FaultPlanes} · 100% Pure-SDF`
+                : `SDF Planes: ${Compiled ? Compiled.totalPlanes : 0} · Zero Mesh->SDF`;
+        }
+    }
+
+    _buildRock2SplitFaultInspector(Content, Stack, Layer, LayerIdx, Def, SavedOpen, OnLive, OnCommit)
+    {
+        const P = Layer.params;
+        const Compiled = this.rock2.compiled;
+        const CompMod = Compiled?.compiledModifiers?.find(M => M.id === Layer.id) || null;
+        const SplitMode = P.splitMode || 'single_plane';
+        const IsBlind = (P.vTaperDepth ?? 0.0) > 0.001;
+
+        const Trio = MakeEl('div', 'kpi-trio', [
+            MakeEl('div', 'kpi-card highlight', [
+                MakeEl('span', 'kpi-label', 'Modifier Node'),
+                MakeEl('strong', 'kpi-val', `#${String(LayerIdx + 1).padStart(2, '0')} FAULT`),
+                MakeEl('span', 'kpi-sub', Def.name)
+            ]),
+            MakeEl('div', 'kpi-card', [
+                MakeEl('span', 'kpi-label', 'Fault Surfaces'),
+                MakeEl('strong', 'kpi-val', String(CompMod ? CompMod.planes.length : 1)),
+                MakeEl('span', 'kpi-sub', `${CompMod ? CompMod.blocks.length : 2} rigid blocks`)
+            ]),
+            MakeEl('div', 'kpi-card', [
+                MakeEl('span', 'kpi-label', 'Kinematics'),
+                MakeEl('strong', 'kpi-val', IsBlind ? 'Blind V' : 'T⁻¹(p)'),
+                MakeEl('span', 'kpi-sub', IsBlind ? `arrest @ ${(P.vTaperDepth ?? 0).toFixed(2)}m` : '0 Mesh→SDF')
+            ])
+        ]);
+        Content.appendChild(Trio);
+
+        // 1. Split Mode & Stack Scope
+        const ScopeTitle = 'Split Mode & Stack Scope';
+        const ScopeGrp = MakePropertyGroup(
+            ScopeTitle,
+            'SplitFault',
+            SplitMode.replace('_', ' ').toUpperCase(),
+            SavedOpen(ScopeTitle, true),
+            'Cleave all rock layers below this modifier in the stack or target a single specific rock layer.'
+        );
+
+        ScopeGrp.Body.appendChild(MakeSelectRow(
+            'Split Mode',
+            [
+                ['Single Custom Plane (3D Gizmo)', 'single_plane'],
+                ['Parallel Fault Family', 'parallel_family'],
+                ['Conjugate X-Shear Pair', 'conjugate_pair'],
+                ['Radial / Wedge Cleave', 'radial_wedge']
+            ],
+            SplitMode,
+            Val =>
+            {
+                this._pushRock2UndoSnapshot();
+                P.splitMode = Val;
+                if (Val === 'parallel_family' && (P.planeCount ?? 1) < 2) P.planeCount = 3;
+                if (Val === 'conjugate_pair' && (P.planeCount ?? 1) < 2) P.planeCount = 2;
+                if (Val === 'radial_wedge' && (P.planeCount ?? 1) < 3) P.planeCount = 3;
+                this._rebuildRock2StackNow(false);
+                this.refreshChrome();
+                this.rebuildInspector();
+            }
+        ));
+
+        const TargetScope = P.targetScope === 'single_layer' ? 'single_layer' : 'stack_below';
+        ScopeGrp.Body.appendChild(MakeSelectRow(
+            'Target Scope',
+            [
+                ['All Rock Layers Below (#01 → Here)', 'stack_below'],
+                ['Single Specific Rock Layer', 'single_layer']
+            ],
+            TargetScope,
+            Val =>
+            {
+                this._pushRock2UndoSnapshot();
+                P.targetScope = Val;
+                if (Val === 'single_layer' && !P.targetLayerId)
+                {
+                    const FirstRock = Stack.layers.find(L => !isRock2ModifierType(L.type));
+                    if (FirstRock) P.targetLayerId = FirstRock.id;
+                }
+                this._rebuildRock2StackNow(false);
+                this.refreshChrome();
+                this.rebuildInspector();
+            }
+        ));
+
+        if (TargetScope === 'single_layer')
+        {
+            const RockLayers = Stack.layers.filter(L => !isRock2ModifierType(L.type));
+            if (RockLayers.length > 0)
+            {
+                ScopeGrp.Body.appendChild(MakeSelectRow(
+                    'Target Rock Layer',
+                    RockLayers.map((L, idx) => [`#${String(idx + 1).padStart(2, '0')} ${L.name}`, L.id]),
+                    P.targetLayerId || RockLayers[0].id,
+                    Val =>
+                    {
+                        this._pushRock2UndoSnapshot();
+                        P.targetLayerId = Val;
+                        this._rebuildRock2StackNow(false);
+                        this.refreshChrome();
+                    }
+                ));
+            }
+        }
+
+        ScopeGrp.Body.appendChild(MakeSelectRow(
+            'Fracture Seam Tint',
+            [
+                ['Natural Fresh Seam Shade', 'inherit'],
+                ...Object.entries(ROCK2_STONE_TONES).map(([k, t]) => [t.label, k])
+            ],
+            P.stoneTone || 'inherit',
+            Val =>
+            {
+                this._pushRock2UndoSnapshot();
+                P.stoneTone = Val;
+                this._rebuildRock2StackNow(false);
+            }
+        ));
+
+        ScopeGrp.Body.appendChild(MakeSliderPillRow('Fault Seed', 1, 9999, 1, P.seed ?? 401, 0, '#', V => { P.seed = Math.round(V); OnLive(); }, OnCommit));
+
+        const ScopeBtns = MakeEl('div', 'studio-btn-row');
+        const MutBtn = MakeEl('button', 'button', '🎲 Mutate Fault Seed');
+        MutBtn.type = 'button';
+        MutBtn.addEventListener('click', () =>
+        {
+            this._pushRock2UndoSnapshot();
+            P.seed = (((P.seed || 401) * 1664525 + 1013904223) >>> 0) % 9999 + 1;
+            this._rebuildRock2StackNow(false);
+            this.rebuildInspector();
+        });
+        const CenterBtn = MakeEl('button', 'button', 'Center Gizmo on Rock');
+        CenterBtn.type = 'button';
+        CenterBtn.addEventListener('click', () =>
+        {
+            this._pushRock2UndoSnapshot();
+            const B = this.rock2.compiled?.bounds;
+            P.originX = B ? Number(((B.minX + B.maxX) * 0.5).toFixed(2)) : 0.0;
+            P.originY = B ? Number((B.minY + (B.maxY - B.minY) * 0.45).toFixed(2)) : 1.8;
+            P.originZ = B ? Number(((B.minZ + B.maxZ) * 0.5).toFixed(2)) : 0.0;
+            this._rebuildRock2StackNow(false);
+            this.rebuildInspector();
+        });
+        ScopeBtns.append(MutBtn, CenterBtn);
+        ScopeGrp.Body.appendChild(ScopeBtns);
+        Content.appendChild(ScopeGrp.Group);
+
+        // 2. Orientation & Origin (3D Fault Gizmo)
+        const AttTitle = 'Orientation & Origin (3D Gizmo)';
+        const AttGrp = MakePropertyGroup(
+            AttTitle,
+            'Gizmo',
+            `${Math.round(P.strikeYawDeg ?? 18)}° / ${Math.round(P.dipPitchDeg ?? 68)}°`,
+            SavedOpen(AttTitle, true),
+            'Drag O (Origin), N (Normal Arrow), STR (Strike Ring), or DIP (Dip Arc) directly on the 3D Fault Plane Disc in the viewport.'
+        );
+
+        AttGrp.Body.appendChild(MakeSliderPillRow('Plane Origin X', -16.0, 16.0, 0.05, P.originX ?? 0.0, 2, 'm', V => { P.originX = V; OnLive(); }, OnCommit));
+        AttGrp.Body.appendChild(MakeSliderPillRow('Plane Origin Y', -4.0, 16.0, 0.05, P.originY ?? 1.8, 2, 'm', V => { P.originY = V; OnLive(); }, OnCommit));
+        AttGrp.Body.appendChild(MakeSliderPillRow('Plane Origin Z', -16.0, 16.0, 0.05, P.originZ ?? 0.0, 2, 'm', V => { P.originZ = V; OnLive(); }, OnCommit));
+        AttGrp.Body.appendChild(MakeSliderPillRow('Strike Yaw', -180.0, 180.0, 0.5, P.strikeYawDeg ?? 18.0, 1, '°', V => { P.strikeYawDeg = V; OnLive(); }, OnCommit));
+        AttGrp.Body.appendChild(MakeSliderPillRow('Dip Pitch', 0.0, 90.0, 0.5, P.dipPitchDeg ?? 68.0, 1, '°', V => { P.dipPitchDeg = V; OnLive(); }, OnCommit));
+
+        if (SplitMode === 'conjugate_pair')
+        {
+            AttGrp.Body.appendChild(MakeSliderPillRow(
+                'Conjugate Inter-Angle',
+                20.0, 150.0, 0.5, P.conjugateAngleDeg ?? 62.0, 1, '°',
+                V => { P.conjugateAngleDeg = V; OnLive(); },
+                OnCommit
+            ));
+        }
+        Content.appendChild(AttGrp.Group);
+
+        // 3. Family Distribution (ONLY shown in multi-plane modes — zero dead controls!)
+        if (SplitMode !== 'single_plane')
+        {
+            const FamTitle = 'Family Distribution';
+            const FamBadge = SplitMode === 'radial_wedge' ? 'WEDGES' : 'MULTI-PLANE';
+            const FamGrp = MakePropertyGroup(
+                FamTitle,
+                'Layers',
+                FamBadge,
+                SavedOpen(FamTitle, true),
+                SplitMode === 'radial_wedge'
+                    ? 'Control radial cleave sector count, angular jitter, and per-sector dip variation.'
+                    : 'Control multi-plane count, fault spacing, spacing irregularity, and per-plane dip variation.'
+            );
+
+            if (SplitMode === 'parallel_family')
+            {
+                FamGrp.Body.appendChild(MakeSliderPillRow(
+                    'Plane Count', 2, 16, 1, Math.max(2, Math.round(P.planeCount ?? 3)), 0, '×',
+                    V => { P.planeCount = Math.round(V); OnLive(); },
+                    () => { OnCommit(); this.rebuildInspector(); }
+                ));
+                FamGrp.Body.appendChild(MakeSliderPillRow('Spacing', 0.25, 6.0, 0.05, P.spacing ?? 1.25, 2, 'm', V => { P.spacing = V; OnLive(); }, OnCommit));
+                FamGrp.Body.appendChild(MakeSliderPillRow('Spacing Jitter', 0.0, 1.0, 0.02, P.spacingJitter ?? 0.18, 2, '', V => { P.spacingJitter = V; OnLive(); }, OnCommit));
+                FamGrp.Body.appendChild(MakeSliderPillRow('Dip Jitter', 0.0, 25.0, 0.5, P.dipJitterDeg ?? 2.5, 1, '°', V => { P.dipJitterDeg = V; OnLive(); }, OnCommit));
+            }
+            else if (SplitMode === 'conjugate_pair')
+            {
+                const ConjCount = Math.min(16, Math.max(2, Math.round(P.planeCount ?? 2)));
+                FamGrp.Body.appendChild(MakeSliderPillRow(
+                    'Set Plane Count', 2, 16, 1, ConjCount, 0, '×',
+                    V => { P.planeCount = Math.round(V); OnLive(); },
+                    () => { OnCommit(); this.rebuildInspector(); }
+                ));
+                if (ConjCount > 2)
+                {
+                    FamGrp.Body.appendChild(MakeSliderPillRow('Set Spacing', 0.35, 6.0, 0.05, P.spacing ?? 1.45, 2, 'm', V => { P.spacing = V; OnLive(); }, OnCommit));
+                    FamGrp.Body.appendChild(MakeSliderPillRow('Spacing Jitter', 0.0, 1.0, 0.02, P.spacingJitter ?? 0.18, 2, '', V => { P.spacingJitter = V; OnLive(); }, OnCommit));
+                }
+                FamGrp.Body.appendChild(MakeSliderPillRow('Dip Jitter', 0.0, 25.0, 0.5, P.dipJitterDeg ?? 2.5, 1, '°', V => { P.dipJitterDeg = V; OnLive(); }, OnCommit));
+            }
+            else if (SplitMode === 'radial_wedge')
+            {
+                FamGrp.Body.appendChild(MakeSliderPillRow(
+                    'Wedge Sector Count', 3, 12, 1, Math.max(3, Math.round(P.planeCount ?? 3)), 0, '×',
+                    V => { P.planeCount = Math.round(V); OnLive(); },
+                    () => { OnCommit(); this.rebuildInspector(); }
+                ));
+                FamGrp.Body.appendChild(MakeSliderPillRow('Sector Angle Jitter', 0.0, 1.0, 0.02, P.spacingJitter ?? 0.18, 2, '', V => { P.spacingJitter = V; OnLive(); }, OnCommit));
+                FamGrp.Body.appendChild(MakeSliderPillRow('Dip Jitter', 0.0, 25.0, 0.5, P.dipJitterDeg ?? 2.5, 1, '°', V => { P.dipJitterDeg = V; OnLive(); }, OnCommit));
+            }
+            Content.appendChild(FamGrp.Group);
+        }
+
+        // 4. Fracture Surface Roughness (Jigsaw Profile)
+        const RoughTitle = 'Fracture Surface Roughness';
+        const HasMacro = (P.macroWavinessAmp ?? 0.16) > 0.001;
+        const HasMicro = (P.microJaggednessAmp ?? 0.045) > 0.001;
+        const RoughGrp = MakePropertyGroup(
+            RoughTitle,
+            'Activity',
+            (HasMacro || HasMicro) ? 'JIGSAW TEETH' : 'PLANAR RAZOR',
+            SavedOpen(RoughTitle, true),
+            'Both severed walls evaluate the identical 2D fracture relief field before T⁻¹(p) slip, so jigsaw teeth interlock across the fault.'
+        );
+
+        RoughGrp.Body.appendChild(MakeSliderPillRow(
+            'Macro Waviness Amp', 0.0, 1.20, 0.01, P.macroWavinessAmp ?? 0.16, 2, 'm',
+            V => { P.macroWavinessAmp = V; OnLive(); },
+            () => { OnCommit(); this.rebuildInspector(); }
+        ));
+        if (HasMacro)
+        {
+            RoughGrp.Body.appendChild(MakeSliderPillRow('Macro Wavelength', 0.35, 10.0, 0.05, P.macroWavelength ?? 2.8, 2, 'm', V => { P.macroWavelength = V; OnLive(); }, OnCommit));
+        }
+
+        RoughGrp.Body.appendChild(MakeSliderPillRow(
+            'Micro Jaggedness Amp', 0.0, 0.45, 0.005, P.microJaggednessAmp ?? 0.045, 3, 'm',
+            V => { P.microJaggednessAmp = V; OnLive(); },
+            () => { OnCommit(); this.rebuildInspector(); }
+        ));
+        if (HasMicro)
+        {
+            RoughGrp.Body.appendChild(MakeSliderPillRow('Micro Frequency', 0.40, 8.0, 0.05, P.microFrequency ?? 2.2, 2, '/m', V => { P.microFrequency = V; OnLive(); }, OnCommit));
+            RoughGrp.Body.appendChild(MakeSliderPillRow('Roughness Octaves', 1, 4, 1, Math.round(P.octaves ?? 3), 0, 'oct', V => { P.octaves = Math.round(V); OnLive(); }, OnCommit));
+        }
+        if (HasMacro || HasMicro)
+        {
+            RoughGrp.Body.appendChild(MakeSliderPillRow('Anisotropy Stretch', 0.25, 4.0, 0.05, P.anisotropyStretch ?? 1.0, 2, '×', V => { P.anisotropyStretch = V; OnLive(); }, OnCommit));
+        }
+        Content.appendChild(RoughGrp.Group);
+
+        // 5. Aperture & Edge Profile
+        const EdgeTitle = 'Aperture & Edge Profile';
+        const EdgeGrp = MakePropertyGroup(
+            EdgeTitle,
+            'Scan',
+            IsBlind ? `V-TIP ${(P.vTaperDepth ?? 0).toFixed(2)}m` : 'THROUGH-CUT',
+            SavedOpen(EdgeTitle, true),
+            'Set V-Taper Depth to 0 for a full through-going cleave, or > 0 for a blind V-crack that arrests cleanly inside the rock.'
+        );
+
+        EdgeGrp.Body.appendChild(MakeSliderPillRow('Crack Gap Width', 0.0, 1.20, 0.005, P.crackGapWidth ?? 0.03, 3, 'm', V => { P.crackGapWidth = V; OnLive(); }, OnCommit));
+        EdgeGrp.Body.appendChild(MakeSliderPillRow('Lip Chamfer / Bevel', 0.0, 0.65, 0.005, P.lipChamfer ?? 0.04, 3, 'm', V => { P.lipChamfer = V; OnLive(); }, OnCommit));
+        EdgeGrp.Body.appendChild(MakeSliderPillRow(
+            'V-Taper Depth (0 = Cleave)', 0.0, 8.0, 0.05, P.vTaperDepth ?? 0.0, 2, 'm',
+            V => { P.vTaperDepth = V; OnLive(); },
+            () => { OnCommit(); this.rebuildInspector(); }
+        ));
+        if (IsBlind)
+        {
+            EdgeGrp.Body.appendChild(MakeSliderPillRow('Tip Sharpness', 0.35, 3.50, 0.05, P.tipSharpness ?? 1.35, 2, 'γ', V => { P.tipSharpness = V; OnLive(); }, OnCommit));
+        }
+        Content.appendChild(EdgeGrp.Group);
+
+        // 6. Kinematic Displacement (T⁻¹p Rigid Slip)
+        const KinTitle = 'Kinematic Displacement (T⁻¹p Slip)';
+        const KinGrp = MakePropertyGroup(
+            KinTitle,
+            'Move',
+            'RIGID T⁻¹(p)',
+            SavedOpen(KinTitle, true),
+            'True rigid-body inverse pullback: severed rock blocks dilate, shear along strike/dip, hinge-tilt, and topple without stretching.'
+        );
+
+        KinGrp.Body.appendChild(MakeSliderPillRow('Normal Heave', -0.50, 4.00, 0.01, P.normalHeave ?? 0.0, 2, 'm', V => { P.normalHeave = V; OnLive(); }, OnCommit));
+        KinGrp.Body.appendChild(MakeSliderPillRow('Strike-Slip Shear', -4.50, 4.50, 0.01, P.strikeSlip ?? 0.0, 2, 'm', V => { P.strikeSlip = V; OnLive(); }, OnCommit));
+        KinGrp.Body.appendChild(MakeSliderPillRow('Dip-Slip Throw', -4.50, 4.50, 0.01, P.dipSlip ?? 0.0, 2, 'm', V => { P.dipSlip = V; OnLive(); }, OnCommit));
+        KinGrp.Body.appendChild(MakeSliderPillRow('Block Hinge Tilt', -55.0, 55.0, 0.5, P.hingeTiltDeg ?? 0.0, 1, '°', V => { P.hingeTiltDeg = V; OnLive(); }, OnCommit));
+        KinGrp.Body.appendChild(MakeSliderPillRow('Gravity Settle / Topple', -1.50, 2.50, 0.02, P.gravitySettle ?? 0.0, 2, 'm', V => { P.gravitySettle = V; OnLive(); }, OnCommit));
+
+        const KinBtns = MakeEl('div', 'studio-btn-row');
+        const ZeroSlipBtn = MakeEl('button', 'button', 'Zero Kinematic Slip (Close Seam)');
+        ZeroSlipBtn.type = 'button';
+        ZeroSlipBtn.addEventListener('click', () =>
+        {
+            this._pushRock2UndoSnapshot();
+            P.normalHeave = 0.0;
+            P.strikeSlip = 0.0;
+            P.dipSlip = 0.0;
+            P.hingeTiltDeg = 0.0;
+            P.gravitySettle = 0.0;
+            this._rebuildRock2StackNow(false);
+            this.rebuildInspector();
+        });
+        KinBtns.appendChild(ZeroSlipBtn);
+        KinGrp.Body.appendChild(KinBtns);
+        Content.appendChild(KinGrp.Group);
     }
 
     _buildRock2InspectorTab(Content)
@@ -4362,6 +4810,7 @@ class TerrainWorldStudioApp
 
         const P = Layer.params;
         const LayerIdx = Stack.layers.findIndex(L => L.id === Layer.id);
+        const IsMod = isRock2ModifierType(Layer.type);
         const Def = getRock2NodeSpec(Layer.type);
         const IsQef = this.rock2View?.renderMode === 'qef-mesh';
 
@@ -4375,8 +4824,16 @@ class TerrainWorldStudioApp
         if (ObjName) ObjName.value = Layer.name;
         if (ObjType)
         {
-            const OpTag = LayerIdx === 0 ? 'BASE LAYER' : Layer.combineMode.replace('_', ' ').toUpperCase();
-            ObjType.textContent = `${Def.shortBadge} · ${OpTag} · PLAIN SDF`;
+            if (IsMod)
+            {
+                const ModeTag = (P.splitMode || 'single_plane').replace('_', ' ').toUpperCase();
+                ObjType.textContent = `MODIFIER D1 · ${ModeTag} · T⁻¹(p) SDF`;
+            }
+            else
+            {
+                const OpTag = LayerIdx === 0 ? 'BASE LAYER' : Layer.combineMode.replace('_', ' ').toUpperCase();
+                ObjType.textContent = `${Def.shortBadge} · ${OpTag} · PLAIN SDF`;
+            }
         }
         if (ObjEn) ObjEn.checked = !!Layer.enabled;
         if (ObjSym) { ObjSym.innerHTML = ''; ObjSym.appendChild(ConstructGlyph(Def.glyph || 'Mountain')); }
@@ -4390,6 +4847,13 @@ class TerrainWorldStudioApp
             this._pushRock2UndoSnapshot();
             this.refreshChrome();
         };
+
+        if (IsMod)
+        {
+            this._buildRock2SplitFaultInspector(Content, Stack, Layer, LayerIdx, Def, SavedOpen, OnLive, OnCommit);
+            this._appendRock2StageExportGroup(Content, Stack, IsQef, SavedOpen, OnLive, OnCommit);
+            return;
+        }
 
         // Top KPI Trio
         const Compiled = this.rock2.compiled;
@@ -5292,6 +5756,11 @@ class TerrainWorldStudioApp
         }
 
         // 4. Studio Lighting, QEF Dual-Contour Mesh & Export
+        this._appendRock2StageExportGroup(Content, Stack, IsQef, SavedOpen, OnLive, OnCommit);
+    }
+
+    _appendRock2StageExportGroup(Content, Stack, IsQef, SavedOpen, OnLive, OnCommit)
+    {
         const StageTitle = 'Lighting, QEF Mesh & Export';
         const StageGrp = MakePropertyGroup(
             StageTitle,

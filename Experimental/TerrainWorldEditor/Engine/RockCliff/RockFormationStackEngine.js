@@ -633,9 +633,72 @@ export const ROCK2_NODE_CATALOG = [
     }
 ];
 
+export const DEFAULT_ROCK2_SPLIT_FAULT_PARAMS = {
+    targetScope: 'stack_below', // 'stack_below' | 'single_layer'
+    targetLayerId: '',
+    splitMode: 'single_plane',  // 'single_plane' | 'parallel_family' | 'conjugate_pair' | 'radial_wedge'
+    stoneTone: 'inherit',       // 'inherit' or key in ROCK2_STONE_TONES
+    // Orientation & Origin
+    originX: 0.0,
+    originY: 1.8,
+    originZ: 0.0,
+    strikeYawDeg: 24.0,
+    dipPitchDeg: 68.0,
+    conjugateAngleDeg: 62.0,
+    // Family Distribution (Parallel / Conjugate / Radial Wedge)
+    planeCount: 3,
+    spacing: 1.35,
+    spacingJitter: 0.18,
+    dipJitterDeg: 2.5,
+    // Fracture Surface Roughness (Jigsaw Profile)
+    macroWavinessAmp: 0.18,
+    macroWavelength: 2.40,
+    microJaggednessAmp: 0.045,
+    microFrequency: 3.20,
+    octaves: 3,
+    anisotropyStretch: 1.45,
+    // Aperture & Edge Profile
+    crackGapWidth: 0.06,
+    lipChamfer: 0.045,
+    vTaperDepth: 0.0,
+    tipSharpness: 1.25,
+    // Kinematic Displacement (T^-1(p) Rigid Slip)
+    normalHeave: 0.14,
+    strikeSlip: 0.32,
+    dipSlip: 0.22,
+    hingeTiltDeg: 5.0,
+    gravitySettle: 0.08,
+    seed: 1409
+};
+
+export const ROCK2_MODIFIER_CATALOG = [
+    {
+        type: 'split_fault',
+        kind: 'modifier',
+        name: 'Split & Fault Plane',
+        shortBadge: 'FAULT',
+        glyph: 'SplitFault',
+        desc: 'Non-destructive Pure-SDF kinematic fracture & fault plane modifier with T⁻¹(p) rigid slip, jigsaw teeth, blind V-taper & 3D Fault Gizmo.',
+        defaults: { ...DEFAULT_ROCK2_SPLIT_FAULT_PARAMS },
+        controlGroups: []
+    }
+];
+
+export function isRock2ModifierType(type)
+{
+    return ROCK2_MODIFIER_CATALOG.some(m => m.type === type);
+}
+
+export function getRock2ModifierSpec(type)
+{
+    return ROCK2_MODIFIER_CATALOG.find(m => m.type === type) || null;
+}
+
 export function getRock2NodeSpec(type)
 {
-    return ROCK2_NODE_CATALOG.find(n => n.type === type) || ROCK2_NODE_CATALOG[0];
+    return ROCK2_MODIFIER_CATALOG.find(m => m.type === type)
+        || ROCK2_NODE_CATALOG.find(n => n.type === type)
+        || ROCK2_NODE_CATALOG[0];
 }
 
 /*==========================================================================================================================================
@@ -1088,6 +1151,29 @@ export function createRock2Layer(type = 'big_boulder', overrides = {})
     else if (cleanType === 'columnar_basalt') cleanType = 'basalt_column';
     else if (cleanType === 'arch_formation') cleanType = 'big_boulder';
 
+    const modSpec = getRock2ModifierSpec(cleanType);
+    if (modSpec)
+    {
+        const seq = _nextRock2LayerSeq++;
+        const params = { ...modSpec.defaults, ...(overrides.params || {}) };
+        for (const k of Object.keys(modSpec.defaults))
+        {
+            if (overrides[k] !== undefined) params[k] = overrides[k];
+        }
+        return {
+            id: overrides.id || `r2_mod_${seq}_${Math.floor(1000 + Math.random() * 8999)}`,
+            name: overrides.name || `${modSpec.name} ${String(seq).padStart(2, '0')}`,
+            type: modSpec.type,
+            kind: 'modifier',
+            enabled: overrides.enabled !== undefined ? !!overrides.enabled : true,
+            solo: !!overrides.solo,
+            combineMode: overrides.combineMode || 'union',
+            blendRadius: overrides.blendRadius ?? 0.0,
+            params,
+            generator: createRock2Generator('none')
+        };
+    }
+
     const spec = getRock2NodeSpec(cleanType);
     const seq = _nextRock2LayerSeq++;
     const params = { scaleX: 1.0, scaleY: 1.0, scaleZ: 1.0, ...spec.defaults, ...(overrides.params || {}) };
@@ -1103,6 +1189,7 @@ export function createRock2Layer(type = 'big_boulder', overrides = {})
         id: overrides.id || `r2_layer_${seq}_${Math.floor(1000 + Math.random() * 8999)}`,
         name: overrides.name || `${spec.name} ${String(seq).padStart(2, '0')}`,
         type: spec.type,
+        kind: 'rock',
         enabled: overrides.enabled !== undefined ? !!overrides.enabled : true,
         solo: !!overrides.solo,
         combineMode: overrides.combineMode || 'union',
@@ -1115,16 +1202,20 @@ export function createRock2Layer(type = 'big_boulder', overrides = {})
 export function cloneRock2Layer(layer)
 {
     const seq = _nextRock2LayerSeq++;
+    const isMod = isRock2ModifierType(layer.type);
     return {
-        id: `r2_layer_${seq}_${Math.floor(1000 + Math.random() * 8999)}`,
+        id: `r2_${isMod ? 'mod' : 'layer'}_${seq}_${Math.floor(1000 + Math.random() * 8999)}`,
         name: `${layer.name} Copy`,
         type: layer.type,
+        kind: isMod ? 'modifier' : 'rock',
         enabled: layer.enabled,
         solo: false,
         combineMode: layer.combineMode,
         blendRadius: layer.blendRadius,
         params: JSON.parse(JSON.stringify(layer.params || {})),
-        generator: createRock2Generator(layer.generator?.type || 'none', JSON.parse(JSON.stringify(layer.generator || {})))
+        generator: isMod
+            ? createRock2Generator('none')
+            : createRock2Generator(layer.generator?.type || 'none', JSON.parse(JSON.stringify(layer.generator || {})))
     };
 }
 
@@ -1536,6 +1627,85 @@ export const ROCK2_STARTER_STACKS = [
                     shapeVariety: 0.88,
                     uniqueSeeds: 1
                 })
+            })
+        ]
+    },
+    {
+        id: 'stack-cleaved-jigsaw-monolith',
+        name: '13 · Cleaved Jigsaw Monolith (3D Fault Gizmo)',
+        badge: 'D1 SPLIT FAULT',
+        buildLayers: () => [
+            createRock2Layer('big_boulder', {
+                name: 'Sierra Granite Monolith',
+                combineMode: 'union',
+                stoneTone: 'granite',
+                seed: 7112,
+                width: 4.8, height: 4.6, length: 4.2,
+                boulderStyle: 'angular', facetCount: 14, roundness: 0.20, angularity: 0.26, taper: 0.14, flatBottom: 0.88
+            }),
+            createRock2Layer('split_fault', {
+                name: 'Inclined Jigsaw Normal Fault (3D Gizmo)',
+                splitMode: 'single_plane',
+                originX: 0.15, originY: 1.85, originZ: 0.0,
+                strikeYawDeg: 22.0,
+                dipPitchDeg: 68.0,
+                macroWavinessAmp: 0.22,
+                macroWavelength: 2.30,
+                microJaggednessAmp: 0.055,
+                microFrequency: 3.40,
+                octaves: 3,
+                anisotropyStretch: 1.55,
+                crackGapWidth: 0.08,
+                lipChamfer: 0.05,
+                vTaperDepth: 0.0,
+                normalHeave: 0.26,
+                strikeSlip: 0.42,
+                dipSlip: 0.34,
+                hingeTiltDeg: 9.5,
+                gravitySettle: 0.14,
+                seed: 1409
+            })
+        ]
+    },
+    {
+        id: 'stack-conjugate-fault-cliff',
+        name: '14 · Conjugate X-Shear & Stepped Fault Cliff',
+        badge: 'CONJUGATE SHEAR',
+        buildLayers: () => [
+            createRock2Layer('cliff_block', {
+                name: 'Massive Sandstone Escarpment',
+                combineMode: 'union',
+                stoneTone: 'sandstone',
+                seed: 8310,
+                width: 6.4, height: 5.2, length: 4.0,
+                cliffProfile: 'rampart', roundness: 0.15, batterTaper: 0.18, flatBottom: 0.94
+            }),
+            createRock2Layer('split_fault', {
+                name: 'Mohr-Coulomb Conjugate X-Shear Pair',
+                splitMode: 'conjugate_pair',
+                originX: 0.0, originY: 2.3, originZ: 0.0,
+                strikeYawDeg: 8.0,
+                dipPitchDeg: 78.0,
+                conjugateAngleDeg: 58.0,
+                planeCount: 3,
+                spacing: 1.75,
+                spacingJitter: 0.16,
+                dipJitterDeg: 2.0,
+                macroWavinessAmp: 0.16,
+                macroWavelength: 2.60,
+                microJaggednessAmp: 0.04,
+                microFrequency: 3.10,
+                octaves: 3,
+                anisotropyStretch: 1.40,
+                crackGapWidth: 0.055,
+                lipChamfer: 0.04,
+                vTaperDepth: 0.0,
+                normalHeave: 0.12,
+                strikeSlip: 0.24,
+                dipSlip: 0.26,
+                hingeTiltDeg: 3.5,
+                gravitySettle: 0.08,
+                seed: 2207
             })
         ]
     }
@@ -4175,28 +4345,719 @@ function buildAtomicBaseRockPrimitive(type, p, worldR, worldPivot)
 }
 
 /*==========================================================================================================================================
-                               7. LAYER-STACK COMPILER & EXACT CPU PURE-SDF EVALUATOR
+               7. PURE-SDF KINEMATIC SPLIT & FAULT MODIFIER ENGINE + LAYER-STACK COMPILER
 ==========================================================================================================================================*/
+
+export function computeRock2FaultBasis(strikeYawDeg = 0.0, dipPitchDeg = 68.0)
+{
+    const psi = (strikeYawDeg || 0.0) * DEG2RAD;
+    const del = clamp(dipPitchDeg ?? 68.0, 0.0, 90.0) * DEG2RAD;
+    const sp = Math.sin(psi), cp = Math.cos(psi);
+    const sd = Math.sin(del), cd = Math.cos(del);
+    return {
+        strike: [sp, 0.0, cp],
+        normal: [sd * cp, cd, -sd * sp],
+        dip:    [cd * cp, -sd, -cd * sp]
+    };
+}
+
+export function rock2FaultNormalToStrikeDip(nx, ny, nz)
+{
+    const len = Math.hypot(nx, ny, nz) || 1.0;
+    let ux = nx / len, uy = ny / len, uz = nz / len;
+    if (uy < 0.0)
+    {
+        ux = -ux; uy = -uy; uz = -uz;
+    }
+    const dipPitchDeg = Math.acos(clamp(uy, 0.0, 1.0)) / DEG2RAD;
+    const horiz = Math.hypot(ux, uz);
+    const strikeYawDeg = horiz > 1e-4 ? (Math.atan2(-uz, ux) / DEG2RAD) : 0.0;
+    return {
+        strikeYawDeg: Number(strikeYawDeg.toFixed(1)),
+        dipPitchDeg: Number(clamp(dipPitchDeg, 0.0, 90.0).toFixed(1))
+    };
+}
+
+function buildRodriguesMat3(ax, ay, az, angleRad)
+{
+    const len = Math.hypot(ax, ay, az);
+    if (len < 1e-6 || Math.abs(angleRad) < 1e-6)
+    {
+        return [1, 0, 0, 0, 1, 0, 0, 0, 1];
+    }
+    const ux = ax / len, uy = ay / len, uz = az / len;
+    const c = Math.cos(angleRad), s = Math.sin(angleRad), t = 1.0 - c;
+    return [
+        t * ux * ux + c,      t * ux * uy - s * uz, t * ux * uz + s * uy,
+        t * ux * uy + s * uz, t * uy * uy + c,      t * uy * uz - s * ux,
+        t * ux * uz - s * uy, t * uy * uz + s * ux, t * uz * uz + c
+    ];
+}
+
+function buildRigidFaultBlock(hingePivot, axisVec, tiltRad, transVec, f0 = 0, f1 = 0, f2 = 0, f3 = 0)
+{
+    const R = buildRodriguesMat3(axisVec[0], axisVec[1], axisVec[2], tiltRad);
+    const invR = [
+        R[0], R[3], R[6],
+        R[1], R[4], R[7],
+        R[2], R[5], R[8]
+    ];
+    const hx = hingePivot[0], hy = hingePivot[1], hz = hingePivot[2];
+    const tx = transVec[0], ty = transVec[1], tz = transVec[2];
+
+    // Forward: p = h + R*(q - h) + t = R*q + (h - R*h + t)
+    const rHx = R[0] * hx + R[1] * hy + R[2] * hz;
+    const rHy = R[3] * hx + R[4] * hy + R[5] * hz;
+    const rHz = R[6] * hx + R[7] * hy + R[8] * hz;
+    const fwdT = [hx - rHx + tx, hy - rHy + ty, hz - rHz + tz];
+
+    // Inverse pullback: q = h + R^T*(p - (h + t)) = R^T*p + (h - R^T*(h + t))
+    const cx = hx + tx, cy = hy + ty, cz = hz + tz;
+    const rtCx = invR[0] * cx + invR[1] * cy + invR[2] * cz;
+    const rtCy = invR[3] * cx + invR[4] * cy + invR[5] * cz;
+    const rtCz = invR[6] * cx + invR[7] * cy + invR[8] * cz;
+    const invT = [hx - rtCx, hy - rtCy, hz - rtCz];
+
+    return {
+        fwdR: R,
+        fwdT,
+        invR,
+        invT,
+        f0, f1, f2, f3
+    };
+}
+
+function hashFault2D01(ix, iy, seedU)
+{
+    let h = (Math.imul(ix | 0, 374761393) + Math.imul(iy | 0, 668265263) + Math.imul(seedU | 0, 1442695041)) >>> 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0;
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296.0;
+}
+
+function faultValueNoise2DSigned(x, y, seedU)
+{
+    const ix = Math.floor(x) | 0;
+    const iy = Math.floor(y) | 0;
+    const fx = x - ix;
+    const fy = y - iy;
+    const ux = fx * fx * (3.0 - 2.0 * fx);
+    const uy = fy * fy * (3.0 - 2.0 * fy);
+
+    const n00 = hashFault2D01(ix, iy, seedU);
+    const n10 = hashFault2D01(ix + 1, iy, seedU);
+    const n01 = hashFault2D01(ix, iy + 1, seedU);
+    const n11 = hashFault2D01(ix + 1, iy + 1, seedU);
+
+    const nx0 = n00 + (n10 - n00) * ux;
+    const nx1 = n01 + (n11 - n01) * ux;
+    return (nx0 + (nx1 - nx0) * uy) * 2.0 - 1.0;
+}
+
+export function evalRock2FaultJigsawRoughness(u, v, planeSeed, mod)
+{
+    const rtA = mod.rtAniso;
+    let su = u / rtA;
+    let sv = v * rtA;
+    let disp = 0.0;
+
+    if (mod.macroWavinessAmp > 1e-5)
+    {
+        const invW = mod.invMacroWavelength;
+        disp += mod.macroWavinessAmp * faultValueNoise2DSigned(su * invW, sv * invW, planeSeed | 0);
+    }
+
+    if (mod.microJaggednessAmp > 1e-5)
+    {
+        let freq = mod.microFrequency;
+        let amp = mod.microJaggednessAmp;
+        let qu = su, qv = sv;
+        for (let oct = 0; oct < mod.octaves; oct++)
+        {
+            const sOct = (planeSeed + (oct + 1) * 7919) | 0;
+            const n = faultValueNoise2DSigned(qu * freq, qv * freq, sOct);
+            const ridged = 1.0 - 2.0 * Math.abs(n);
+            disp += amp * (0.55 * n + 0.45 * ridged);
+            const ru = qu * 0.80 - qv * 0.60;
+            const rv = qu * 0.60 + qv * 0.80;
+            qu = ru;
+            qv = rv;
+            freq *= 2.03;
+            amp *= 0.50;
+        }
+    }
+    return disp;
+}
+
+function evalRock2FaultPlaneSdf(plane, mod, qx, qy, qz)
+{
+    const rx = qx - plane.ox;
+    const ry = qy - plane.oy;
+    const rz = qz - plane.oz;
+    const nDist = rx * plane.nx + ry * plane.ny + rz * plane.nz - plane.offset;
+    if (!mod.hasRoughness) return nDist;
+    const u = rx * plane.sx + ry * plane.sy + rz * plane.sz;
+    const v = rx * plane.dx + ry * plane.dy + rz * plane.dz;
+    return (nDist + evalRock2FaultJigsawRoughness(u, v, plane.seed, mod)) * mod.roughPenalty;
+}
+
+function rotateVecByMat3(M, v)
+{
+    return [
+        M[0] * v[0] + M[1] * v[1] + M[2] * v[2],
+        M[3] * v[0] + M[4] * v[1] + M[5] * v[2],
+        M[6] * v[0] + M[7] * v[1] + M[8] * v[2]
+    ];
+}
+
+export function compileRock2SplitFaultModifier(lyr, srcBounds)
+{
+    const p = { ...DEFAULT_ROCK2_SPLIT_FAULT_PARAMS, ...(lyr.params || {}) };
+    const splitMode = p.splitMode || 'single_plane';
+    const splitModeCode = splitMode === 'parallel_family' ? 1
+        : (splitMode === 'conjugate_pair' ? 2 : (splitMode === 'radial_wedge' ? 3 : 0));
+
+    const ox = Number.isFinite(p.originX) ? p.originX : 0.0;
+    const oy = Number.isFinite(p.originY) ? p.originY : 1.8;
+    const oz = Number.isFinite(p.originZ) ? p.originZ : 0.0;
+    const origin = [ox, oy, oz];
+
+    const strikeYawDeg = p.strikeYawDeg ?? 24.0;
+    const dipPitchDeg = clamp(p.dipPitchDeg ?? 68.0, 0.0, 90.0);
+    const basis = computeRock2FaultBasis(strikeYawDeg, dipPitchDeg);
+    const s0 = basis.strike, d0 = basis.dip, n0 = basis.normal;
+
+    const baseSeed = Math.max(1, Math.round(p.seed ?? 1409)) | 0;
+    const rng = createRng(baseSeed * 2654435761);
+
+    const macroWavinessAmp = clamp(p.macroWavinessAmp ?? 0.18, 0.0, 2.0);
+    const macroWavelength = clamp(p.macroWavelength ?? 2.40, 0.25, 14.0);
+    const microJaggednessAmp = clamp(p.microJaggednessAmp ?? 0.045, 0.0, 0.75);
+    const microFrequency = clamp(p.microFrequency ?? 3.20, 0.35, 16.0);
+    const octaves = clamp(Math.round(p.octaves ?? 3), 1, 4);
+    const anisotropyStretch = clamp(p.anisotropyStretch ?? 1.45, 0.20, 5.0);
+    const gradEst = Math.min(0.88, (macroWavinessAmp / macroWavelength) * 1.6 + microJaggednessAmp * microFrequency * 0.65);
+    const roughPenalty = 1.0 / Math.sqrt(1.0 + gradEst * gradEst);
+
+    const crackGapWidth = clamp(p.crackGapWidth ?? 0.06, 0.0, 1.80);
+    const lipChamfer = clamp(p.lipChamfer ?? 0.045, 0.0, 0.60);
+    const vTaperDepth = clamp(p.vTaperDepth ?? 0.0, 0.0, 10.0);
+    const tipSharpness = clamp(p.tipSharpness ?? 1.25, 0.25, 4.0);
+
+    const hN = clamp(p.normalHeave ?? 0.14, -1.5, 4.0);
+    const hS = clamp(p.strikeSlip ?? 0.32, -5.0, 5.0);
+    const hD = clamp(p.dipSlip ?? 0.22, -5.0, 5.0);
+    const hingeDeg = clamp(p.hingeTiltDeg ?? 5.0, -75.0, 75.0);
+    const gravSettle = clamp(p.gravitySettle ?? 0.08, -3.0, 3.5);
+
+    const bMinY = Number.isFinite(srcBounds?.minY) ? srcBounds.minY : 0.0;
+    const baseHingeY = Math.min(oy, bMinY + 0.35);
+
+    const planes = [];
+    const blocks = [];
+
+    if (splitMode === 'single_plane')
+    {
+        planes.push({
+            ox, oy, oz, offset: 0.0,
+            nx: n0[0], ny: n0[1], nz: n0[2],
+            sx: s0[0], sy: s0[1], sz: s0[2],
+            dx: d0[0], dy: d0[1], dz: d0[2],
+            seed: baseSeed
+        });
+
+        // Block 0: Footwall (stationary reference, Phi_0 <= 0 -> +1)
+        blocks.push(buildRigidFaultBlock([ox, baseHingeY, oz], s0, 0.0, [0, 0, 0], +1, 0, 0, 0));
+
+        // Block 1: Hanging Wall (T^-1(p) rigid heave + strike/dip slip + hinge tilt + gravity settle, Phi_0 >= 0 -> -1)
+        const totTiltRad = (hingeDeg + gravSettle * 7.5) * DEG2RAD;
+        const trans = [
+            hN * n0[0] + hS * s0[0] + hD * d0[0],
+            hN * n0[1] + hS * s0[1] + hD * d0[1] - gravSettle,
+            hN * n0[2] + hS * s0[2] + hD * d0[2]
+        ];
+        blocks.push(buildRigidFaultBlock([ox, baseHingeY, oz], s0, totTiltRad, trans, -1, 0, 0, 0));
+    }
+    else if (splitMode === 'parallel_family')
+    {
+        const K = clamp(Math.round(p.planeCount ?? 3), 1, 16);
+        const spacing = clamp(p.spacing ?? 1.35, 0.20, 10.0);
+        const spJit = clamp(p.spacingJitter ?? 0.18, 0.0, 1.0);
+        const dipJit = clamp(p.dipJitterDeg ?? 2.5, 0.0, 30.0);
+
+        const offsets = [];
+        for (let i = 0; i < K; i++)
+        {
+            const baseOff = (i - (K - 1) * 0.5) * spacing;
+            offsets.push(baseOff + rng.signed() * 0.42 * spJit * spacing);
+        }
+        offsets.sort((a, b) => a - b);
+
+        for (let i = 0; i < K; i++)
+        {
+            const bJit = computeRock2FaultBasis(
+                strikeYawDeg + rng.signed() * dipJit * 0.55,
+                clamp(dipPitchDeg + rng.signed() * dipJit, 0.0, 90.0)
+            );
+            planes.push({
+                ox, oy, oz, offset: offsets[i],
+                nx: bJit.normal[0], ny: bJit.normal[1], nz: bJit.normal[2],
+                sx: bJit.strike[0], sy: bJit.strike[1], sz: bJit.strike[2],
+                dx: bJit.dip[0],    dy: bJit.dip[1],    dz: bJit.dip[2],
+                seed: (baseSeed + (i + 1) * 4099) | 0
+            });
+        }
+
+        const denom = Math.max(1.0, K * 0.5);
+        for (let m = 0; m <= K; m++)
+        {
+            const rel = (m - K * 0.5) / denom;
+            const absRel = Math.abs(rel);
+            const cMid = m === 0
+                ? offsets[0] - spacing * 0.5
+                : (m === K ? offsets[K - 1] + spacing * 0.5 : 0.5 * (offsets[m - 1] + offsets[m]));
+            const pivotM = [
+                ox + n0[0] * cMid,
+                baseHingeY,
+                oz + n0[2] * cMid
+            ];
+            const tiltRad = (rel * hingeDeg + (rel >= 0 ? 1 : -1) * absRel * gravSettle * 6.0) * DEG2RAD;
+            const trans = [
+                rel * (hN * n0[0] + hS * s0[0] + hD * d0[0]),
+                rel * (hN * n0[1] + hS * s0[1] + hD * d0[1]) - absRel * gravSettle,
+                rel * (hN * n0[2] + hS * s0[2] + hD * d0[2])
+            ];
+            const fLow = m > 0 ? -m : 0;           // -( (m-1) + 1 ) -> Phi_{m-1} >= 0
+            const fHigh = m < K ? +(m + 1) : 0;    // +( m + 1 )     -> Phi_m <= 0
+            blocks.push(buildRigidFaultBlock(pivotM, s0, tiltRad, trans, fLow, fHigh, 0, 0));
+        }
+    }
+    else if (splitMode === 'conjugate_pair')
+    {
+        const totalPlanes = clamp(Math.round(p.planeCount ?? 2), 2, 16);
+        const conjDeg = clamp(p.conjugateAngleDeg ?? 62.0, 20.0, 150.0);
+        const halfRad = 0.5 * conjDeg * DEG2RAD;
+        const spacing = clamp(p.spacing ?? 1.35, 0.25, 10.0);
+        const spJit = clamp(p.spacingJitter ?? 0.18, 0.0, 1.0);
+        const dipJit = clamp(p.dipJitterDeg ?? 2.5, 0.0, 30.0);
+
+        // totalPlanes = 2..16 maps directly to (nA + nB) = totalPlanes (max 8x8 -> 9x9 = 81 cells)
+        const nA = Math.ceil(totalPlanes * 0.5);
+        const nB = Math.floor(totalPlanes * 0.5);
+
+        const rotA = buildRodriguesMat3(s0[0], s0[1], s0[2], +halfRad);
+        const rotB = buildRodriguesMat3(s0[0], s0[1], s0[2], -halfRad);
+        const normA0 = rotateVecByMat3(rotA, n0), dipA0 = rotateVecByMat3(rotA, d0);
+        const normB0 = rotateVecByMat3(rotB, n0), dipB0 = rotateVecByMat3(rotB, d0);
+
+        const offA = [], offB = [];
+        for (let i = 0; i < nA; i++) offA.push(nA === 1 ? 0.0 : ((i - (nA - 1) * 0.5) * spacing + rng.signed() * 0.38 * spJit * spacing));
+        for (let j = 0; j < nB; j++) offB.push(nB === 1 ? 0.0 : ((j - (nB - 1) * 0.5) * spacing + rng.signed() * 0.38 * spJit * spacing));
+        offA.sort((a, b) => a - b);
+        offB.sort((a, b) => a - b);
+
+        for (let i = 0; i < nA; i++)
+        {
+            const rJ = buildRodriguesMat3(s0[0], s0[1], s0[2], rng.signed() * dipJit * DEG2RAD);
+            const nJ = rotateVecByMat3(rJ, normA0);
+            const dJ = rotateVecByMat3(rJ, dipA0);
+            planes.push({
+                ox, oy, oz, offset: offA[i],
+                nx: nJ[0], ny: nJ[1], nz: nJ[2],
+                sx: s0[0], sy: s0[1], sz: s0[2],
+                dx: dJ[0], dy: dJ[1], dz: dJ[2],
+                seed: (baseSeed + (i + 1) * 3571) | 0
+            });
+        }
+        for (let j = 0; j < nB; j++)
+        {
+            const rJ = buildRodriguesMat3(s0[0], s0[1], s0[2], rng.signed() * dipJit * DEG2RAD);
+            const nJ = rotateVecByMat3(rJ, normB0);
+            const dJ = rotateVecByMat3(rJ, dipB0);
+            planes.push({
+                ox, oy, oz, offset: offB[j],
+                nx: nJ[0], ny: nJ[1], nz: nJ[2],
+                sx: s0[0], sy: s0[1], sz: s0[2],
+                dx: dJ[0], dy: dJ[1], dz: dJ[2],
+                seed: (baseSeed + (nA + j + 1) * 5113) | 0
+            });
+        }
+
+        const denA = Math.max(0.5, nA * 0.5);
+        const denB = Math.max(0.5, nB * 0.5);
+        for (let ia = 0; ia <= nA; ia++)
+        {
+            const ua = (ia - nA * 0.5) / denA;
+            const fALow = ia > 0 ? -ia : 0;
+            const fAHigh = ia < nA ? +(ia + 1) : 0;
+
+            for (let ib = 0; ib <= nB; ib++)
+            {
+                const ub = (ib - nB * 0.5) / denB;
+                const fBLow = ib > 0 ? -(nA + ib) : 0;
+                const fBHigh = ib < nB ? +(nA + ib + 1) : 0;
+
+                // Conjugate X-shear displacement: Set A dextral (+ua), Set B sinistral (-ub), radial dilation + throw
+                const slipS = (ua - ub) * 0.5 * hS;
+                const tiltRad = ((ua - ub) * 0.5 * hingeDeg + (Math.abs(ua) + Math.abs(ub)) * 0.35 * gravSettle * 5.0) * DEG2RAD;
+                const trans = [
+                    0.5 * hN * (ua * normA0[0] + ub * normB0[0]) + slipS * s0[0] + 0.5 * hD * (ua * dipA0[0] + ub * dipB0[0]),
+                    0.5 * hN * (ua * normA0[1] + ub * normB0[1]) + slipS * s0[1] + 0.5 * hD * (ua * dipA0[1] + ub * dipB0[1])
+                        - 0.5 * (Math.abs(ua) + Math.abs(ub)) * gravSettle,
+                    0.5 * hN * (ua * normA0[2] + ub * normB0[2]) + slipS * s0[2] + 0.5 * hD * (ua * dipA0[2] + ub * dipB0[2])
+                ];
+                blocks.push(buildRigidFaultBlock([ox, baseHingeY, oz], s0, tiltRad, trans, fALow, fAHigh, fBLow, fBHigh));
+            }
+        }
+    }
+    else
+    {
+        // 'radial_wedge': W convex wedges fanning out around hub axis `n0` on disc `(s0, d0)`
+        const W = clamp(Math.round(p.planeCount ?? 4), 3, 16);
+        const spJit = clamp(p.spacingJitter ?? 0.18, 0.0, 1.0);
+        const dipJit = clamp(p.dipJitterDeg ?? 2.5, 0.0, 25.0);
+        const stepAng = (Math.PI * 2.0) / W;
+
+        const angles = [];
+        for (let k = 0; k < W; k++)
+        {
+            angles.push(k * stepAng + rng.signed() * 0.32 * spJit * stepAng);
+        }
+
+        for (let k = 0; k < W; k++)
+        {
+            const th = angles[k];
+            const ct = Math.cos(th), st = Math.sin(th);
+            // Ray outward in disc `(s0, d0)`
+            const ray = [
+                ct * s0[0] + st * d0[0],
+                ct * s0[1] + st * d0[1],
+                ct * s0[2] + st * d0[2]
+            ];
+            // Circumferential normal (+theta side)
+            let mVec = [
+                -st * s0[0] + ct * d0[0],
+                -st * s0[1] + ct * d0[1],
+                -st * s0[2] + ct * d0[2]
+            ];
+            let hubJ = n0;
+            if (dipJit > 1e-3)
+            {
+                const rTilt = buildRodriguesMat3(ray[0], ray[1], ray[2], rng.signed() * dipJit * DEG2RAD);
+                mVec = rotateVecByMat3(rTilt, mVec);
+                hubJ = rotateVecByMat3(rTilt, n0);
+            }
+            planes.push({
+                ox, oy, oz, offset: 0.0,
+                nx: mVec[0], ny: mVec[1], nz: mVec[2],
+                sx: ray[0],  sy: ray[1],  sz: ray[2],
+                dx: hubJ[0], dy: hubJ[1], dz: hubJ[2],
+                seed: (baseSeed + (k + 1) * 6151) | 0
+            });
+        }
+
+        for (let k = 0; k < W; k++)
+        {
+            const nextK = (k + 1) % W;
+            const a0 = angles[k];
+            const a1 = nextK === 0 ? angles[0] + Math.PI * 2.0 : angles[nextK];
+            const mid = 0.5 * (a0 + a1);
+            const cm = Math.cos(mid), sm = Math.sin(mid);
+
+            // Outward bisector & tangential shear unit vectors
+            const bis = [
+                cm * s0[0] + sm * d0[0],
+                cm * s0[1] + sm * d0[1],
+                cm * s0[2] + sm * d0[2]
+            ];
+            const tang = [
+                -sm * s0[0] + cm * d0[0],
+                -sm * s0[1] + cm * d0[1],
+                -sm * s0[2] + cm * d0[2]
+            ];
+            const axialAlt = Math.sin(mid + (k % 2 === 0 ? 0.45 : -0.45));
+            const hingePivotW = [ox + bis[0] * 0.85, baseHingeY, oz + bis[2] * 0.85];
+            const tiltRad = -(hingeDeg + gravSettle * 9.0) * DEG2RAD;
+            const trans = [
+                hN * bis[0] + hS * tang[0] + hD * axialAlt * n0[0],
+                hN * bis[1] + hS * tang[1] + hD * axialAlt * n0[1] - gravSettle,
+                hN * bis[2] + hS * tang[2] + hD * axialAlt * n0[2]
+            ];
+            // Sector k lies where Phi_k >= 0 (-(k+1)) AND Phi_{nextK} <= 0 (+(nextK+1))!
+            blocks.push(buildRigidFaultBlock(hingePivotW, tang, tiltRad, trans, -(k + 1), +(nextK + 1), 0, 0));
+        }
+    }
+
+    // Compute exact post-fault expanded bounds & per-block conservative AABBs for fast CPU culling
+    const sb = srcBounds || { minX: -3, minY: 0, minZ: -3, maxX: 3, maxY: 4, maxZ: 3 };
+    const srcCorners = [
+        [sb.minX, sb.minY, sb.minZ], [sb.maxX, sb.minY, sb.minZ],
+        [sb.maxX, sb.minY, sb.maxZ], [sb.minX, sb.minY, sb.maxZ],
+        [sb.minX, sb.maxY, sb.minZ], [sb.maxX, sb.maxY, sb.minZ],
+        [sb.maxX, sb.maxY, sb.maxZ], [sb.minX, sb.maxY, sb.maxZ]
+    ];
+    const srcCx = 0.5 * (sb.minX + sb.maxX);
+    const srcCy = 0.5 * (sb.minY + sb.maxY);
+    const srcCz = 0.5 * (sb.minZ + sb.maxZ);
+
+    let outMinX = sb.minX, outMinY = sb.minY, outMinZ = sb.minZ;
+    let outMaxX = sb.maxX, outMaxY = sb.maxY, outMaxZ = sb.maxZ;
+    let maxDisp = 0.0;
+
+    for (let bi = 0; bi < blocks.length; bi++)
+    {
+        const blk = blocks[bi];
+        const R = blk.fwdR, T = blk.fwdT;
+        let bMinX = Infinity, bMinY = Infinity, bMinZ = Infinity;
+        let bMaxX = -Infinity, bMaxY = -Infinity, bMaxZ = -Infinity;
+
+        for (let ci = 0; ci < 8; ci++)
+        {
+            const c = srcCorners[ci];
+            const wx = R[0] * c[0] + R[1] * c[1] + R[2] * c[2] + T[0];
+            const wy = R[3] * c[0] + R[4] * c[1] + R[5] * c[2] + T[1];
+            const wz = R[6] * c[0] + R[7] * c[1] + R[8] * c[2] + T[2];
+            if (wx < bMinX) bMinX = wx; if (wx > bMaxX) bMaxX = wx;
+            if (wy < bMinY) bMinY = wy; if (wy > bMaxY) bMaxY = wy;
+            if (wz < bMinZ) bMinZ = wz; if (wz > bMaxZ) bMaxZ = wz;
+        }
+
+        blk.minX = bMinX; blk.minY = bMinY; blk.minZ = bMinZ;
+        blk.maxX = bMaxX; blk.maxY = bMaxY; blk.maxZ = bMaxZ;
+
+        if (bMinX < outMinX) outMinX = bMinX; if (bMaxX > outMaxX) outMaxX = bMaxX;
+        if (bMinY < outMinY) outMinY = bMinY; if (bMaxY > outMaxY) outMaxY = bMaxY;
+        if (bMinZ < outMinZ) outMinZ = bMinZ; if (bMaxZ > outMaxZ) outMaxZ = bMaxZ;
+
+        const mCx = R[0] * srcCx + R[1] * srcCy + R[2] * srcCz + T[0];
+        const mCy = R[3] * srcCx + R[4] * srcCy + R[5] * srcCz + T[1];
+        const mCz = R[6] * srcCx + R[7] * srcCy + R[8] * srcCz + T[2];
+        const cornerShift = Math.hypot(mCx - srcCx, mCy - srcCy, mCz - srcCz)
+            + 0.5 * Math.hypot(bMaxX - bMinX - (sb.maxX - sb.minX), bMaxY - bMinY - (sb.maxY - sb.minY), bMaxZ - bMinZ - (sb.maxZ - sb.minZ));
+        if (cornerShift > maxDisp) maxDisp = cornerShift;
+    }
+
+    const useCustomTone = !!(p.stoneTone && p.stoneTone !== 'inherit' && ROCK2_STONE_TONES[p.stoneTone]);
+    const faceTone = useCustomTone ? ROCK2_STONE_TONES[p.stoneTone].rgb : [0.52, 0.50, 0.48];
+
+    return {
+        id: lyr.id,
+        name: lyr.name,
+        type: 'split_fault',
+        targetScope: p.targetScope === 'single_layer' ? 'single_layer' : 'stack_below',
+        targetLayerId: p.targetLayerId || '',
+        splitMode,
+        splitModeCode,
+        origin,
+        strikeYawDeg,
+        dipPitchDeg,
+        conjugateAngleDeg: clamp(p.conjugateAngleDeg ?? 62.0, 20.0, 150.0),
+        basis,
+        macroWavinessAmp,
+        macroWavelength,
+        invMacroWavelength: 1.0 / Math.max(0.25, macroWavelength),
+        microJaggednessAmp,
+        microFrequency,
+        octaves,
+        anisotropyStretch,
+        rtAniso: Math.sqrt(anisotropyStretch),
+        hasRoughness: (macroWavinessAmp > 1e-5 || microJaggednessAmp > 1e-5),
+        roughPenalty,
+        crackGapWidth,
+        lipChamfer,
+        vTaperDepth,
+        tipSharpness,
+        useCustomTone: useCustomTone ? 1 : 0,
+        faceColor: faceTone,
+        planes,
+        blocks,
+        maxDisplacement: maxDisp + macroWavinessAmp + microJaggednessAmp + 0.35,
+        outBounds: {
+            minX: outMinX, minY: outMinY, minZ: outMinZ,
+            maxX: outMaxX, maxY: outMaxY, maxZ: outMaxZ,
+            cx: 0.5 * (outMinX + outMaxX),
+            cy: 0.5 * (outMinY + outMaxY),
+            cz: 0.5 * (outMinZ + outMaxZ)
+        }
+    };
+}
+
+export function evalRock2SplitFaultModifier(mod, evalUpstreamFn, wx, wy, wz, outColor = null)
+{
+    const blocks = mod.blocks;
+    const planes = mod.planes;
+    const halfGap = 0.5 * mod.crackGapWidth;
+    const lipChamfer = mod.lipChamfer;
+    const isBlind = mod.vTaperDepth > 1e-3;
+
+    let slipWeight = 1.0;
+    if (isBlind)
+    {
+        const dBase0 = evalUpstreamFn(wx, wy, wz, null);
+        const depth0 = Math.max(0.0, -dBase0);
+        const uSlip = clamp(1.0 - depth0 / (mod.vTaperDepth * 1.35), 0.0, 1.0);
+        slipWeight = uSlip * uSlip;
+    }
+
+    let bestD = 1e9;
+    let bestBlockIdx = 0;
+    let bestQ = [wx, wy, wz];
+    let bestNearSeam = 0.0;
+
+    for (let bi = 0; bi < blocks.length; bi++)
+    {
+        const blk = blocks[bi];
+        // Fast conservative distance prune against block AABB
+        const dxB = Math.max(0.0, blk.minX - wx, wx - blk.maxX);
+        const dyB = Math.max(0.0, blk.minY - wy, wy - blk.maxY);
+        const dzB = Math.max(0.0, blk.minZ - wz, wz - blk.maxZ);
+        if (dxB + dyB + dzB > bestD + 1.5) continue;
+
+        const invR = blk.invR, invT = blk.invT;
+        let qx = invR[0] * wx + invR[1] * wy + invR[2] * wz + invT[0];
+        let qy = invR[3] * wx + invR[4] * wy + invR[5] * wz + invT[1];
+        let qz = invR[6] * wx + invR[7] * wy + invR[8] * wz + invT[2];
+
+        if (isBlind && slipWeight < 0.9999)
+        {
+            qx = wx + (qx - wx) * slipWeight;
+            qy = wy + (qy - wy) * slipWeight;
+            qz = wz + (qz - wz) * slipWeight;
+        }
+
+        const dRock = evalUpstreamFn(qx, qy, qz, null);
+        let dBlk = dRock;
+        let seamMask = 0.0;
+
+        const fCodes = [blk.f0, blk.f1, blk.f2, blk.f3];
+        if (!isBlind)
+        {
+            for (let fi = 0; fi < 4; fi++)
+            {
+                const fc = fCodes[fi];
+                if (fc === 0) continue;
+                const pIdx = Math.abs(fc) - 1;
+                const sign = fc > 0 ? 1.0 : -1.0;
+                const phi = evalRock2FaultPlaneSdf(planes[pIdx], mod, qx, qy, qz);
+                const dCut = sign * phi + halfGap;
+                const prev = dBlk;
+                dBlk = lipChamfer > 1e-4 ? smaxPoly(dBlk, dCut, lipChamfer) : Math.max(dBlk, dCut);
+                if (Math.abs(dCut - dRock) < lipChamfer + 0.08 || dBlk > prev + 1e-4)
+                {
+                    seamMask = Math.max(seamMask, clamp(1.0 - Math.abs(dCut) / Math.max(0.06, lipChamfer + 0.06), 0.0, 1.0));
+                }
+            }
+        }
+        else
+        {
+            const depth = Math.max(0.0, -dRock);
+            const u = depth / mod.vTaperDepth;
+            const taper = u < 1.0 ? Math.pow(1.0 - u, mod.tipSharpness) : 0.0;
+            const aEff = Math.max(0.012, halfGap) * taper;
+            const rEff = lipChamfer * clamp(1.0 - u, 0.0, 1.0);
+            const tipFloor = depth - mod.vTaperDepth;
+
+            for (let fi = 0; fi < 4; fi++)
+            {
+                const fc = fCodes[fi];
+                if (fc === 0) continue;
+                const pIdx = Math.abs(fc) - 1;
+                const sign = fc > 0 ? 1.0 : -1.0;
+                const phi = evalRock2FaultPlaneSdf(planes[pIdx], mod, qx, qy, qz);
+                const dSlot = Math.max(-sign * phi - aEff, tipFloor);
+                const dCut = -dSlot;
+                const prev = dBlk;
+                dBlk = rEff > 1e-4 ? smaxPoly(dBlk, dCut, rEff) : Math.max(dBlk, dCut);
+                if (u < 1.0 && (Math.abs(dCut - dRock) < rEff + 0.06 || dBlk > prev + 1e-4))
+                {
+                    seamMask = Math.max(seamMask, clamp(1.0 - Math.abs(dCut) / Math.max(0.06, rEff + 0.06), 0.0, 1.0));
+                }
+            }
+        }
+
+        if (dBlk < bestD)
+        {
+            bestD = dBlk;
+            bestBlockIdx = bi;
+            bestQ[0] = qx; bestQ[1] = qy; bestQ[2] = qz;
+            bestNearSeam = seamMask;
+        }
+    }
+
+    if (outColor)
+    {
+        evalUpstreamFn(bestQ[0], bestQ[1], bestQ[2], outColor);
+        if (bestNearSeam > 1e-3)
+        {
+            const tr = mod.useCustomTone ? mod.faceColor[0] : clamp(outColor.r * 0.84 + 0.04, 0.0, 1.0);
+            const tg = mod.useCustomTone ? mod.faceColor[1] : clamp(outColor.g * 0.83 + 0.035, 0.0, 1.0);
+            const tb = mod.useCustomTone ? mod.faceColor[2] : clamp(outColor.b * 0.82 + 0.03, 0.0, 1.0);
+            const w = bestNearSeam * (mod.useCustomTone ? 0.88 : 0.65);
+            outColor.r = lerp(outColor.r, tr, w);
+            outColor.g = lerp(outColor.g, tg, w);
+            outColor.b = lerp(outColor.b, tb, w);
+        }
+        outColor._pullbackQ = bestQ;
+        outColor._blockIdx = bestBlockIdx;
+    }
+    return bestD;
+}
 
 export function compileRock2Stack(doc)
 {
     const layers = doc?.layers || [];
-    const hasSolo = layers.some(l => l.enabled && l.solo);
+    const hasSoloRock = layers.some(l => l.enabled && l.solo && !isRock2ModifierType(l.type));
+    const hasSoloMod = !hasSoloRock && layers.some(l => l.enabled && l.solo && isRock2ModifierType(l.type));
 
     const compiledLayers = [];
+    const compiledModifiers = [];
+    const executionSteps = [];
     const allPrimitives = [];
     let totalPlanes = 0;
 
     let minX = Infinity, minY = Infinity, minZ = Infinity;
     let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+    let maxModifierDisplacement = 0.0;
 
     const MAX_STACK_PRIMITIVES = 256;
+    const pendingSingleLayerModSpecs = [];
 
     for (let li = 0; li < layers.length; li++)
     {
         const lyr = layers[li];
         if (!lyr.enabled) continue;
-        if (hasSolo && !lyr.solo) continue;
+
+        if (isRock2ModifierType(lyr.type))
+        {
+            if (hasSoloMod && !lyr.solo) continue;
+            if (hasSoloRock && !lyr.solo && lyr.params?.targetScope !== 'single_layer') continue;
+
+            const scope = lyr.params?.targetScope === 'single_layer' ? 'single_layer' : 'stack_below';
+            if (scope === 'single_layer' && lyr.params?.targetLayerId)
+            {
+                pendingSingleLayerModSpecs.push(lyr);
+            }
+            else if (compiledLayers.length > 0)
+            {
+                const curStackBounds = Number.isFinite(minX)
+                    ? { minX, minY, minZ, maxX, maxY, maxZ, cx: 0.5 * (minX + maxX), cy: 0.5 * (minY + maxY), cz: 0.5 * (minZ + maxZ) }
+                    : { minX: -3, minY: 0, minZ: -3, maxX: 3, maxY: 4, maxZ: 3, cx: 0, cy: 2, cz: 0 };
+                const mod = compileRock2SplitFaultModifier(lyr, curStackBounds);
+                const modIdx = compiledModifiers.length;
+                compiledModifiers.push(mod);
+                executionSteps.push({ kind: 'stack_modifier', modIndex: modIdx });
+
+                if (mod.outBounds.minX < minX) minX = mod.outBounds.minX;
+                if (mod.outBounds.maxX > maxX) maxX = mod.outBounds.maxX;
+                if (mod.outBounds.minY < minY) minY = mod.outBounds.minY;
+                if (mod.outBounds.maxY > maxY) maxY = mod.outBounds.maxY;
+                if (mod.outBounds.minZ < minZ) minZ = mod.outBounds.minZ;
+                if (mod.outBounds.maxZ > maxZ) maxZ = mod.outBounds.maxZ;
+                maxModifierDisplacement += mod.maxDisplacement;
+            }
+            continue;
+        }
+
+        if (hasSoloRock && !lyr.solo) continue;
 
         const spec = getRock2NodeSpec(lyr.type);
         const p = { ...spec.defaults, ...(lyr.params || {}), _sourceType: spec.type };
@@ -4330,6 +5191,7 @@ export function compileRock2Stack(doc)
             };
 
         const tone = ROCK2_STONE_TONES[p.stoneTone] || ROCK2_STONE_TONES.clay;
+        const cLayerIdx = compiledLayers.length;
         compiledLayers.push({
             id: lyr.id,
             name: lyr.name,
@@ -4344,8 +5206,29 @@ export function compileRock2Stack(doc)
             bounds: lBounds,
             instanceBounds,
             blockStart,
-            blockCount: layerPrims.length
+            blockCount: layerPrims.length,
+            attachedModifierIndices: []
         });
+        executionSteps.push({ kind: 'rock_layer', layerIndex: cLayerIdx });
+    }
+
+    for (let mi = 0; mi < pendingSingleLayerModSpecs.length; mi++)
+    {
+        const mLyr = pendingSingleLayerModSpecs[mi];
+        const targetCL = compiledLayers.find(cl => cl.id === mLyr.params?.targetLayerId);
+        if (!targetCL) continue;
+        const mod = compileRock2SplitFaultModifier(mLyr, targetCL.bounds);
+        const modIdx = compiledModifiers.length;
+        compiledModifiers.push(mod);
+        targetCL.attachedModifierIndices.push(modIdx);
+        targetCL.bounds = mod.outBounds;
+        if (mod.outBounds.minX < minX) minX = mod.outBounds.minX;
+        if (mod.outBounds.maxX > maxX) maxX = mod.outBounds.maxX;
+        if (mod.outBounds.minY < minY) minY = mod.outBounds.minY;
+        if (mod.outBounds.maxY > maxY) maxY = mod.outBounds.maxY;
+        if (mod.outBounds.minZ < minZ) minZ = mod.outBounds.minZ;
+        if (mod.outBounds.maxZ > maxZ) maxZ = mod.outBounds.maxZ;
+        if (mod.maxDisplacement > maxModifierDisplacement) maxModifierDisplacement = mod.maxDisplacement;
     }
 
     if (!Number.isFinite(minX))
@@ -4377,6 +5260,9 @@ export function compileRock2Stack(doc)
     return {
         doc,
         compiledLayers,
+        compiledModifiers,
+        executionSteps,
+        maxModifierDisplacement,
         primitives: allPrimitives,
         totalPlanes,
         bounds,
@@ -4511,137 +5397,20 @@ export function evalRock2PrimitiveSdf(prim, wx, wy, wz)
     return dLocal * scaleFactor;
 }
 
-export function evalRock2StackSdf(compiledStack, wx, wy, wz, outColor = null)
+function evalRock2LayerRawPrimitives(lyr, primitives, wx, wy, wz)
 {
-    const { compiledLayers, primitives } = compiledStack;
-    if (compiledLayers.length === 0)
-    {
-        if (outColor) { outColor.r = 0.58; outColor.g = 0.57; outColor.b = 0.55; }
-        return 10.0;
-    }
-
-    let dAcc = 1e9;
-    let cr = 0.58, cg = 0.57, cb = 0.55;
-    let hasBase = false;
-
-    for (let li = 0; li < compiledLayers.length; li++)
-    {
-        const lyr = compiledLayers[li];
-        let dLyr = 1e9;
-        let dInst = 1e9;
-        let hasInst = false;
-        const ib = lyr.intraBlend;
-
-        for (let k = 0; k < lyr.blockCount; k++)
-        {
-            const prim = primitives[lyr.blockStart + k];
-            const pOp = prim.primOp ?? -1.0;
-            const lb = Math.hypot(wx - prim.cx, wy - prim.cy, wz - prim.cz) - prim.radius;
-            const lbCons = lb > 0.0 ? lb * 0.25 : lb;
-
-            if (pOp > -1.5 && pOp < -0.5)
-            {
-                if (hasInst)
-                {
-                    dLyr = dLyr > 1e8 ? dInst : (ib > 1e-4 ? sminPoly(dLyr, dInst, ib) : Math.min(dLyr, dInst));
-                }
-                hasInst = true;
-                if (lbCons > dLyr + ib + 0.25)
-                {
-                    dInst = lbCons;
-                }
-                else
-                {
-                    dInst = evalRock2PrimitiveSdf(prim, wx, wy, wz);
-                }
-            }
-            else if (pOp >= 0.0)
-            {
-                const subB = pOp;
-                if (lbCons > Math.min(dInst, dLyr + ib) + subB + 0.25) continue;
-                const dP = evalRock2PrimitiveSdf(prim, wx, wy, wz);
-                dInst = dInst > 1e8 ? dP : (subB > 1e-4 ? sminPoly(dInst, dP, subB) : Math.min(dInst, dP));
-                hasInst = true;
-            }
-            else
-            {
-                const cutB = Math.max(0.0, -pOp - 2.0);
-                if (!hasInst || dInst > dLyr + ib + 0.25 || lbCons > Math.max(0.0, -dInst) + cutB + 0.25) continue;
-                const dP = evalRock2PrimitiveSdf(prim, wx, wy, wz);
-                dInst = smaxPoly(dInst, -dP, cutB);
-            }
-        }
-
-        if (hasInst)
-        {
-            dLyr = dLyr > 1e8 ? dInst : (ib > 1e-4 ? sminPoly(dLyr, dInst, ib) : Math.min(dLyr, dInst));
-        }
-
-        const lr = lyr.color[0], lg = lyr.color[1], lbCol = lyr.color[2];
-        const op = lyr.combineOp;
-        const br = lyr.blendRadius;
-
-        if (!hasBase)
-        {
-            if (op === 3) continue;
-            dAcc = dLyr;
-            cr = lr; cg = lg; cb = lbCol;
-            hasBase = true;
-            continue;
-        }
-
-        if (op === 0)
-        {
-            if (dLyr < dAcc) { dAcc = dLyr; cr = lr; cg = lg; cb = lbCol; }
-        }
-        else if (op === 1)
-        {
-            const w = br > 1e-4 ? clamp(0.5 + 0.5 * (dAcc - dLyr) / br, 0.0, 1.0) : (dLyr < dAcc ? 1.0 : 0.0);
-            dAcc = sminPoly(dAcc, dLyr, br);
-            cr = lerp(cr, lr, w); cg = lerp(cg, lg, w); cb = lerp(cb, lbCol, w);
-        }
-        else if (op === 2)
-        {
-            const w = br > 1e-4 ? clamp(0.5 + 0.5 * (dAcc - dLyr) / br, 0.0, 1.0) : (dLyr < dAcc ? 1.0 : 0.0);
-            dAcc = chamferMin(dAcc, dLyr, br);
-            cr = lerp(cr, lr, w); cg = lerp(cg, lg, w); cb = lerp(cb, lbCol, w);
-        }
-        else if (op === 3)
-        {
-            const prev = dAcc;
-            dAcc = smaxPoly(dAcc, -dLyr, br);
-            const cutW = smoothstep(0.0, Math.max(0.02, br + 0.04), dAcc - prev);
-            cr = lerp(cr, lr, cutW * 0.65); cg = lerp(cg, lg, cutW * 0.65); cb = lerp(cb, lbCol, cutW * 0.65);
-        }
-        else if (op === 4)
-        {
-            const w = dLyr > dAcc ? 1.0 : 0.0;
-            dAcc = smaxPoly(dAcc, dLyr, br);
-            cr = lerp(cr, lr, w * 0.5); cg = lerp(cg, lg, w * 0.5); cb = lerp(cb, lbCol, w * 0.5);
-        }
-    }
-
-    if (outColor) { outColor.r = cr; outColor.g = cg; outColor.b = cb; }
-    return dAcc;
-}
-
-/**
- * Evaluates the exact Pure-SDF distance of a single compiled layer `layerIndex` at `(wx, wy, wz)`.
- */
-export function evalRock2SingleLayerSdf(compiledStack, layerIndex, wx, wy, wz)
-{
-    const lyr = compiledStack?.compiledLayers?.[layerIndex];
-    if (!lyr) return 1e9;
-    const primitives = compiledStack.primitives;
-    const ib = lyr.intraBlend;
     let dLyr = 1e9;
     let dInst = 1e9;
     let hasInst = false;
+    const ib = lyr.intraBlend;
 
     for (let k = 0; k < lyr.blockCount; k++)
     {
         const prim = primitives[lyr.blockStart + k];
         const pOp = prim.primOp ?? -1.0;
+        const lb = Math.hypot(wx - prim.cx, wy - prim.cy, wz - prim.cz) - prim.radius;
+        const lbCons = lb > 0.0 ? lb * 0.25 : lb;
+
         if (pOp > -1.5 && pOp < -0.5)
         {
             if (hasInst)
@@ -4649,18 +5418,27 @@ export function evalRock2SingleLayerSdf(compiledStack, layerIndex, wx, wy, wz)
                 dLyr = dLyr > 1e8 ? dInst : (ib > 1e-4 ? sminPoly(dLyr, dInst, ib) : Math.min(dLyr, dInst));
             }
             hasInst = true;
-            dInst = evalRock2PrimitiveSdf(prim, wx, wy, wz);
+            if (lbCons > dLyr + ib + 0.25)
+            {
+                dInst = lbCons;
+            }
+            else
+            {
+                dInst = evalRock2PrimitiveSdf(prim, wx, wy, wz);
+            }
         }
         else if (pOp >= 0.0)
         {
             const subB = pOp;
+            if (lbCons > Math.min(dInst, dLyr + ib) + subB + 0.25) continue;
             const dP = evalRock2PrimitiveSdf(prim, wx, wy, wz);
             dInst = dInst > 1e8 ? dP : (subB > 1e-4 ? sminPoly(dInst, dP, subB) : Math.min(dInst, dP));
             hasInst = true;
         }
-        else if (hasInst)
+        else
         {
             const cutB = Math.max(0.0, -pOp - 2.0);
+            if (!hasInst || dInst > dLyr + ib + 0.25 || lbCons > Math.max(0.0, -dInst) + cutB + 0.25) continue;
             const dP = evalRock2PrimitiveSdf(prim, wx, wy, wz);
             dInst = smaxPoly(dInst, -dP, cutB);
         }
@@ -4671,6 +5449,166 @@ export function evalRock2SingleLayerSdf(compiledStack, layerIndex, wx, wy, wz)
         dLyr = dLyr > 1e8 ? dInst : (ib > 1e-4 ? sminPoly(dLyr, dInst, ib) : Math.min(dLyr, dInst));
     }
     return dLyr;
+}
+
+function evalRock2LayerWithAttachedMods(compiledStack, layerIndex, wx, wy, wz, outColor = null)
+{
+    const lyr = compiledStack.compiledLayers[layerIndex];
+    const primitives = compiledStack.primitives;
+    const mods = compiledStack.compiledModifiers || [];
+    const att = lyr.attachedModifierIndices;
+
+    const evalBase = (qx, qy, qz, col) =>
+    {
+        if (col)
+        {
+            col.r = lyr.color[0];
+            col.g = lyr.color[1];
+            col.b = lyr.color[2];
+        }
+        return evalRock2LayerRawPrimitives(lyr, primitives, qx, qy, qz);
+    };
+
+    if (!att || att.length === 0)
+    {
+        return evalBase(wx, wy, wz, outColor);
+    }
+
+    const evalChain = (mCursor, qx, qy, qz, col) =>
+    {
+        if (mCursor < 0) return evalBase(qx, qy, qz, col);
+        const mod = mods[att[mCursor]];
+        return evalRock2SplitFaultModifier(mod, (ux, uy, uz, uCol) => evalChain(mCursor - 1, ux, uy, uz, uCol), qx, qy, qz, col);
+    };
+    return evalChain(att.length - 1, wx, wy, wz, outColor);
+}
+
+function combineRock2LayerSdf(dAcc, colAcc, dLyr, lr, lg, lbCol, op, br)
+{
+    if (dAcc > 1e8)
+    {
+        if (op === 3) return dAcc;
+        colAcc.r = lr; colAcc.g = lg; colAcc.b = lbCol;
+        return dLyr;
+    }
+
+    if (op === 0)
+    {
+        if (dLyr < dAcc) { colAcc.r = lr; colAcc.g = lg; colAcc.b = lbCol; return dLyr; }
+        return dAcc;
+    }
+    if (op === 1)
+    {
+        const w = br > 1e-4 ? clamp(0.5 + 0.5 * (dAcc - dLyr) / br, 0.0, 1.0) : (dLyr < dAcc ? 1.0 : 0.0);
+        colAcc.r = lerp(colAcc.r, lr, w); colAcc.g = lerp(colAcc.g, lg, w); colAcc.b = lerp(colAcc.b, lbCol, w);
+        return sminPoly(dAcc, dLyr, br);
+    }
+    if (op === 2)
+    {
+        const w = br > 1e-4 ? clamp(0.5 + 0.5 * (dAcc - dLyr) / br, 0.0, 1.0) : (dLyr < dAcc ? 1.0 : 0.0);
+        colAcc.r = lerp(colAcc.r, lr, w); colAcc.g = lerp(colAcc.g, lg, w); colAcc.b = lerp(colAcc.b, lbCol, w);
+        return chamferMin(dAcc, dLyr, br);
+    }
+    if (op === 3)
+    {
+        const prev = dAcc;
+        const next = smaxPoly(dAcc, -dLyr, br);
+        const cutW = smoothstep(0.0, Math.max(0.02, br + 0.04), next - prev);
+        colAcc.r = lerp(colAcc.r, lr, cutW * 0.65); colAcc.g = lerp(colAcc.g, lg, cutW * 0.65); colAcc.b = lerp(colAcc.b, lbCol, cutW * 0.65);
+        return next;
+    }
+    if (op === 4)
+    {
+        const w = dLyr > dAcc ? 1.0 : 0.0;
+        colAcc.r = lerp(colAcc.r, lr, w * 0.5); colAcc.g = lerp(colAcc.g, lg, w * 0.5); colAcc.b = lerp(colAcc.b, lbCol, w * 0.5);
+        return smaxPoly(dAcc, dLyr, br);
+    }
+    return dAcc;
+}
+
+export function evalRock2StackSdf(compiledStack, wx, wy, wz, outColor = null)
+{
+    const { compiledLayers, compiledModifiers, executionSteps, primitives } = compiledStack;
+    if (compiledLayers.length === 0)
+    {
+        if (outColor) { outColor.r = 0.58; outColor.g = 0.57; outColor.b = 0.55; }
+        return 10.0;
+    }
+
+    if (!compiledModifiers || compiledModifiers.length === 0)
+    {
+        const col = { r: 0.58, g: 0.57, b: 0.55 };
+        let dAcc = 1e9;
+        for (let li = 0; li < compiledLayers.length; li++)
+        {
+            const lyr = compiledLayers[li];
+            const dLyr = evalRock2LayerRawPrimitives(lyr, primitives, wx, wy, wz);
+            dAcc = combineRock2LayerSdf(dAcc, col, dLyr, lyr.color[0], lyr.color[1], lyr.color[2], lyr.combineOp, lyr.blendRadius);
+        }
+        if (outColor) { outColor.r = col.r; outColor.g = col.g; outColor.b = col.b; }
+        return dAcc;
+    }
+
+    const steps = executionSteps || [];
+    const evalUpToStep = (stepEnd, px, py, pz, colOut) =>
+    {
+        let lastModStep = -1;
+        for (let s = stepEnd; s >= 0; s--)
+        {
+            if (steps[s].kind === 'stack_modifier')
+            {
+                lastModStep = s;
+                break;
+            }
+        }
+
+        const accCol = { r: 0.58, g: 0.57, b: 0.55 };
+        let dAcc = 1e9;
+        let startIdx = 0;
+
+        if (lastModStep >= 0)
+        {
+            const mod = compiledModifiers[steps[lastModStep].modIndex];
+            dAcc = evalRock2SplitFaultModifier(
+                mod,
+                (qx, qy, qz, uCol) => evalUpToStep(lastModStep - 1, qx, qy, qz, uCol),
+                px, py, pz,
+                accCol
+            );
+            startIdx = lastModStep + 1;
+        }
+
+        const lCol = { r: 0.58, g: 0.57, b: 0.55 };
+        for (let s = startIdx; s <= stepEnd; s++)
+        {
+            const st = steps[s];
+            if (st.kind !== 'rock_layer') continue;
+            const lyr = compiledLayers[st.layerIndex];
+            const dLyr = evalRock2LayerWithAttachedMods(compiledStack, st.layerIndex, px, py, pz, lCol);
+            dAcc = combineRock2LayerSdf(dAcc, accCol, dLyr, lCol.r, lCol.g, lCol.b, lyr.combineOp, lyr.blendRadius);
+        }
+
+        if (colOut)
+        {
+            colOut.r = accCol.r;
+            colOut.g = accCol.g;
+            colOut.b = accCol.b;
+            if (accCol._pullbackQ) colOut._pullbackQ = accCol._pullbackQ;
+        }
+        return dAcc;
+    };
+
+    return evalUpToStep(steps.length - 1, wx, wy, wz, outColor);
+}
+
+/**
+ * Evaluates the exact Pure-SDF distance of a single compiled layer `layerIndex` at `(wx, wy, wz)`.
+ */
+export function evalRock2SingleLayerSdf(compiledStack, layerIndex, wx, wy, wz)
+{
+    const lyr = compiledStack?.compiledLayers?.[layerIndex];
+    if (!lyr) return 1e9;
+    return evalRock2LayerWithAttachedMods(compiledStack, layerIndex, wx, wy, wz, null);
 }
 
 /**
@@ -4719,12 +5657,27 @@ export function pickRock2LayerAtRay(compiledStack, ro, rd)
     const hy = ro[1] + rd[1] * t;
     const hz = ro[2] + rd[2] * t;
 
+    // Pull back `[hx, hy, hz]` through any active stack modifiers so displaced blocks still map to their true source rock!
+    let qx = hx, qy = hy, qz = hz;
+    if (compiledStack.compiledModifiers && compiledStack.compiledModifiers.length > 0)
+    {
+        const probeCol = { r: 0.5, g: 0.5, b: 0.5 };
+        evalRock2StackSdf(compiledStack, hx, hy, hz, probeCol);
+        if (probeCol._pullbackQ)
+        {
+            qx = probeCol._pullbackQ[0];
+            qy = probeCol._pullbackQ[1];
+            qz = probeCol._pullbackQ[2];
+        }
+    }
+
     let bestIdx = 0;
     let bestScore = 1e9;
     for (let li = 0; li < compiledStack.compiledLayers.length; li++)
     {
-        const dLyr = evalRock2SingleLayerSdf(compiledStack, li, hx, hy, hz);
-        const surfDist = Math.abs(dLyr);
+        const lyr = compiledStack.compiledLayers[li];
+        const dRaw = evalRock2LayerRawPrimitives(lyr, compiledStack.primitives, qx, qy, qz);
+        const surfDist = Math.abs(dRaw);
         if (surfDist < bestScore)
         {
             bestScore = surfDist;
@@ -4761,18 +5714,18 @@ export function pickRock2LayerAtRay(compiledStack, ro, rd)
             flushCurInst();
             hasCur = true;
             curInstIdx = prim.instanceIndex ?? 0;
-            curInstD = evalRock2PrimitiveSdf(prim, hx, hy, hz);
+            curInstD = evalRock2PrimitiveSdf(prim, qx, qy, qz);
         }
         else if (pOp >= 0.0)
         {
-            const dP = evalRock2PrimitiveSdf(prim, hx, hy, hz);
+            const dP = evalRock2PrimitiveSdf(prim, qx, qy, qz);
             curInstD = curInstD > 1e8 ? dP : (pOp > 1e-4 ? sminPoly(curInstD, dP, pOp) : Math.min(curInstD, dP));
             hasCur = true;
         }
         else if (hasCur)
         {
             const cutB = Math.max(0.0, -pOp - 2.0);
-            const dP = evalRock2PrimitiveSdf(prim, hx, hy, hz);
+            const dP = evalRock2PrimitiveSdf(prim, qx, qy, qz);
             curInstD = smaxPoly(curInstD, -dP, cutB);
         }
     }
@@ -4794,7 +5747,7 @@ export function pickRock2LayerAtRay(compiledStack, ro, rd)
 
 export function packRock2StackGpuBuffers(compiledStack)
 {
-    const { compiledLayers, primitives } = compiledStack;
+    const { compiledLayers, compiledModifiers = [], executionSteps = [], primitives } = compiledStack;
     const numLayers = Math.max(1, compiledLayers.length);
     const numBlocks = Math.max(1, primitives.length);
     const totalPlanes = Math.max(1, compiledStack.totalPlanes);
@@ -4878,6 +5831,135 @@ export function packRock2StackGpuBuffers(compiledStack)
         planeCursor += b.numPlanes;
     }
 
+    const numMods = compiledModifiers.length;
+    let totalFaultPlanes = 0;
+    let totalFaultBlocks = 0;
+    for (let mi = 0; mi < numMods; mi++)
+    {
+        totalFaultPlanes += compiledModifiers[mi].planes.length;
+        totalFaultBlocks += compiledModifiers[mi].blocks.length;
+    }
+
+    const modMetaHeight = Math.max(1, numMods);
+    const faultPlaneHeight = Math.max(1, totalFaultPlanes);
+    const faultBlockHeight = Math.max(1, totalFaultBlocks);
+
+    const modMetaTexData = new Float32Array(modMetaHeight * 5 * 4);
+    const faultPlaneTexData = new Float32Array(faultPlaneHeight * 4 * 4);
+    const faultBlockTexData = new Float32Array(faultBlockHeight * 4 * 4);
+
+    let fpCursor = 0;
+    let fbCursor = 0;
+    for (let mi = 0; mi < numMods; mi++)
+    {
+        const m = compiledModifiers[mi];
+        const mOff = mi * 20;
+
+        modMetaTexData[mOff + 0] = fpCursor;
+        modMetaTexData[mOff + 1] = m.planes.length;
+        modMetaTexData[mOff + 2] = fbCursor;
+        modMetaTexData[mOff + 3] = m.blocks.length;
+
+        modMetaTexData[mOff + 4] = m.macroWavinessAmp;
+        modMetaTexData[mOff + 5] = m.macroWavelength;
+        modMetaTexData[mOff + 6] = m.microJaggednessAmp;
+        modMetaTexData[mOff + 7] = m.microFrequency;
+
+        modMetaTexData[mOff + 8]  = m.octaves;
+        modMetaTexData[mOff + 9]  = m.anisotropyStretch;
+        modMetaTexData[mOff + 10] = m.roughPenalty;
+        modMetaTexData[mOff + 11] = m.crackGapWidth;
+
+        modMetaTexData[mOff + 12] = m.lipChamfer;
+        modMetaTexData[mOff + 13] = m.vTaperDepth;
+        modMetaTexData[mOff + 14] = m.tipSharpness;
+        modMetaTexData[mOff + 15] = m.useCustomTone;
+
+        modMetaTexData[mOff + 16] = m.faceColor[0];
+        modMetaTexData[mOff + 17] = m.faceColor[1];
+        modMetaTexData[mOff + 18] = m.faceColor[2];
+        modMetaTexData[mOff + 19] = m.splitModeCode;
+
+        for (let pi = 0; pi < m.planes.length; pi++)
+        {
+            const pl = m.planes[pi];
+            const pOff = (fpCursor + pi) * 16;
+            faultPlaneTexData[pOff + 0]  = pl.ox; faultPlaneTexData[pOff + 1]  = pl.oy; faultPlaneTexData[pOff + 2]  = pl.oz; faultPlaneTexData[pOff + 3]  = pl.offset;
+            faultPlaneTexData[pOff + 4]  = pl.nx; faultPlaneTexData[pOff + 5]  = pl.ny; faultPlaneTexData[pOff + 6]  = pl.nz; faultPlaneTexData[pOff + 7]  = pl.seed;
+            faultPlaneTexData[pOff + 8]  = pl.sx; faultPlaneTexData[pOff + 9]  = pl.sy; faultPlaneTexData[pOff + 10] = pl.sz; faultPlaneTexData[pOff + 11] = 0.0;
+            faultPlaneTexData[pOff + 12] = pl.dx; faultPlaneTexData[pOff + 13] = pl.dy; faultPlaneTexData[pOff + 14] = pl.dz; faultPlaneTexData[pOff + 15] = 0.0;
+        }
+        fpCursor += m.planes.length;
+
+        for (let bi = 0; bi < m.blocks.length; bi++)
+        {
+            const blk = m.blocks[bi];
+            const bOff = (fbCursor + bi) * 16;
+            faultBlockTexData[bOff + 0]  = blk.invR[0]; faultBlockTexData[bOff + 1]  = blk.invR[1]; faultBlockTexData[bOff + 2]  = blk.invR[2]; faultBlockTexData[bOff + 3]  = blk.invT[0];
+            faultBlockTexData[bOff + 4]  = blk.invR[3]; faultBlockTexData[bOff + 5]  = blk.invR[4]; faultBlockTexData[bOff + 6]  = blk.invR[5]; faultBlockTexData[bOff + 7]  = blk.invT[1];
+            faultBlockTexData[bOff + 8]  = blk.invR[6]; faultBlockTexData[bOff + 9]  = blk.invR[7]; faultBlockTexData[bOff + 10] = blk.invR[8]; faultBlockTexData[bOff + 11] = blk.invT[2];
+            faultBlockTexData[bOff + 12] = blk.f0;      faultBlockTexData[bOff + 13] = blk.f1;      faultBlockTexData[bOff + 14] = blk.f2;      faultBlockTexData[bOff + 15] = blk.f3;
+        }
+        fbCursor += m.blocks.length;
+    }
+
+    const gpuPasses = [];
+    if (numMods === 0)
+    {
+        gpuPasses.push({ kind: 'plain', layerStart: 0, layerCount: compiledLayers.length, hasPrevVol: false });
+    }
+    else
+    {
+        let hasMainVol = false;
+        let runStart = -1;
+        let runCount = 0;
+
+        const flushPlainRun = () =>
+        {
+            if (runCount <= 0) return;
+            gpuPasses.push({ kind: 'plain', layerStart: runStart, layerCount: runCount, hasPrevVol: hasMainVol });
+            hasMainVol = true;
+            runStart = -1;
+            runCount = 0;
+        };
+
+        for (let s = 0; s < executionSteps.length; s++)
+        {
+            const st = executionSteps[s];
+            if (st.kind === 'stack_modifier')
+            {
+                flushPlainRun();
+                if (hasMainVol)
+                {
+                    gpuPasses.push({ kind: 'split_fault', modIndex: st.modIndex });
+                }
+            }
+            else if (st.kind === 'rock_layer')
+            {
+                const cl = compiledLayers[st.layerIndex];
+                if (cl.attachedModifierIndices && cl.attachedModifierIndices.length > 0)
+                {
+                    flushPlainRun();
+                    gpuPasses.push({
+                        kind: 'single_layer_mod',
+                        layerIndex: st.layerIndex,
+                        modIndices: cl.attachedModifierIndices,
+                        combineOp: cl.combineOp,
+                        blendRadius: cl.blendRadius,
+                        hasPrevVol: hasMainVol
+                    });
+                    hasMainVol = true;
+                }
+                else
+                {
+                    if (runCount === 0) runStart = st.layerIndex;
+                    runCount++;
+                }
+            }
+        }
+        flushPlainRun();
+    }
+
     return {
         numLayers: compiledLayers.length,
         numBlocks: primitives.length,
@@ -4890,7 +5972,18 @@ export function packRock2StackGpuBuffers(compiledStack)
         blockTexData,
         planeTexWidth: 1,
         planeTexHeight: totalPlanes,
-        planeTexData
+        planeTexData,
+        numModifiers: numMods,
+        modMetaWidth: 5,
+        modMetaHeight,
+        modMetaTexData,
+        faultPlaneWidth: 4,
+        faultPlaneHeight,
+        faultPlaneTexData,
+        faultBlockWidth: 4,
+        faultBlockHeight,
+        faultBlockTexData,
+        gpuPasses
     };
 }
 
@@ -4902,6 +5995,7 @@ export function bakeRock2StackQefMesh(compiledStack, options = {})
     const targetRes = clamp(options.resolution ?? compiledStack.meshResolution ?? 84, 36, 140);
     const voxelSize = spanMax / targetRes;
     const dispBound = voxelSize * 2.2;
+    const modMargin = compiledStack.maxModifierDisplacement ?? 0.0;
 
     const sdf = evaluateSparseSdf(bounds, voxelSize, {
         positiveDisplacementBound: dispBound,
@@ -4909,7 +6003,7 @@ export function bakeRock2StackQefMesh(compiledStack, options = {})
         fineDisplacementBound: dispBound,
         buildBrickContext(cx, cy, cz, cullRadius)
         {
-            const margin = cullRadius + 0.45;
+            const margin = cullRadius + 0.45 + modMargin;
             for (let i = 0; i < primitives.length; i++)
             {
                 const b = primitives[i];

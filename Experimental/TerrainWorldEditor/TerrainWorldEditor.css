@@ -906,5 +906,45 @@ body.ws-rock2 .quick-lib-scroll {
     background: rgba(255, 255, 255, 0.10);
 }
 
+/* Phase D · Pure-SDF Modifier Layer Cards (`split_fault`, etc.) */
+.quick-add-card.rock2-mod-add-card {
+    border-color: rgba(245, 158, 11, 0.36);
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.11), rgba(20, 22, 27, 0.85));
+}
+.quick-add-card.rock2-mod-add-card:hover {
+    border-color: rgba(251, 191, 36, 0.72);
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.20), rgba(24, 27, 34, 0.94));
+}
+.preset-badge.mod-badge {
+    background: rgba(245, 158, 11, 0.22);
+    border-color: rgba(251, 191, 36, 0.52);
+    color: #fde68a;
+}
+.rock2-layer-card.modifier-card {
+    border-left: 3px solid #f59e0b;
+    background: linear-gradient(90deg, rgba(245, 158, 11, 0.08), rgba(255, 255, 255, 0.02));
+}
+.rock2-layer-card.modifier-card.selected {
+    border-color: rgba(251, 191, 36, 0.72);
+    border-left: 3px solid #fbbf24;
+    background: linear-gradient(90deg, rgba(245, 158, 11, 0.16), rgba(239, 244, 207, 0.06));
+}
+.rock2-tone-dot.mod-dot {
+    border-radius: 3px;
+    transform: rotate(45deg);
+    box-shadow: 0 0 6px rgba(245, 158, 11, 0.55);
+}
+.rock2-op-pill.op-modifier {
+    background: rgba(245, 158, 11, 0.20);
+    border: 1px solid rgba(251, 191, 36, 0.45);
+    color: #fde68a;
+}
+.rock2-gen-pill.mod-gen-pill {
+    background: rgba(56, 189, 248, 0.16);
+    border-color: rgba(125, 211, 252, 0.36);
+    color: #bae6fd;
+}
+
+
 
 
