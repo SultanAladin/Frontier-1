@@ -36,6 +36,19 @@ import {
     bakeFracturedFormationQefMesh,
     packFracturedFormationGpuBuffers
 } from './Engine/RockCliff/PureSdfFractureEngine.js';
+import {
+    ROCK2_NODE_CATALOG,
+    ROCK2_STARTER_STACKS,
+    createRock2Layer,
+    cloneRock2Layer,
+    createDefaultRock2Document,
+    compileRock2Stack,
+    evalRock2StackSdf,
+    packRock2StackGpuBuffers,
+    bakeRock2StackQefMesh,
+    serializeRock2Document,
+    deserializeRock2Document
+} from './Engine/RockCliff/RockFormationStackEngine.js';
 
 let Passed = 0;
 function Suite(Name, Fn)
@@ -1261,4 +1274,121 @@ Suite('27. Controllable Split System & Base Rock Form Generator reshape proporti
     assert.ok(BasaltQef.sdfStats.triangles > 2000, 'Custom-formed Sea-Gorge Columnar Basalt must QEF-bake cleanly');
 });
 
-console.log(`\nAll ${Passed}/27 Open-World SDF Terrain & Pure-SDF Rock Formation Studio validation suites passed!`);
+// 28. RockFormation 2.0: Composable Pure-SDF Plain Rock Layer Stack (9 Basic Rock Generators + CSG Stack + QEF Mesh + JSON)
+Suite('28. RockFormation 2.0: all 9 plain basic rock nodes, 5 CSG combine modes, solo/mute, GPU buffers, QEF mesh & JSON round-trip', () =>
+{
+    assert.equal(ROCK2_NODE_CATALOG.length, 9, 'RockFormation 2.0 must expose all 9 plain basic rock generator nodes');
+
+    // 1. Validate every single foundational Plain Rock Generator Node Type individually
+    for (const Node of ROCK2_NODE_CATALOG)
+    {
+        const Doc = {
+            name: `Test ${Node.name}`,
+            layers: [createRock2Layer(Node.type, { seed: 4242 })]
+        };
+        const Compiled = compileRock2Stack(Doc);
+        assert.equal(Compiled.compiledLayers.length, 1, `${Node.type}: must compile 1 active layer`);
+        assert.ok(Compiled.primitives.length >= 1, `${Node.type}: must emit >= 1 plain SDF primitive`);
+
+        // Sample grid inside bounds to verify genuine solid interior (< -0.05) and clean exterior (> +0.25) with zero NaN
+        const B = Compiled.bounds;
+        let MinD = 1e9, MaxD = -1e9;
+        for (let iz = 0; iz < 11; iz++)
+        {
+            const wz = B.minZ + (iz / 10) * (B.maxZ - B.minZ);
+            for (let iy = 0; iy < 11; iy++)
+            {
+                const wy = B.minY + (iy / 10) * (B.maxY - B.minY);
+                for (let ix = 0; ix < 11; ix++)
+                {
+                    const wx = B.minX + (ix / 10) * (B.maxX - B.minX);
+                    const D = evalRock2StackSdf(Compiled, wx, wy, wz);
+                    assert.ok(Number.isFinite(D), `${Node.type}: SDF must be finite everywhere`);
+                    if (D < MinD) MinD = D;
+                    if (D > MaxD) MaxD = D;
+                }
+            }
+        }
+        assert.ok(MinD < -0.04, `${Node.type}: must contain solid negative SDF interior (minD=${MinD.toFixed(4)})`);
+        assert.ok(MaxD > 0.25, `${Node.type}: must have positive exterior SDF field (maxD=${MaxD.toFixed(4)})`);
+
+        // Verify GPU texture buffer packing has zero NaN/Infinity and matches exact layout dimensions
+        const Packed = packRock2StackGpuBuffers(Compiled);
+        assert.equal(Packed.layerTexWidth, 2);
+        assert.equal(Packed.blockTexWidth, 10);
+        assert.equal(Packed.planeTexWidth, 1);
+        for (let k = 0; k < Packed.blockTexData.length; k++)
+        {
+            assert.ok(Number.isFinite(Packed.blockTexData[k]), `${Node.type}: packed blockTexData must be finite`);
+        }
+    }
+
+    // 2. Validate Composable CSG Layer Stack Operations: union, smooth_union, chamfer_union, subtract, intersect + Solo/Mute
+    const BaseBoulder = createRock2Layer('big_boulder', {
+        name: 'Base Boulder',
+        combineMode: 'union',
+        posX: 0, posY: 0, posZ: 0,
+        width: 4.4, height: 3.6, length: 4.4
+    });
+    const CutterCobble = createRock2Layer('smooth_rock', {
+        name: 'Carve Cavity',
+        combineMode: 'subtract',
+        blendRadius: 0.25,
+        posX: 0, posY: 1.6, posZ: 0,
+        width: 2.8, height: 2.4, length: 5.6
+    });
+    const TopSpire = createRock2Layer('spire_pinnacle', {
+        name: 'Fused Spire',
+        combineMode: 'smooth_union',
+        blendRadius: 0.40,
+        posX: 1.8, posY: 0, posZ: 0,
+        width: 2.0, height: 4.8, length: 2.0
+    });
+
+    const StackSub = compileRock2Stack({ name: 'CSG Stack', layers: [BaseBoulder, CutterCobble, TopSpire] });
+    // Center of CutterCobble at (0, 1.8, 0) must be carved open (> 0) by Subtract!
+    const DCarved = evalRock2StackSdf(StackSub, 0.0, 1.8, 0.0);
+    assert.ok(DCarved > 0.05, `Subtract layer must carve open cavity inside base boulder (got d=${DCarved.toFixed(3)})`);
+
+    // Muting CutterCobble restores solid rock at (0, 1.8, 0)!
+    CutterCobble.enabled = false;
+    const StackMuted = compileRock2Stack({ name: 'Muted Cutter', layers: [BaseBoulder, CutterCobble, TopSpire] });
+    assert.ok(evalRock2StackSdf(StackMuted, 0.0, 1.8, 0.0) < -0.25, 'Muting subtract layer must restore solid base boulder');
+    CutterCobble.enabled = true;
+
+    // Soloing TopSpire isolates only TopSpire (x = -1.6 inside BaseBoulder becomes air > 0, x = +1.8 inside TopSpire is solid < 0)
+    TopSpire.solo = true;
+    const StackSolo = compileRock2Stack({ name: 'Solo Spire', layers: [BaseBoulder, CutterCobble, TopSpire] });
+    assert.equal(StackSolo.compiledLayers.length, 1, 'Solo flag must compile only the soloed layer');
+    assert.ok(evalRock2StackSdf(StackSolo, -1.6, 1.2, 0.0) > 0.40, 'Non-soloed base boulder must not contribute while Solo is active');
+    assert.ok(evalRock2StackSdf(StackSolo, 1.8, 1.5, 0.0) < -0.15, 'Soloed spire must remain solid stone');
+    TopSpire.solo = false;
+
+    // Chamfer Union & Intersect modes also evaluate cleanly
+    const ChamferLayer = cloneRock2Layer(TopSpire);
+    ChamferLayer.combineMode = 'chamfer_union';
+    const IntersectLayer = createRock2Layer('rock_slab', { combineMode: 'intersect', blendRadius: 0.1, width: 6, height: 2.5, length: 6 });
+    const StackAllOps = compileRock2Stack({ name: 'All Ops', layers: [BaseBoulder, ChamferLayer, IntersectLayer] });
+    assert.ok(Number.isFinite(evalRock2StackSdf(StackAllOps, 0.2, 1.0, 0.1)), 'Chamfer & Intersect stack modes must evaluate finite SDF');
+
+    // 3. Validate Starter Stacks, Pure-SDF QEF Dual-Contour Mesh Extraction (0 Mesh->SDF), GLB/OBJ/STL export & JSON round-trip
+    assert.ok(ROCK2_STARTER_STACKS.length >= 7, 'Must provide >= 7 starter plain-rock stacks');
+    const OutcropDoc = createDefaultRock2Document('stack-cliff-outcrop');
+    const OutcropCompiled = compileRock2Stack(OutcropDoc);
+    const { mesh, sdfStats } = bakeRock2StackQefMesh(OutcropCompiled, { resolution: 54 });
+    assert.equal(sdfStats.meshToSdfCount, 0, 'RockFormation 2.0 must perform 0 Mesh->SDF conversions');
+    assert.ok(sdfStats.triangles > 1200, `Multi-layer plain rock stack must extract clean QEF mesh (got ${sdfStats.triangles} tris)`);
+    assert.ok(sdfStats.brickOccupancyPct < 85, `4^3 sparse bricks must cull empty space (${sdfStats.brickOccupancyPct}% occupancy)`);
+
+    const GlbBytes = exportFractureMeshGlb(mesh, { name: 'rock2-outcrop' }, sdfStats);
+    const ObjText = exportFractureMeshObj(mesh, 'rock2-outcrop');
+    const StlBytes = exportFractureMeshBinaryStl(mesh, 'rock2-outcrop');
+    assert.ok(GlbBytes.byteLength > 1000 && ObjText.length > 1000 && StlBytes.byteLength > 1000, 'GLB/OBJ/STL exports must succeed');
+
+    const JsonRoundTrip = deserializeRock2Document(JSON.parse(JSON.stringify(serializeRock2Document(OutcropDoc))));
+    assert.equal(JsonRoundTrip.layers.length, OutcropDoc.layers.length, 'JSON round-trip must preserve layer count');
+    assert.equal(JsonRoundTrip.layers[1].combineMode, 'smooth_union', 'JSON round-trip must preserve layer combineMode');
+    assert.equal(JsonRoundTrip.layers[0].params.cliffProfile, 'stepped', 'JSON round-trip must preserve node params');
+});
+
+console.log(`\nAll ${Passed}/28 Open-World SDF Terrain & Pure-SDF Rock Formation 1.0 + 2.0 Studio validation suites passed!`);

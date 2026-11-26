@@ -60,6 +60,21 @@ import {
     exportFractureMeshGlb
 } from './Engine/RockCliff/Core/QefDualContour.js';
 import { FractureLabViewport } from './Engine/RockCliff/FractureLabViewport.js';
+import {
+    ROCK2_COMBINE_MODES,
+    ROCK2_STONE_TONES,
+    ROCK2_NODE_CATALOG,
+    ROCK2_STARTER_STACKS,
+    getRock2NodeSpec,
+    createRock2Layer,
+    cloneRock2Layer,
+    createDefaultRock2Document,
+    compileRock2Stack,
+    bakeRock2StackQefMesh,
+    serializeRock2Document,
+    deserializeRock2Document
+} from './Engine/RockCliff/RockFormationStackEngine.js';
+import { RockFormation2Viewport } from './Engine/RockCliff/RockFormation2Viewport.js';
 
 const MASK_PALETTE = ['#58b982', '#5ac8fa', '#a3d977', '#e8c27a', '#f0935b', '#d6a2e8'];
 
@@ -86,12 +101,12 @@ class TerrainWorldStudioApp
 
         const UrlParams = new URLSearchParams(window.location.search);
         const ReqWs = UrlParams.get('ws') || UrlParams.get('mode');
-        this.workspaceMode = (ReqWs === '2d' || ReqWs === '3d' || ReqWs === 'split') ? ReqWs : 'fracture';
-        this.inspectorTab = this.workspaceMode === 'fracture' ? 'fracture' : 'layers';
+        this.workspaceMode = (ReqWs === '2d' || ReqWs === '3d' || ReqWs === 'split' || ReqWs === 'fracture' || ReqWs === 'rock2') ? ReqWs : 'rock2';
+        this.inspectorTab = this.workspaceMode === 'rock2' ? 'rock2' : (this.workspaceMode === 'fracture' ? 'fracture' : 'layers');
         this.outlinerFilter = 'all';  // 'all' | 'terrains' | 'splines' | 'masks'
         this.outlinerSearch = '';
 
-        // ---- Pure-SDF Brittle Fracture & Thermal Cracking Lab State ----
+        // ---- Pure-SDF Brittle Fracture & Thermal Cracking Lab State (Rock Formation 1.0) ----
         this.fracture = {
             params: createDefaultFractureParams('cracked-monolith'),
             formation: null,
@@ -100,6 +115,21 @@ class TerrainWorldStudioApp
             qefDirty: true,
             _qefTimer: null,
             savedOpenState: null
+        };
+
+        // ---- RockFormation 2.0 Composable Pure-SDF Plain Rock Layer Stack State ----
+        const InitRock2Stack = createDefaultRock2Document('stack-cliff-outcrop');
+        this.rock2 = {
+            stack: InitRock2Stack,
+            selectedLayerId: InitRock2Stack.layers[0]?.id || null,
+            compiled: null,
+            qefMesh: null,
+            qefStats: null,
+            qefDirty: true,
+            meshResolution: InitRock2Stack.meshResolution || 72,
+            _qefTimer: null,
+            undoStack: [],
+            redoStack: []
         };
 
         // ---- Physically based erosion simulation state (solo OR shared-weather group) ----
@@ -304,6 +334,23 @@ class TerrainWorldStudioApp
             }
         }
 
+        // 4. Initialize RockFormation 2.0 Composable Pure-SDF Plain Rock Layer Stack Viewport
+        const Rock2Canvas = document.getElementById('CanvasRock2');
+        if (Rock2Canvas)
+        {
+            try
+            {
+                this.rock2View = new RockFormation2Viewport(Rock2Canvas);
+                this._rebuildRock2StackNow(true);
+                this._bindRock2ViewportToolbar();
+            }
+            catch (Err)
+            {
+                console.error('[RockFormation 2.0] Viewport init failed, falling back gracefully:', Err);
+                this.rock2View = null;
+            }
+        }
+
         this._mountStaticGlyphs();
         this._buildViewportToolRails();
         this._buildQuickAddLibrary();
@@ -320,6 +367,7 @@ class TerrainWorldStudioApp
             this.map2D.frameAllRegions();
             this.view3D.frameVisibleWorld();
             this.fractureView?.frameFormation();
+            this.rock2View?.frameStack();
             this.refreshChrome();
         });
 
@@ -420,7 +468,39 @@ class TerrainWorldStudioApp
     _buildQuickAddLibrary()
     {
         const List = document.getElementById('quick-add-list');
+        if (!List) return;
         List.innerHTML = '';
+
+        const TitleEl = document.getElementById('quick-lib-title');
+        const CountEl = document.getElementById('quick-lib-count');
+
+        if (this.workspaceMode === 'rock2')
+        {
+            const Q = (this.outlinerSearch || '').toLowerCase();
+            const Items = ROCK2_NODE_CATALOG.filter(N => !Q || N.name.toLowerCase().includes(Q) || N.shortBadge.toLowerCase().includes(Q) || N.desc.toLowerCase().includes(Q));
+            if (TitleEl) TitleEl.textContent = 'Add Basic Rock Node';
+            if (CountEl) CountEl.textContent = String(Items.length);
+
+            for (let I = 0; I < Items.length; I++)
+            {
+                const Node = Items[I];
+                const Btn = MakeEl('button', 'quick-add-card' + (I === 0 ? ' featured-spline' : ''));
+                Btn.type = 'button';
+                Btn.title = `Add plain ${Node.name} SDF layer to the Layer Stack`;
+                const Icon = MakeEl('span', 'quick-add-icon', ConstructGlyph(Node.glyph));
+                const Copy = MakeEl('span', 'quick-add-copy', [
+                    MakeEl('strong', '', `+ ${Node.name}`),
+                    MakeEl('small', '', Node.desc)
+                ]);
+                const Badge = MakeEl('span', 'preset-badge', Node.shortBadge);
+                Btn.append(Icon, Copy, Badge);
+                Btn.addEventListener('click', () => this._addRock2Layer(Node.type));
+                List.appendChild(Btn);
+            }
+            return;
+        }
+
+        if (TitleEl) TitleEl.textContent = 'Add Layer & Splines';
 
         const QuickItems = [
             {
@@ -488,6 +568,7 @@ class TerrainWorldStudioApp
                 action: () => this.addProceduralLayer('terrace')
             }
         ];
+        if (CountEl) CountEl.textContent = String(QuickItems.length);
 
         for (const Item of QuickItems)
         {
@@ -513,6 +594,22 @@ class TerrainWorldStudioApp
 
         const HeadingEl = document.getElementById('timeline-heading');
         const CounterEl = document.getElementById('stroke-counter');
+        if (this.workspaceMode === 'rock2')
+        {
+            if (HeadingEl) HeadingEl.textContent = 'STARTER STACKS';
+            if (CounterEl) CounterEl.textContent = `${ROCK2_STARTER_STACKS.length} PLAIN STACKS`;
+            const ActiveId = this.rock2?.stack?.starterId || 'stack-cliff-outcrop';
+            for (const S of ROCK2_STARTER_STACKS)
+            {
+                const Chip = MakeEl('button', 'history-chip' + (S.id === ActiveId ? ' current' : ''), S.name);
+                Chip.type = 'button';
+                Chip.title = `${S.name} (${S.badge})`;
+                Chip.addEventListener('click', () => this._selectRock2StarterStack(S.id));
+                Strip.appendChild(Chip);
+            }
+            return;
+        }
+
         if (this.workspaceMode === 'fracture')
         {
             if (HeadingEl) HeadingEl.textContent = 'FORMATIONS';
@@ -750,6 +847,13 @@ class TerrainWorldStudioApp
 
     undo()
     {
+        if (this.workspaceMode === 'rock2')
+        {
+            if (!this.rock2.undoStack.length) return;
+            this.rock2.redoStack.push(JSON.stringify(serializeRock2Document(this.rock2.stack)));
+            this._restoreRock2StackData(JSON.parse(this.rock2.undoStack.pop()));
+            return;
+        }
         if (!this.undoStack.length) return;
         this.redoStack.push(JSON.stringify(this.world.toJSON()));
         this._restoreWorldData(JSON.parse(this.undoStack.pop()));
@@ -757,6 +861,13 @@ class TerrainWorldStudioApp
 
     redo()
     {
+        if (this.workspaceMode === 'rock2')
+        {
+            if (!this.rock2.redoStack.length) return;
+            this.rock2.undoStack.push(JSON.stringify(serializeRock2Document(this.rock2.stack)));
+            this._restoreRock2StackData(JSON.parse(this.rock2.redoStack.pop()));
+            return;
+        }
         if (!this.redoStack.length) return;
         this.undoStack.push(JSON.stringify(this.world.toJSON()));
         this._restoreWorldData(JSON.parse(this.redoStack.pop()));
@@ -890,8 +1001,9 @@ class TerrainWorldStudioApp
         const Prev = this.workspaceMode;
         this.workspaceMode = Mode;
         document.body.classList.toggle('ws-fracture', Mode === 'fracture');
+        document.body.classList.toggle('ws-rock2', Mode === 'rock2');
         const Grid = document.getElementById('StageGrid');
-        Grid.classList.remove('mode-2d', 'mode-3d', 'mode-split', 'mode-fracture');
+        Grid.classList.remove('mode-2d', 'mode-3d', 'mode-split', 'mode-fracture', 'mode-rock2');
         Grid.classList.add(`mode-${Mode}`);
 
         for (const Btn of document.querySelectorAll('.top-nav .nav-button[data-ws]'))
@@ -899,17 +1011,53 @@ class TerrainWorldStudioApp
             Btn.classList.toggle('active', Btn.dataset.ws === Mode);
         }
 
-        if (Mode === 'fracture' && this.inspectorTab !== 'fracture')
+        const ExportBtn = document.getElementById('export-button');
+        if (ExportBtn)
+        {
+            ExportBtn.textContent = Mode === 'rock2' ? 'Export .GLB' : 'Export .OBJ';
+            ExportBtn.title = Mode === 'rock2'
+                ? 'Bake QEF Dual-Contour Mesh and export binary glTF 2.0 (.GLB)'
+                : 'Export Visible SDF Mesh as Wavefront .OBJ Triangles';
+        }
+
+        const ResetBtn = document.getElementById('reset-demo-btn');
+        if (ResetBtn)
+        {
+            ResetBtn.textContent = Mode === 'rock2' ? 'Reset Stack ↗' : '3 Demo Masks ↗';
+            ResetBtn.title = Mode === 'rock2'
+                ? 'Reset active starter Layer Stack to clean defaults'
+                : 'Reset to the 3 Demonstration Masks & Terrains';
+        }
+
+        const AddBtn = document.getElementById('add-button');
+        if (AddBtn)
+        {
+            AddBtn.title = Mode === 'rock2' ? 'Add a Plain Big Boulder Layer to Stack' : 'Quick-add a 3D Spline Landform Layer';
+        }
+
+        const ImpBtn = document.getElementById('import-btn');
+        if (ImpBtn)
+        {
+            ImpBtn.title = Mode === 'rock2' ? 'Load RockFormation 2.0 Layer Stack (.json)' : 'Load Open-World Terrain .json project';
+        }
+
+        if (Mode === 'rock2')
+        {
+            this.inspectorTab = 'rock2';
+            this._syncInspectorTabButtons();
+        }
+        else if (Mode === 'fracture')
         {
             this.inspectorTab = 'fracture';
             this._syncInspectorTabButtons();
         }
-        else if (Mode !== 'fracture' && Prev === 'fracture' && this.inspectorTab === 'fracture')
+        else if ((Prev === 'fracture' || Prev === 'rock2') && (this.inspectorTab === 'fracture' || this.inspectorTab === 'rock2'))
         {
             this.inspectorTab = 'layers';
             this._syncInspectorTabButtons();
         }
 
+        this._buildQuickAddLibrary();
         this._buildPresetStrip();
         if (this.map2D && this.view3D)
         {
@@ -919,6 +1067,7 @@ class TerrainWorldStudioApp
             {
                 this.map2D.requestRedraw();
                 if (Mode === 'fracture') this.fractureView?.frameFormation();
+                if (Mode === 'rock2') this.rock2View?.frameStack();
             });
         }
     }
@@ -996,6 +1145,7 @@ class TerrainWorldStudioApp
         document.getElementById('scene-search')?.addEventListener('input', E =>
         {
             this.outlinerSearch = E.target.value.trim().toLowerCase();
+            if (this.workspaceMode === 'rock2') this._buildQuickAddLibrary();
             this.refreshChrome();
         });
         for (const Btn of document.querySelectorAll('#scene-filters button'))
@@ -1014,8 +1164,16 @@ class TerrainWorldStudioApp
             E.currentTarget.classList.toggle('active');
         });
 
-        // One-Click Add 3D Spline buttons (Outliner '+', Stage Bar '+ Add Spline', Transport '+ New 3D Spline')
-        document.getElementById('add-button')?.addEventListener('click', () => this.addNew3DSplineLayer('grade', '3D Graded Spline Ramp'));
+        // One-Click Add Layer buttons (in RockFormation 2.0 adds a Plain Rock Layer; in Terrain adds a 3D Spline)
+        document.getElementById('add-button')?.addEventListener('click', () =>
+        {
+            if (this.workspaceMode === 'rock2')
+            {
+                this._addRock2Layer('big_boulder');
+                return;
+            }
+            this.addNew3DSplineLayer('grade', '3D Graded Spline Ramp');
+        });
         document.getElementById('pill-add-spline')?.addEventListener('click', () => this.addNew3DSplineLayer('grade', '3D Graded Spline Ramp'));
         document.getElementById('dock-new-spline-btn')?.addEventListener('click', () => this.addNew3DSplineLayer('grade', '3D Graded Spline Ramp'));
 
@@ -1078,6 +1236,11 @@ class TerrainWorldStudioApp
         });
         document.getElementById('focus-btn')?.addEventListener('click', () =>
         {
+            if (this.workspaceMode === 'rock2')
+            {
+                this.rock2View?.frameStack();
+                return;
+            }
             if (this.workspaceMode === 'fracture')
             {
                 this.fractureView?.frameFormation();
@@ -1096,6 +1259,18 @@ class TerrainWorldStudioApp
         // Object heading name & enabled switch
         document.getElementById('object-name')?.addEventListener('change', E =>
         {
+            if (this.workspaceMode === 'rock2')
+            {
+                const Layer = this._getSelectedRock2Layer();
+                if (Layer && E.target.value.trim())
+                {
+                    this._pushRock2UndoSnapshot();
+                    Layer.name = E.target.value.trim();
+                    this.refreshChrome();
+                    this.rebuildInspector();
+                }
+                return;
+            }
             if (this.workspaceMode === 'fracture') return;
             const Reg = this.getActiveRegion();
             if (Reg && E.target.value.trim())
@@ -1107,6 +1282,19 @@ class TerrainWorldStudioApp
         });
         document.getElementById('object-enabled')?.addEventListener('change', E =>
         {
+            if (this.workspaceMode === 'rock2')
+            {
+                const Layer = this._getSelectedRock2Layer();
+                if (Layer)
+                {
+                    this._pushRock2UndoSnapshot();
+                    Layer.enabled = E.target.checked;
+                    this._rebuildRock2StackNow(false);
+                    this.refreshChrome();
+                    this.rebuildInspector();
+                }
+                return;
+            }
             const Reg = this.getActiveRegion();
             if (Reg)
             {
@@ -1116,9 +1304,14 @@ class TerrainWorldStudioApp
             }
         });
 
-        // Reset 3 Demo Terrains
+        // Reset 3 Demo Terrains (or Reset Starter Stack in RockFormation 2.0)
         document.getElementById('reset-demo-btn')?.addEventListener('click', () =>
         {
+            if (this.workspaceMode === 'rock2')
+            {
+                this._selectRock2StarterStack(this.rock2?.stack?.starterId || 'stack-cliff-outcrop');
+                return;
+            }
             this.pushUndoSnapshot();
             this._clearAutosave();
             SeedThreeDemoTerrains(this.world);
@@ -1163,6 +1356,7 @@ class TerrainWorldStudioApp
             SyncExpFill(V);
             this.view3D.exposure = V;
             if (this.fractureView) this.fractureView.exposure = V;
+            if (this.rock2View) this.rock2View.exposure = V;
         });
 
         document.getElementById('dock-atmos-select')?.addEventListener('change', E =>
@@ -1206,16 +1400,34 @@ class TerrainWorldStudioApp
             try
             {
                 const Parsed = JSON.parse(await F.text());
-                this.pushUndoSnapshot();
-                this._restoreWorldData(Parsed);
-                this.map2D.frameAllRegions();
-                this.view3D.frameVisibleWorld();
+                if (Parsed && (Parsed.format === 'frontier-rockformation-2.0' || (this.workspaceMode === 'rock2' && Array.isArray(Parsed.layers))))
+                {
+                    this._pushRock2UndoSnapshot();
+                    this._restoreRock2StackData(Parsed);
+                    if (this.workspaceMode !== 'rock2') this.setWorkspaceMode('rock2');
+                    this.rock2View?.frameStack();
+                }
+                else
+                {
+                    this.pushUndoSnapshot();
+                    this._restoreWorldData(Parsed);
+                    this.map2D.frameAllRegions();
+                    this.view3D.frameVisibleWorld();
+                }
             }
             catch (Err) { console.error(Err); }
             FileInput.value = '';
         });
 
-        document.getElementById('export-button')?.addEventListener('click', () => this._exportObj());
+        document.getElementById('export-button')?.addEventListener('click', () =>
+        {
+            if (this.workspaceMode === 'rock2')
+            {
+                this._exportRock2Asset('glb');
+                return;
+            }
+            this._exportObj();
+        });
 
         // Keyboard Shortcuts
         window.addEventListener('keydown', E =>
@@ -1241,24 +1453,33 @@ class TerrainWorldStudioApp
             else if (E.key === '2') this.setWorkspaceMode('3d');
             else if (E.key === '3') this.setWorkspaceMode('split');
             else if (E.key === '4') this.setWorkspaceMode('fracture');
+            else if (E.key === '5') this.setWorkspaceMode('rock2');
             else if (E.key === 'Tab')
             {
                 E.preventDefault();
                 document.getElementById('maximize-btn')?.click();
             }
-            else if (K === 'g') this.select3DTool('spline');
-            else if (K === 'k') this.select3DTool('spline-add');
-            else if (K === 'n') this.select3DTool('navigate');
-            else if (K === 'b') this.select2DTool('brush');
-            else if (K === 'e') this.select2DTool('erase');
-            else if (K === 'p') this.select2DTool('polygon');
-            else if (K === 'r') this.select2DTool('bounds');
-            else if (K === 'v') this.select2DTool('select');
-            else if (K === 's' && !E.ctrlKey) this.select2DTool('spline');
-            else if (K === 'w') document.getElementById('toggle-ocean-btn')?.click();
+            else if (K === 'g' && this.workspaceMode !== 'rock2') this.select3DTool('spline');
+            else if (K === 'k' && this.workspaceMode !== 'rock2') this.select3DTool('spline-add');
+            else if (K === 'n' && this.workspaceMode !== 'rock2') this.select3DTool('navigate');
+            else if (K === 'b' && this.workspaceMode !== 'rock2') this.select2DTool('brush');
+            else if (K === 'e' && this.workspaceMode !== 'rock2') this.select2DTool('erase');
+            else if (K === 'p' && this.workspaceMode !== 'rock2') this.select2DTool('polygon');
+            else if (K === 'r' && this.workspaceMode !== 'rock2') this.select2DTool('bounds');
+            else if (K === 'v' && this.workspaceMode !== 'rock2') this.select2DTool('select');
+            else if (K === 's' && !E.ctrlKey && this.workspaceMode !== 'rock2') this.select2DTool('spline');
+            else if (K === 'w' && this.workspaceMode !== 'rock2') document.getElementById('toggle-ocean-btn')?.click();
             else if (K === 'f') document.getElementById('focus-btn')?.click();
             else if (E.key === 'Delete' || E.key === 'Backspace')
             {
+                if (this.workspaceMode === 'rock2')
+                {
+                    if (this.rock2?.stack?.layers?.length > 1 && this.rock2.selectedLayerId)
+                    {
+                        this._deleteRock2Layer(this.rock2.selectedLayerId);
+                    }
+                    return;
+                }
                 // Delete selected 3D Spline Knot if > 2 knots remain
                 const Ctx = this.view3D.getActiveSplineContext();
                 if (Ctx && Ctx.layer.points.length > 2)
@@ -1287,6 +1508,11 @@ class TerrainWorldStudioApp
 
     _exportObj()
     {
+        if (this.workspaceMode === 'rock2')
+        {
+            this._exportRock2Asset('obj');
+            return;
+        }
         if (this.workspaceMode === 'fracture')
         {
             this._exportFractureAsset('obj');
@@ -1299,6 +1525,11 @@ class TerrainWorldStudioApp
 
     _exportStl()
     {
+        if (this.workspaceMode === 'rock2')
+        {
+            this._exportRock2Asset('stl');
+            return;
+        }
         if (this.workspaceMode === 'fracture')
         {
             this._exportFractureAsset('stl');
@@ -1348,14 +1579,21 @@ class TerrainWorldStudioApp
                         else Next.add(R.id);
                     }
                     else { Next.clear(); Next.add(R.id); }
-                    if (this.workspaceMode === 'fracture') this.setWorkspaceMode('split');
+                    if (this.workspaceMode === 'fracture' || this.workspaceMode === 'rock2') this.setWorkspaceMode('split');
                     this._setRegionSelection(R.id, Array.from(Next));
                 });
                 TabsEl.appendChild(Tab);
             }
         }
 
-        // If Rock Formation mode is active, populate Left Outliner with the 7 Rock Formations!
+        // If RockFormation 2.0 mode is active, populate Left Panel with the Composable Plain-Rock Layer Stack!
+        if (this.workspaceMode === 'rock2')
+        {
+            this._buildRock2Outliner();
+            return;
+        }
+
+        // If Rock Formation 1.0 mode is active, populate Left Outliner with the 7 Rock Formations!
         if (this.workspaceMode === 'fracture')
         {
             this._buildFractureOutliner();
@@ -1363,6 +1601,8 @@ class TerrainWorldStudioApp
         }
 
         // Restore Terrain Studio labels when in 2D / 3D / Split modes
+        const LeftTitle = document.getElementById('left-panel-title');
+        if (LeftTitle) LeftTitle.textContent = 'Outliner';
         const StatLbl1 = document.getElementById('stat-label-1');
         const StatLbl2 = document.getElementById('stat-label-2');
         if (StatLbl1) StatLbl1.textContent = 'Terrains ON';
@@ -1619,6 +1859,12 @@ class TerrainWorldStudioApp
         const Content = document.getElementById('InspectorContent');
         Content.innerHTML = '';
         this._activeKnotYSlider = null;
+
+        if (this.workspaceMode === 'rock2' || this.inspectorTab === 'rock2')
+        {
+            this._buildRock2InspectorTab(Content);
+            return;
+        }
 
         if (this.inspectorTab === 'fracture')
         {
@@ -2996,6 +3242,8 @@ class TerrainWorldStudioApp
         const Stats = this.fracture.qefStats;
         const Preset = getFracturePreset(this.fracture.params.presetId);
 
+        const LeftTitle = document.getElementById('left-panel-title');
+        if (LeftTitle) LeftTitle.textContent = 'Outliner';
         const StatLbl1 = document.getElementById('stat-label-1');
         const StatLbl2 = document.getElementById('stat-label-2');
         if (StatLbl1) StatLbl1.textContent = 'Rock Blocks';
@@ -3414,6 +3662,761 @@ class TerrainWorldStudioApp
     }
 
     /*======================================================================================================================================
+                           ROCKFORMATION 2.0 · COMPOSABLE PURE-SDF PLAIN ROCK LAYER STACK CONTROLLER
+    ======================================================================================================================================*/
+    _bindRock2ViewportToolbar()
+    {
+        const RayBtn = document.getElementById('rock2-mode-ray-btn');
+        const QefBtn = document.getElementById('rock2-mode-qef-btn');
+        const WireBtn = document.getElementById('rock2-wire-btn');
+        const LensSel = document.getElementById('rock2-lens-select');
+
+        RayBtn?.addEventListener('click', () =>
+        {
+            if (this.rock2View) this.rock2View.renderMode = 'raymarch';
+            this._syncRock2ToolbarButtons();
+            if (this.workspaceMode === 'rock2') this.rebuildInspector();
+        });
+
+        QefBtn?.addEventListener('click', () =>
+        {
+            if (this.rock2.qefDirty || !this.rock2.qefMesh) this._bakeRock2QefMeshNow();
+            if (this.rock2View) this.rock2View.renderMode = 'qef-mesh';
+            this._syncRock2ToolbarButtons();
+            if (this.workspaceMode === 'rock2') this.rebuildInspector();
+        });
+
+        WireBtn?.addEventListener('click', () =>
+        {
+            if (!this.rock2View) return;
+            if (this.rock2View.renderMode !== 'qef-mesh')
+            {
+                if (this.rock2.qefDirty || !this.rock2.qefMesh) this._bakeRock2QefMeshNow();
+                this.rock2View.renderMode = 'qef-mesh';
+            }
+            this.rock2View.showWireframe = !this.rock2View.showWireframe;
+            this._syncRock2ToolbarButtons();
+        });
+
+        LensSel?.addEventListener('change', E =>
+        {
+            if (this.rock2View) this.rock2View.lens = Number(E.target.value) | 0;
+        });
+
+        this._syncRock2ToolbarButtons();
+    }
+
+    _syncRock2ToolbarButtons()
+    {
+        const IsQef = this.rock2View?.renderMode === 'qef-mesh';
+        document.getElementById('rock2-mode-ray-btn')?.classList.toggle('active', !IsQef);
+        document.getElementById('rock2-mode-qef-btn')?.classList.toggle('active', !!IsQef);
+        const WireBtn = document.getElementById('rock2-wire-btn');
+        if (WireBtn)
+        {
+            WireBtn.style.display = IsQef ? '' : 'none';
+            WireBtn.classList.toggle('active', !!(IsQef && this.rock2View?.showWireframe));
+        }
+    }
+
+    _pushRock2UndoSnapshot()
+    {
+        if (!this.rock2?.stack) return;
+        this.rock2.undoStack.push(JSON.stringify(serializeRock2Document(this.rock2.stack)));
+        if (this.rock2.undoStack.length > 40) this.rock2.undoStack.shift();
+        this.rock2.redoStack.length = 0;
+    }
+
+    _restoreRock2StackData(Doc)
+    {
+        const Restored = deserializeRock2Document(Doc);
+        this.rock2.stack = Restored;
+        if (!Restored.layers.some(L => L.id === this.rock2.selectedLayerId))
+        {
+            this.rock2.selectedLayerId = Restored.layers[0]?.id || null;
+        }
+        this._rebuildRock2StackNow(false);
+        this._buildPresetStrip();
+        this.refreshChrome();
+        this.rebuildInspector();
+    }
+
+    _getSelectedRock2Layer()
+    {
+        const Layers = this.rock2?.stack?.layers || [];
+        return Layers.find(L => L.id === this.rock2.selectedLayerId) || Layers[0] || null;
+    }
+
+    _selectRock2StarterStack(StarterId)
+    {
+        this._pushRock2UndoSnapshot();
+        const Next = createDefaultRock2Document(StarterId);
+        this.rock2.stack = Next;
+        this.rock2.selectedLayerId = Next.layers[0]?.id || null;
+        this._rebuildRock2StackNow(true);
+        this._buildPresetStrip();
+        this.refreshChrome();
+        this.rebuildInspector();
+    }
+
+    _addRock2Layer(NodeType)
+    {
+        this._pushRock2UndoSnapshot();
+        const Stack = this.rock2.stack;
+        const Count = Stack.layers.length;
+        // Gently offset newly stacked rock layers when > 0 so they are immediately visible in 3D space!
+        const Angle = Count * 2.15;
+        const OffsetR = Count === 0 ? 0.0 : Math.min(2.2, 0.95 + Count * 0.25);
+        const PosX = Count === 0 ? 0.0 : Number((Math.cos(Angle) * OffsetR).toFixed(2));
+        const PosZ = Count === 0 ? 0.0 : Number((Math.sin(Angle) * OffsetR).toFixed(2));
+
+        const NewLayer = createRock2Layer(NodeType, {
+            combineMode: Count === 0 ? 'union' : 'smooth_union',
+            blendRadius: 0.32,
+            posX: PosX,
+            posY: 0.0,
+            posZ: PosZ,
+            seed: 101 + Count * 137
+        });
+        Stack.layers.push(NewLayer);
+        this.rock2.selectedLayerId = NewLayer.id;
+        this._rebuildRock2StackNow(false);
+        this.refreshChrome();
+        this.rebuildInspector();
+    }
+
+    _moveRock2Layer(LayerId, Dir)
+    {
+        const Layers = this.rock2.stack.layers;
+        const Idx = Layers.findIndex(L => L.id === LayerId);
+        const Target = Idx + Dir;
+        if (Idx < 0 || Target < 0 || Target >= Layers.length) return;
+        this._pushRock2UndoSnapshot();
+        const [Moved] = Layers.splice(Idx, 1);
+        Layers.splice(Target, 0, Moved);
+        this._rebuildRock2StackNow(false);
+        this.refreshChrome();
+        this.rebuildInspector();
+    }
+
+    _toggleSoloRock2Layer(LayerId)
+    {
+        const Layers = this.rock2.stack.layers;
+        const Target = Layers.find(L => L.id === LayerId);
+        if (!Target) return;
+        this._pushRock2UndoSnapshot();
+        const NextSolo = !Target.solo;
+        for (const L of Layers) L.solo = false;
+        Target.solo = NextSolo;
+        if (NextSolo) Target.enabled = true;
+        this.rock2.selectedLayerId = Target.id;
+        this._rebuildRock2StackNow(false);
+        this.refreshChrome();
+        this.rebuildInspector();
+    }
+
+    _duplicateRock2Layer(LayerId)
+    {
+        const Layers = this.rock2.stack.layers;
+        const Idx = Layers.findIndex(L => L.id === LayerId);
+        if (Idx < 0) return;
+        this._pushRock2UndoSnapshot();
+        const Copy = cloneRock2Layer(Layers[Idx]);
+        Copy.params.posX = Number(((Copy.params.posX || 0) + 0.85).toFixed(2));
+        Layers.splice(Idx + 1, 0, Copy);
+        this.rock2.selectedLayerId = Copy.id;
+        this._rebuildRock2StackNow(false);
+        this.refreshChrome();
+        this.rebuildInspector();
+    }
+
+    _deleteRock2Layer(LayerId)
+    {
+        const Layers = this.rock2.stack.layers;
+        if (Layers.length <= 1) return;
+        const Idx = Layers.findIndex(L => L.id === LayerId);
+        if (Idx < 0) return;
+        this._pushRock2UndoSnapshot();
+        Layers.splice(Idx, 1);
+        if (this.rock2.selectedLayerId === LayerId)
+        {
+            this.rock2.selectedLayerId = Layers[Math.max(0, Idx - 1)]?.id || Layers[0]?.id || null;
+        }
+        this._rebuildRock2StackNow(false);
+        this.refreshChrome();
+        this.rebuildInspector();
+    }
+
+    _rebuildRock2StackNow(Reframe = false)
+    {
+        const Compiled = compileRock2Stack(this.rock2.stack);
+        this.rock2.compiled = Compiled;
+        this.rock2.qefDirty = true;
+
+        if (this.rock2View)
+        {
+            this.rock2View.setCompiledStack(Compiled, { reframe: Reframe });
+            if (this.rock2View.renderMode === 'qef-mesh')
+            {
+                this._scheduleRock2QefBake(150);
+            }
+        }
+
+        const StackLbl = document.getElementById('hud-rock2-stack');
+        if (StackLbl) StackLbl.textContent = this.rock2.stack.name || 'Plain Rock Stack';
+        const LyrHud = document.getElementById('hud-rock2-layers');
+        if (LyrHud) LyrHud.textContent = String(Compiled.compiledLayers.length);
+        const BlkHud = document.getElementById('hud-rock2-blocks');
+        if (BlkHud) BlkHud.textContent = String(Compiled.primitives.length);
+        const TrisHud = document.getElementById('hud-rock2-tris');
+        if (TrisHud && this.rock2.qefDirty) TrisHud.textContent = 'Live SDF';
+    }
+
+    _scheduleRock2QefBake(DelayMs = 150)
+    {
+        if (this.rock2._qefTimer) clearTimeout(this.rock2._qefTimer);
+        this.rock2._qefTimer = setTimeout(() =>
+        {
+            this.rock2._qefTimer = null;
+            this._bakeRock2QefMeshNow();
+        }, DelayMs);
+    }
+
+    _bakeRock2QefMeshNow()
+    {
+        if (!this.rock2.compiled) this._rebuildRock2StackNow(false);
+        const Res = this.rock2.meshResolution || this.rock2.stack.meshResolution || 72;
+        const { mesh, sdfStats } = bakeRock2StackQefMesh(this.rock2.compiled, { resolution: Res });
+        this.rock2.qefMesh = mesh;
+        this.rock2.qefStats = sdfStats;
+        this.rock2.qefDirty = false;
+        this.rock2View?.uploadQefMesh(mesh, sdfStats);
+
+        const TrisHud = document.getElementById('hud-rock2-tris');
+        if (TrisHud) TrisHud.textContent = `${(sdfStats.triangles / 1000).toFixed(1)}k`;
+        if (this.workspaceMode === 'rock2') this.refreshChrome();
+    }
+
+    _exportRock2Asset(Format)
+    {
+        const SafeSlug = (this.rock2.stack.name || 'rockformation-2-stack')
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-|-$/g, '') || 'rockformation-2-stack';
+
+        if (Format === 'json')
+        {
+            const JsonText = JSON.stringify(serializeRock2Document(this.rock2.stack), null, 2);
+            this._triggerDownload(new Blob([JsonText], { type: 'application/json' }), `${SafeSlug}.rock2.json`);
+            return;
+        }
+
+        if (this.rock2.qefDirty || !this.rock2.qefMesh)
+        {
+            this._bakeRock2QefMeshNow();
+        }
+        const Mesh = this.rock2.qefMesh;
+        if (!Mesh || !Mesh.indices.length) return;
+
+        if (Format === 'glb')
+        {
+            const Bytes = exportFractureMeshGlb(Mesh, { name: SafeSlug, format: 'frontier-rockformation-2.0' }, this.rock2.qefStats || {});
+            this._triggerDownload(new Blob([Bytes], { type: 'model/gltf-binary' }), `${SafeSlug}.glb`);
+        }
+        else if (Format === 'stl')
+        {
+            const Bytes = exportFractureMeshBinaryStl(Mesh, SafeSlug);
+            this._triggerDownload(new Blob([Bytes], { type: 'application/octet-stream' }), `${SafeSlug}.stl`);
+        }
+        else
+        {
+            const Text = exportFractureMeshObj(Mesh, SafeSlug);
+            this._triggerDownload(new Blob([Text], { type: 'text/plain' }), `${SafeSlug}.obj`);
+        }
+    }
+
+    _buildRock2Outliner()
+    {
+        const Stack = this.rock2.stack;
+        const Compiled = this.rock2.compiled;
+        const Stats = this.rock2.qefStats;
+        const HasSolo = Stack.layers.some(L => L.enabled && L.solo);
+
+        const LeftTitle = document.getElementById('left-panel-title');
+        if (LeftTitle) LeftTitle.textContent = 'Layer Stack';
+        const StatLbl1 = document.getElementById('stat-label-1');
+        const StatLbl2 = document.getElementById('stat-label-2');
+        if (StatLbl1) StatLbl1.textContent = 'Layers ON';
+        if (StatLbl2) StatLbl2.textContent = 'Plain Blocks';
+        const SearchInp = document.getElementById('scene-search');
+        if (SearchInp) SearchInp.placeholder = 'Filter stack or plain rock nodes…';
+        const LeftFoot = document.getElementById('left-footer-label');
+        if (LeftFoot) LeftFoot.textContent = 'Plain Rock SDF Stack · Zero Surface Noise';
+        const StageTitle = document.getElementById('stage-bar-title');
+        if (StageTitle) StageTitle.textContent = 'RockFormation 2.0 · Layer Stack';
+        const InspFootL = document.getElementById('inspector-foot-left');
+        const InspFootR = document.getElementById('inspector-foot-right');
+        if (InspFootL) InspFootL.textContent = 'Plain Basic Rock SDF · Zero Noise';
+        if (InspFootR) InspFootR.textContent = 'Composable Layer Stack';
+
+        const ActiveLayerCount = Compiled ? Compiled.compiledLayers.length : 0;
+        const TotalBlocks = Compiled ? Compiled.primitives.length : 0;
+        document.getElementById('stat-terrains-on').textContent = String(ActiveLayerCount);
+        document.getElementById('stat-layers-total').textContent = String(TotalBlocks);
+        document.getElementById('outliner-subtitle').textContent = `${Stack.layers.length} Layer${Stack.layers.length === 1 ? '' : 's'} · ${TotalBlocks} Plain Primitives`;
+
+        const Outliner = document.getElementById('OutlinerContent');
+        Outliner.innerHTML = '';
+
+        const Group = MakeEl('div', 'tree-group');
+        Group.appendChild(MakeEl('div', 'tree-group-title', [
+            ConstructGlyph('Layers'),
+            MakeEl('span', '', HasSolo ? 'SDF Stack (SOLO ACTIVE)' : 'Ordered SDF Layer Stack (#01 → Top)'),
+            MakeEl('span', 'group-count', String(Stack.layers.length))
+        ]));
+
+        const Q = (this.outlinerSearch || '').toLowerCase();
+        const OpShort = {
+            union: 'Union',
+            smooth_union: 'Smooth',
+            chamfer_union: 'Chamfer',
+            subtract: 'Subtract',
+            intersect: 'Intersect'
+        };
+
+        for (let I = 0; I < Stack.layers.length; I++)
+        {
+            const Lyr = Stack.layers[I];
+            const Def = getRock2NodeSpec(Lyr.type);
+            if (Q && !Lyr.name.toLowerCase().includes(Q) && !Def.name.toLowerCase().includes(Q)) continue;
+
+            const IsSel = Lyr.id === this.rock2.selectedLayerId;
+            const IsMuted = !Lyr.enabled || (HasSolo && !Lyr.solo);
+            const ToneKey = Lyr.params?.stoneTone || 'clay';
+            const Tone = ROCK2_STONE_TONES[ToneKey] || ROCK2_STONE_TONES.clay;
+
+            const Card = MakeEl('div', 'rock2-layer-card' + (IsSel ? ' selected' : '') + (IsMuted ? ' muted' : ''));
+            Card.addEventListener('click', () =>
+            {
+                this.rock2.selectedLayerId = Lyr.id;
+                this.refreshChrome();
+                this.rebuildInspector();
+            });
+
+            const IdxBadge = MakeEl('span', 'rock2-layer-idx', `#${String(I + 1).padStart(2, '0')}`);
+            const Dot = MakeEl('span', 'rock2-tone-dot');
+            Dot.style.background = Tone.hex;
+            const NameEl = MakeEl('span', 'rock2-layer-name', Lyr.name);
+            const TopRow = MakeEl('div', 'rock2-layer-top', [IdxBadge, Dot, NameEl]);
+
+            const OpLabel = I === 0 ? 'Base' : (OpShort[Lyr.combineMode] || 'Union');
+            const OpClass = I === 0 ? 'op-union' : `op-${Lyr.combineMode}`;
+            const OpPill = MakeEl('span', `rock2-op-pill ${OpClass}`, OpLabel);
+            const NodeTag = MakeEl('span', 'rock2-node-tag', Def.name);
+            const Meta = MakeEl('div', 'rock2-layer-meta', [OpPill, NodeTag]);
+
+            const Actions = MakeEl('div', 'rock2-layer-actions');
+
+            const BtnUp = MakeEl('button', 'rock2-mini-btn', '↑');
+            BtnUp.type = 'button';
+            BtnUp.title = 'Move layer earlier in stack (toward #01 Base)';
+            BtnUp.disabled = (I === 0);
+            BtnUp.addEventListener('click', E => { E.stopPropagation(); this._moveRock2Layer(Lyr.id, -1); });
+
+            const BtnDn = MakeEl('button', 'rock2-mini-btn', '↓');
+            BtnDn.type = 'button';
+            BtnDn.title = 'Move layer later in stack';
+            BtnDn.disabled = (I === Stack.layers.length - 1);
+            BtnDn.addEventListener('click', E => { E.stopPropagation(); this._moveRock2Layer(Lyr.id, +1); });
+
+            const BtnSolo = MakeEl('button', 'rock2-mini-btn' + (Lyr.solo ? ' solo-on' : ''), 'S');
+            BtnSolo.type = 'button';
+            BtnSolo.title = 'Solo isolate this rock layer';
+            BtnSolo.addEventListener('click', E => { E.stopPropagation(); this._toggleSoloRock2Layer(Lyr.id); });
+
+            const BtnEye = MakeEl('button', 'rock2-mini-btn' + (Lyr.enabled ? ' eye-on' : ''), ConstructGlyph(Lyr.enabled ? 'Eye' : 'EyeOff'));
+            BtnEye.type = 'button';
+            BtnEye.title = Lyr.enabled ? 'Mute / hide layer' : 'Enable layer';
+            BtnEye.addEventListener('click', E =>
+            {
+                E.stopPropagation();
+                this._pushRock2UndoSnapshot();
+                Lyr.enabled = !Lyr.enabled;
+                this._rebuildRock2StackNow(false);
+                this.refreshChrome();
+                this.rebuildInspector();
+            });
+
+            const BtnDup = MakeEl('button', 'rock2-mini-btn', ConstructGlyph('Copy'));
+            BtnDup.type = 'button';
+            BtnDup.title = 'Duplicate layer';
+            BtnDup.addEventListener('click', E => { E.stopPropagation(); this._duplicateRock2Layer(Lyr.id); });
+
+            const BtnDel = MakeEl('button', 'rock2-mini-btn', ConstructGlyph('Trash'));
+            BtnDel.type = 'button';
+            BtnDel.title = Stack.layers.length <= 1 ? 'At least 1 base layer is kept in stack' : 'Delete layer';
+            BtnDel.disabled = (Stack.layers.length <= 1);
+            BtnDel.addEventListener('click', E => { E.stopPropagation(); this._deleteRock2Layer(Lyr.id); });
+
+            Actions.append(BtnUp, BtnDn, BtnSolo, BtnEye, BtnDup, BtnDel);
+            const BotRow = MakeEl('div', 'rock2-layer-bottom', [Meta, Actions]);
+
+            Card.append(TopRow, BotRow);
+            Group.appendChild(Card);
+        }
+
+        Outliner.appendChild(Group);
+
+        // Sync bottom telemetry status bar
+        const MainStat = document.getElementById('status-main');
+        const TilesStat = document.getElementById('status-tiles');
+        const SlabStat = document.getElementById('status-slab');
+        const SelLayer = this._getSelectedRock2Layer();
+        if (MainStat) MainStat.textContent = `${Stack.name} · ${SelLayer ? SelLayer.name : 'Layer Stack'}`;
+        if (TilesStat)
+        {
+            TilesStat.textContent = Stats && !this.rock2.qefDirty
+                ? `4³ Sparse Bricks: ${Stats.activeBricks} (${Stats.brickOccupancyPct.toFixed(1)}% occ)`
+                : `Active Layers: ${ActiveLayerCount}/${Stack.layers.length} · Plain Blocks: ${TotalBlocks}`;
+        }
+        if (SlabStat) SlabStat.textContent = `SDF Planes: ${Compiled ? Compiled.totalPlanes : 0} · Zero Fractures · Zero Noise`;
+    }
+
+    _buildRock2InspectorTab(Content)
+    {
+        if (!this.rock2.savedOpenState) this.rock2.savedOpenState = new Map();
+        for (const Det of Content.querySelectorAll('details.property-group'))
+        {
+            const Title = Det.querySelector('.section-title')?.textContent;
+            if (Title) this.rock2.savedOpenState.set(Title, Det.open);
+        }
+        Content.innerHTML = '';
+
+        const Stack = this.rock2.stack;
+        const Layer = this._getSelectedRock2Layer();
+        if (!Layer) return;
+
+        const P = Layer.params;
+        const LayerIdx = Stack.layers.findIndex(L => L.id === Layer.id);
+        const Def = getRock2NodeSpec(Layer.type);
+        const IsQef = this.rock2View?.renderMode === 'qef-mesh';
+
+        // Sync Right Inspector Heading to the Selected Layer!
+        const Crumb = document.getElementById('inspector-crumb');
+        const ObjName = document.getElementById('object-name');
+        const ObjType = document.getElementById('object-type');
+        const ObjEn = document.getElementById('object-enabled');
+        const ObjSym = document.getElementById('object-symbol');
+        if (Crumb) Crumb.textContent = `Layer Stack / #${String(LayerIdx + 1).padStart(2, '0')} ${Def.name}`;
+        if (ObjName) ObjName.value = Layer.name;
+        if (ObjType)
+        {
+            const OpTag = LayerIdx === 0 ? 'BASE LAYER' : Layer.combineMode.replace('_', ' ').toUpperCase();
+            ObjType.textContent = `${Def.shortBadge} · ${OpTag} · PLAIN SDF`;
+        }
+        if (ObjEn) ObjEn.checked = !!Layer.enabled;
+        if (ObjSym) { ObjSym.innerHTML = ''; ObjSym.appendChild(ConstructGlyph(Def.glyph || 'Mountain')); }
+
+        const SavedOpen = (Title, DefaultOpen) =>
+            this.rock2.savedOpenState.has(Title) ? this.rock2.savedOpenState.get(Title) : DefaultOpen;
+
+        const OnLive = () => this._rebuildRock2StackNow(false);
+        const OnCommit = () =>
+        {
+            this._pushRock2UndoSnapshot();
+            this.refreshChrome();
+        };
+
+        // Top KPI Trio
+        const Compiled = this.rock2.compiled;
+        const Trio = MakeEl('div', 'kpi-trio', [
+            MakeEl('div', 'kpi-card highlight', [
+                MakeEl('span', 'kpi-label', 'Selected Node'),
+                MakeEl('strong', 'kpi-val', `#${String(LayerIdx + 1).padStart(2, '0')} ${Def.shortBadge}`),
+                MakeEl('span', 'kpi-sub', Def.name)
+            ]),
+            MakeEl('div', 'kpi-card', [
+                MakeEl('span', 'kpi-label', 'Stack Primitives'),
+                MakeEl('strong', 'kpi-val', String(Compiled ? Compiled.primitives.length : 0)),
+                MakeEl('span', 'kpi-sub', `${Compiled ? Compiled.totalPlanes : 0} half-spaces`)
+            ]),
+            MakeEl('div', 'kpi-card', [
+                MakeEl('span', 'kpi-label', 'Surface Purity'),
+                MakeEl('strong', 'kpi-val', 'Plain'),
+                MakeEl('span', 'kpi-sub', '0 fractures · 0 noise')
+            ])
+        ]);
+        Content.appendChild(Trio);
+
+        // 1. Layer Combine & Stone Tone
+        const CompTitle = 'Stack Combine & Stone Tone';
+        const CompGroup = MakePropertyGroup(
+            CompTitle,
+            'Layers',
+            LayerIdx === 0 ? 'BASE #01' : Layer.combineMode.replace('_', ' ').toUpperCase(),
+            SavedOpen(CompTitle, true),
+            LayerIdx === 0
+                ? 'Base Layer (#01) establishes the primary SDF rock volume. Add layers above it to Smooth-Union, Chamfer, Carve, or Intersect.'
+                : 'Choose how this plain rock layer combines with the SDF stack below it.'
+        );
+
+        // Quick Swap Node Type (lets user morph any layer into any of the 9 plain rock generators!)
+        CompGroup.Body.appendChild(MakeSelectRow(
+            'Rock Generator',
+            ROCK2_NODE_CATALOG.map(N => [N.name, N.type]),
+            Layer.type,
+            NextType =>
+            {
+                this._pushRock2UndoSnapshot();
+                const Fresh = createRock2Layer(NextType, {
+                    id: Layer.id,
+                    enabled: Layer.enabled,
+                    solo: Layer.solo,
+                    combineMode: Layer.combineMode,
+                    blendRadius: Layer.blendRadius,
+                    stoneTone: P.stoneTone,
+                    posX: P.posX, posY: P.posY, posZ: P.posZ,
+                    yawDeg: P.yawDeg, pitchDeg: P.pitchDeg, rollDeg: P.rollDeg,
+                    seed: P.seed
+                });
+                Object.assign(Layer, Fresh);
+                this._rebuildRock2StackNow(false);
+                this.refreshChrome();
+                this.rebuildInspector();
+            }
+        ));
+
+        if (LayerIdx > 0)
+        {
+            CompGroup.Body.appendChild(MakeSelectRow(
+                'Combine Mode',
+                ROCK2_COMBINE_MODES,
+                Layer.combineMode,
+                Val =>
+                {
+                    this._pushRock2UndoSnapshot();
+                    Layer.combineMode = Val;
+                    this._rebuildRock2StackNow(false);
+                    this.refreshChrome();
+                    this.rebuildInspector();
+                }
+            ));
+
+            if (Layer.combineMode !== 'union')
+            {
+                CompGroup.Body.appendChild(MakeSliderPillRow(
+                    Layer.combineMode === 'chamfer_union' ? 'Chamfer Width' : 'Blend Radius',
+                    0.0, 2.20, 0.02, Layer.blendRadius ?? 0.35, 2, 'm',
+                    V => { Layer.blendRadius = V; OnLive(); },
+                    OnCommit
+                ));
+            }
+        }
+
+        // Stone Tone Swatches
+        const SwatchGrid = MakeEl('div', 'rock2-swatch-grid');
+        for (const [ToneId, Tone] of Object.entries(ROCK2_STONE_TONES))
+        {
+            const Sw = MakeEl('button', 'rock2-swatch-btn' + (P.stoneTone === ToneId ? ' active' : ''));
+            Sw.type = 'button';
+            const Dot = MakeEl('i');
+            Dot.style.background = Tone.hex;
+            Sw.append(Dot, MakeEl('span', '', Tone.label));
+            Sw.addEventListener('click', () =>
+            {
+                this._pushRock2UndoSnapshot();
+                P.stoneTone = ToneId;
+                this._rebuildRock2StackNow(false);
+                this.refreshChrome();
+                this.rebuildInspector();
+            });
+            SwatchGrid.appendChild(Sw);
+        }
+        CompGroup.Body.appendChild(SwatchGrid);
+
+        // Layer Quick Actions
+        const ActRow = MakeEl('div', 'studio-btn-row');
+        const BtnSolo = MakeEl('button', 'button' + (Layer.solo ? ' export-button' : ''), Layer.solo ? 'Unsolo Layer' : 'Solo Layer');
+        BtnSolo.type = 'button';
+        BtnSolo.addEventListener('click', () => this._toggleSoloRock2Layer(Layer.id));
+
+        const BtnDup = MakeEl('button', 'button', 'Duplicate');
+        BtnDup.type = 'button';
+        BtnDup.addEventListener('click', () => this._duplicateRock2Layer(Layer.id));
+
+        ActRow.append(BtnSolo, BtnDup);
+        if (Stack.layers.length > 1)
+        {
+            const BtnDel = MakeEl('button', 'button', 'Delete');
+            BtnDel.type = 'button';
+            BtnDel.addEventListener('click', () => this._deleteRock2Layer(Layer.id));
+            ActRow.appendChild(BtnDel);
+        }
+        CompGroup.Body.appendChild(ActRow);
+        Content.appendChild(CompGroup.Group);
+
+        // 2. Dimensions & 3D Transform
+        const XfTitle = 'Dimensions & 3D Transform';
+        const XfGroup = MakePropertyGroup(
+            XfTitle,
+            'Move',
+            `${(P.width ?? 4).toFixed(1)}×${(P.height ?? 3).toFixed(1)}×${(P.length ?? 4).toFixed(1)}m`,
+            SavedOpen(XfTitle, true),
+            'Scale, position, and orient this plain rock node anywhere in 3D space.'
+        );
+        XfGroup.Body.appendChild(MakeSliderPillRow('Width (X)', 0.35, 14.0, 0.05, P.width ?? 4.0, 2, 'm', V => { P.width = V; OnLive(); }, OnCommit));
+        XfGroup.Body.appendChild(MakeSliderPillRow('Height (Y)', 0.35, 14.0, 0.05, P.height ?? 3.5, 2, 'm', V => { P.height = V; OnLive(); }, OnCommit));
+        XfGroup.Body.appendChild(MakeSliderPillRow('Length (Z)', 0.35, 14.0, 0.05, P.length ?? 4.0, 2, 'm', V => { P.length = V; OnLive(); }, OnCommit));
+
+        XfGroup.Body.appendChild(MakeSliderPillRow('Position X', -8.0, 8.0, 0.05, P.posX ?? 0, 2, 'm', V => { P.posX = V; OnLive(); }, OnCommit));
+        XfGroup.Body.appendChild(MakeSliderPillRow('Position Y', -3.0, 8.0, 0.05, P.posY ?? 0, 2, 'm', V => { P.posY = V; OnLive(); }, OnCommit));
+        XfGroup.Body.appendChild(MakeSliderPillRow('Position Z', -8.0, 8.0, 0.05, P.posZ ?? 0, 2, 'm', V => { P.posZ = V; OnLive(); }, OnCommit));
+
+        XfGroup.Body.appendChild(MakeSliderPillRow('Yaw', -180, 180, 1, P.yawDeg ?? 0, 0, '°', V => { P.yawDeg = V; OnLive(); }, OnCommit));
+        XfGroup.Body.appendChild(MakeSliderPillRow('Pitch', -90, 90, 1, P.pitchDeg ?? 0, 0, '°', V => { P.pitchDeg = V; OnLive(); }, OnCommit));
+        XfGroup.Body.appendChild(MakeSliderPillRow('Roll', -90, 90, 1, P.rollDeg ?? 0, 0, '°', V => { P.rollDeg = V; OnLive(); }, OnCommit));
+        XfGroup.Body.appendChild(MakeSliderPillRow('Shape Seed', 1, 9999, 1, P.seed ?? 101, 0, '#', V => { P.seed = Math.round(V); OnLive(); }, OnCommit));
+
+        const XfBtns = MakeEl('div', 'studio-btn-row');
+        const MutBtn = MakeEl('button', 'button', '🎲 Mutate Seed');
+        MutBtn.type = 'button';
+        MutBtn.addEventListener('click', () =>
+        {
+            this._pushRock2UndoSnapshot();
+            P.seed = (((P.seed || 101) * 1664525 + 1013904223) >>> 0) % 9999 + 1;
+            this._rebuildRock2StackNow(false);
+            this.rebuildInspector();
+        });
+        const ZeroBtn = MakeEl('button', 'button', 'Reset Pose');
+        ZeroBtn.type = 'button';
+        ZeroBtn.addEventListener('click', () =>
+        {
+            this._pushRock2UndoSnapshot();
+            P.posX = 0; P.posY = 0; P.posZ = 0;
+            P.yawDeg = 0; P.pitchDeg = 0; P.rollDeg = 0;
+            this._rebuildRock2StackNow(false);
+            this.rebuildInspector();
+        });
+        XfBtns.append(MutBtn, ZeroBtn);
+        XfGroup.Body.appendChild(XfBtns);
+        Content.appendChild(XfGroup.Group);
+
+        // 3. Node-Specific Plain Shape Groups
+        for (const GrpSpec of Def.controlGroups)
+        {
+            const Grp = MakePropertyGroup(
+                GrpSpec.title,
+                GrpSpec.glyph || 'Sliders',
+                GrpSpec.badge || 'PLAIN SHAPE',
+                SavedOpen(GrpSpec.title, true),
+                GrpSpec.hint || ''
+            );
+
+            for (const Ctrl of GrpSpec.controls)
+            {
+                if (Ctrl.type === 'select')
+                {
+                    Grp.Body.appendChild(MakeSelectRow(
+                        Ctrl.label,
+                        Ctrl.options,
+                        String(P[Ctrl.key] ?? Ctrl.options?.[0]?.[1] ?? ''),
+                        Val =>
+                        {
+                            this._pushRock2UndoSnapshot();
+                            const AsNum = Number(Val);
+                            P[Ctrl.key] = (Val !== '' && !Number.isNaN(AsNum)) ? AsNum : Val;
+                            this._rebuildRock2StackNow(false);
+                            this.rebuildInspector();
+                        }
+                    ));
+                }
+                else
+                {
+                    Grp.Body.appendChild(MakeSliderPillRow(
+                        Ctrl.label,
+                        Ctrl.min,
+                        Ctrl.max,
+                        Ctrl.step,
+                        P[Ctrl.key],
+                        Ctrl.decimals,
+                        Ctrl.unit,
+                        V => { P[Ctrl.key] = V; OnLive(); },
+                        OnCommit
+                    ));
+                }
+            }
+            Content.appendChild(Grp.Group);
+        }
+
+        // 4. Studio Lighting, QEF Dual-Contour Mesh & Export
+        const StageTitle = 'Lighting, QEF Mesh & Export';
+        const StageGrp = MakePropertyGroup(
+            StageTitle,
+            'Boxes',
+            IsQef ? `QEF ${this.rock2.meshResolution}` : '60 FPS SDF',
+            SavedOpen(StageTitle, true),
+            'Adjust studio sun angle or extract a manifold 4³ Sparse-Brick QEF Dual-Contour mesh for .GLB / .OBJ / .STL export.'
+        );
+        StageGrp.Body.appendChild(MakeSliderPillRow('Sun Azimuth', 0, 360, 2, Stack.sunAzimuthDeg ?? 46, 0, '°', V => { Stack.sunAzimuthDeg = V; OnLive(); }, OnCommit));
+        StageGrp.Body.appendChild(MakeSliderPillRow('Sun Elevation', 12, 82, 1, Stack.sunElevationDeg ?? 42, 0, '°', V => { Stack.sunElevationDeg = V; OnLive(); }, OnCommit));
+        StageGrp.Body.appendChild(MakeSliderPillRow('Viewport Exposure', 0.45, 1.65, 0.02, this.rock2View?.exposure ?? 1.12, 2, 'ev', V =>
+        {
+            if (this.rock2View) this.rock2View.exposure = V;
+        }));
+
+        if (IsQef)
+        {
+            StageGrp.Body.appendChild(MakeSliderPillRow('QEF Voxel Grid Res', 36, 112, 4, this.rock2.meshResolution ?? 72, 0, 'vx', V =>
+            {
+                this.rock2.meshResolution = Math.round(V);
+                Stack.meshResolution = this.rock2.meshResolution;
+                this.rock2.qefDirty = true;
+                this._scheduleRock2QefBake(160);
+            }));
+        }
+
+        const ModeRow = MakeEl('div', 'studio-btn-row');
+        const BakeBtn = MakeEl('button', 'button export-button', IsQef ? 'Rebake QEF Mesh' : 'Switch to QEF Mesh');
+        BakeBtn.type = 'button';
+        BakeBtn.addEventListener('click', () =>
+        {
+            this._bakeRock2QefMeshNow();
+            if (this.rock2View) this.rock2View.renderMode = 'qef-mesh';
+            this._syncRock2ToolbarButtons();
+            this.rebuildInspector();
+            this.refreshChrome();
+        });
+        ModeRow.appendChild(BakeBtn);
+        if (IsQef)
+        {
+            const BackBtn = MakeEl('button', 'button', 'Back to 60 FPS SDF');
+            BackBtn.type = 'button';
+            BackBtn.addEventListener('click', () => document.getElementById('rock2-mode-ray-btn')?.click());
+            ModeRow.appendChild(BackBtn);
+        }
+        StageGrp.Body.appendChild(ModeRow);
+
+        const ExpRow = MakeEl('div', 'studio-btn-row');
+        for (const [Label, Fmt] of [['Export .GLB', 'glb'], ['Export .OBJ', 'obj'], ['Export .STL', 'stl']])
+        {
+            const B = MakeEl('button', 'button', Label);
+            B.type = 'button';
+            B.addEventListener('click', () => this._exportRock2Asset(Fmt));
+            ExpRow.appendChild(B);
+        }
+        StageGrp.Body.appendChild(ExpRow);
+
+        const JsonRow = MakeEl('div', 'studio-btn-row');
+        const SaveJsonBtn = MakeEl('button', 'button', 'Save Layer Stack (.JSON)');
+        SaveJsonBtn.type = 'button';
+        SaveJsonBtn.addEventListener('click', () => this._exportRock2Asset('json'));
+        JsonRow.appendChild(SaveJsonBtn);
+        StageGrp.Body.appendChild(JsonRow);
+
+        Content.appendChild(StageGrp.Group);
+    }
+
+    /*======================================================================================================================================
                                                       MAIN RENDER LOOP & TELEMETRY
     ======================================================================================================================================*/
     _startMainLoop()
@@ -3442,7 +4445,11 @@ class TerrainWorldStudioApp
             }
             else LastSimT = Now;
 
-            if (this.workspaceMode === 'fracture')
+            if (this.workspaceMode === 'rock2')
+            {
+                this.rock2View?.render();
+            }
+            else if (this.workspaceMode === 'fracture')
             {
                 this.fractureView?.render();
             }
@@ -3459,7 +4466,20 @@ class TerrainWorldStudioApp
                 Frames = 0;
                 LastFpsT = Now;
 
-                if (this.workspaceMode === 'fracture')
+                if (this.workspaceMode === 'rock2')
+                {
+                    const IsQef = this.rock2View?.renderMode === 'qef-mesh';
+                    const S = this.rock2?.qefStats;
+                    const C = this.rock2?.compiled;
+                    if (EnginePill) EnginePill.textContent = IsQef ? `ROCK 2.0 QEF · ${Fps} FPS` : `ROCK 2.0 SDF · ${Fps} FPS`;
+                    if (StatMesh)
+                    {
+                        StatMesh.textContent = (IsQef && S)
+                            ? `QEF Triangles: ${S.triangles.toLocaleString()} · Vertices: ${S.vertices.toLocaleString()} · Plain SDF Stack`
+                            : `Plain SDF Layer Stack · ${C?.compiledLayers?.length || 0} Layers · ${C?.primitives?.length || 0} Primitives · 0 Noise`;
+                    }
+                }
+                else if (this.workspaceMode === 'fracture')
                 {
                     const IsQef = this.fractureView?.renderMode === 'qef-mesh';
                     const S = this.fracture?.qefStats;

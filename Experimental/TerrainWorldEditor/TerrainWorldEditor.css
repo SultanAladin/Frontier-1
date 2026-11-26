@@ -53,7 +53,8 @@
     grid-template-columns: 1fr;
 }
 .terrain-stage-grid.mode-2d .stage-pane-3d,
-.terrain-stage-grid.mode-2d .stage-pane-fracture {
+.terrain-stage-grid.mode-2d .stage-pane-fracture,
+.terrain-stage-grid.mode-2d .stage-pane-rock2 {
     display: none;
 }
 
@@ -61,7 +62,8 @@
     grid-template-columns: 1fr;
 }
 .terrain-stage-grid.mode-3d .stage-pane-2d,
-.terrain-stage-grid.mode-3d .stage-pane-fracture {
+.terrain-stage-grid.mode-3d .stage-pane-fracture,
+.terrain-stage-grid.mode-3d .stage-pane-rock2 {
     display: none;
 }
 
@@ -71,7 +73,8 @@
 .terrain-stage-grid.mode-split .stage-pane-2d {
     border-right: 1px solid var(--line-strong);
 }
-.terrain-stage-grid.mode-split .stage-pane-fracture {
+.terrain-stage-grid.mode-split .stage-pane-fracture,
+.terrain-stage-grid.mode-split .stage-pane-rock2 {
     display: none;
 }
 
@@ -79,10 +82,23 @@
     grid-template-columns: 1fr;
 }
 .terrain-stage-grid.mode-fracture .stage-pane-2d,
-.terrain-stage-grid.mode-fracture .stage-pane-3d {
+.terrain-stage-grid.mode-fracture .stage-pane-3d,
+.terrain-stage-grid.mode-fracture .stage-pane-rock2 {
     display: none;
 }
 .terrain-stage-grid.mode-fracture .stage-pane-fracture {
+    display: block;
+}
+
+.terrain-stage-grid.mode-rock2 {
+    grid-template-columns: 1fr;
+}
+.terrain-stage-grid.mode-rock2 .stage-pane-2d,
+.terrain-stage-grid.mode-rock2 .stage-pane-3d,
+.terrain-stage-grid.mode-rock2 .stage-pane-fracture {
+    display: none;
+}
+.terrain-stage-grid.mode-rock2 .stage-pane-rock2 {
     display: block;
 }
 
@@ -533,4 +549,222 @@ body:not(.ws-fracture) #inspector-tabs button[data-itab="fracture"] {
 .fracture-stamp-cta:hover {
     filter: brightness(1.06);
 }
+
+/*------------------------------------------------------------------------------------------------------------------------
+                     ROCKFORMATION 2.0 WORKSPACE · COMPOSABLE PURE-SDF PLAIN ROCK LAYER STACK
+------------------------------------------------------------------------------------------------------------------------*/
+#PaneRock2,
+#CanvasRock2 {
+    background: radial-gradient(circle at 50% 42%, #181c24 0%, #0b0d10 100%);
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+/* Hide 2D/3D Terrain-specific chrome in RockFormation 2.0 while keeping Undo/Redo, Import, Export, Quick Library,
+   Selected Layer Name & Visibility Switch 100% live and bound to the Layer Stack (zero dead controls). */
+body.ws-rock2 .document-dock,
+body.ws-rock2 #scene-filters,
+body.ws-rock2 #scope-select,
+body.ws-rock2 #lens-select,
+body.ws-rock2 .sym-cluster,
+body.ws-rock2 #toggle-ocean-btn,
+body.ws-rock2 #toggle-gizmo-btn,
+body.ws-rock2 #toggle-bounds-btn,
+body.ws-rock2 #toggle-contours-btn,
+body.ws-rock2 .viewport-bar .bar-divider,
+body.ws-rock2 .transport,
+body.ws-rock2 #inspector-tabs {
+    display: none !important;
+}
+
+body:not(.ws-rock2) #inspector-tabs button[data-itab="rock2"] {
+    display: none !important;
+}
+
+body.ws-rock2 .quick-lib-scroll {
+    max-height: 258px;
+}
+
+.rock2-layer-card {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    width: 100%;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    background: rgba(255, 255, 255, 0.035);
+    color: #e2e2e2;
+    cursor: pointer;
+    transition: background 0.14s ease, border-color 0.14s ease;
+}
+.rock2-layer-card:hover {
+    background: rgba(255, 255, 255, 0.072);
+    border-color: rgba(255, 255, 255, 0.14);
+}
+.rock2-layer-card.selected {
+    background: rgba(239, 244, 207, 0.11);
+    border-color: rgba(239, 244, 207, 0.55);
+}
+.rock2-layer-card.muted {
+    opacity: 0.48;
+}
+.rock2-layer-top {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+}
+.rock2-layer-idx {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    color: #b7bcc6;
+    font-variant-numeric: tabular-nums;
+    flex: none;
+}
+.rock2-layer-card.selected .rock2-layer-idx {
+    background: #eff4cf;
+    color: #161710;
+}
+.rock2-tone-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    flex: none;
+}
+.rock2-layer-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #f3f4ef;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.rock2-layer-bottom {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding-left: 2px;
+}
+.rock2-layer-meta {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    flex-wrap: nowrap;
+}
+.rock2-op-pill {
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    padding: 1.5px 6px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.07);
+    color: #cfd4dc;
+    text-transform: uppercase;
+}
+.rock2-op-pill.op-subtract {
+    background: rgba(240, 147, 91, 0.18);
+    color: #f6b88e;
+}
+.rock2-op-pill.op-smooth_union,
+.rock2-op-pill.op-chamfer_union {
+    background: rgba(90, 200, 250, 0.16);
+    color: #9ddcff;
+}
+.rock2-op-pill.op-intersect {
+    background: rgba(214, 162, 232, 0.18);
+    color: #e6c6f5;
+}
+.rock2-node-tag {
+    font-size: 10px;
+    color: #9398a3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.rock2-layer-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex: none;
+}
+.rock2-mini-btn {
+    width: 22px;
+    height: 22px;
+    border-radius: 7px;
+    display: grid;
+    place-items: center;
+    font-size: 10px;
+    font-weight: 700;
+    color: #8b909a;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+}
+.rock2-mini-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.10);
+    color: #ffffff;
+}
+.rock2-mini-btn:disabled {
+    opacity: 0.25;
+    cursor: default;
+}
+.rock2-mini-btn.solo-on {
+    background: #eff4cf;
+    color: #161710;
+}
+.rock2-mini-btn.eye-on {
+    color: var(--live);
+}
+
+.rock2-swatch-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 5px;
+    margin-top: 6px;
+}
+.rock2-swatch-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 7px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.035);
+    color: #d4d7dd;
+    font-size: 10px;
+    cursor: pointer;
+    min-width: 0;
+}
+.rock2-swatch-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+.rock2-swatch-btn.active {
+    background: rgba(239, 244, 207, 0.14);
+    border-color: rgba(239, 244, 207, 0.62);
+    color: #ffffff;
+}
+.rock2-swatch-btn i {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.30);
+    flex: none;
+}
+.rock2-swatch-btn span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 

@@ -14,23 +14,25 @@
     <meta http-equiv="Expires" content="0" />
     <title>SDF Terrain Studio — Frontier Experimental Remastered</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23161616'/%3E%3Cpath d='M5 23l7-12 5 7 4-5 6 10z' fill='%23eff4cf'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="./TerrainWorldEditor.css?v=20261126g" />
+    <link rel="stylesheet" href="./TerrainWorldEditor.css?v=20261127a" />
     <script type="importmap">
     {
         "imports": {
-            "./Engine/RockCliff/Core/SpatialNoise3D.js": "./Engine/RockCliff/Core/SpatialNoise3D.js?v=20261126g",
-            "./Engine/RockCliff/Core/SparseSdfBrickGrid.js": "./Engine/RockCliff/Core/SparseSdfBrickGrid.js?v=20261126g",
-            "./Engine/RockCliff/Core/QefDualContour.js": "./Engine/RockCliff/Core/QefDualContour.js?v=20261126g",
-            "./Engine/RockCliff/PureSdfFractureEngine.js": "./Engine/RockCliff/PureSdfFractureEngine.js?v=20261126g",
-            "./Engine/RockCliff/FractureLabViewport.js": "./Engine/RockCliff/FractureLabViewport.js?v=20261126g",
-            "./Engine/TerrainLayerStack.js": "./Engine/TerrainLayerStack.js?v=20261126g",
-            "./StudioControls.js": "./StudioControls.js?v=20261126g"
+            "./Engine/RockCliff/Core/SpatialNoise3D.js": "./Engine/RockCliff/Core/SpatialNoise3D.js?v=20261127a",
+            "./Engine/RockCliff/Core/SparseSdfBrickGrid.js": "./Engine/RockCliff/Core/SparseSdfBrickGrid.js?v=20261127a",
+            "./Engine/RockCliff/Core/QefDualContour.js": "./Engine/RockCliff/Core/QefDualContour.js?v=20261127a",
+            "./Engine/RockCliff/PureSdfFractureEngine.js": "./Engine/RockCliff/PureSdfFractureEngine.js?v=20261127a",
+            "./Engine/RockCliff/FractureLabViewport.js": "./Engine/RockCliff/FractureLabViewport.js?v=20261127a",
+            "./Engine/RockCliff/RockFormationStackEngine.js": "./Engine/RockCliff/RockFormationStackEngine.js?v=20261127a",
+            "./Engine/RockCliff/RockFormation2Viewport.js": "./Engine/RockCliff/RockFormation2Viewport.js?v=20261127a",
+            "./Engine/TerrainLayerStack.js": "./Engine/TerrainLayerStack.js?v=20261127a",
+            "./StudioControls.js": "./StudioControls.js?v=20261127a"
         }
     }
     </script>
-    <script type="module" src="./TerrainWorldEditor.js?v=20261126g"></script>
+    <script type="module" src="./TerrainWorldEditor.js?v=20261127a"></script>
 </head>
-<body class="ws-fracture">
+<body class="ws-rock2">
     <div id="app">
         <!-- Top Studio Header: Frontier logomark, slanted terrain tabs, pill workspace nav, live engine pill & export -->
         <header class="app-header">
@@ -48,7 +50,8 @@
                 <button class="nav-button" data-ws="2d" type="button">2D Mask <small>1</small></button>
                 <button class="nav-button" data-ws="3d" type="button">3D Landscape <small>2</small></button>
                 <button class="nav-button" data-ws="split" type="button">Split 2D + 3D <small>3</small></button>
-                <button class="nav-button active" data-ws="fracture" type="button">Rock Formation <small>4</small></button>
+                <button class="nav-button" data-ws="fracture" type="button">Rock Formation <small>4</small></button>
+                <button class="nav-button active" data-ws="rock2" type="button">RockFormation 2.0 <small>5</small></button>
                 <a class="nav-button" href="../SdfSculptEditor/index.html" style="text-decoration:none">3D Clay Studio ↗</a>
             </nav>
 
@@ -68,12 +71,12 @@
             <aside class="left-panel" id="left-panel">
                 <div class="outliner-heading">
                     <div>
-                        <h1>Outliner</h1>
+                        <h1 id="left-panel-title">Outliner</h1>
                         <span class="outliner-subtitle" id="outliner-subtitle">3 Terrains · 16 Sparse Tiles</span>
                     </div>
                     <div class="outliner-heading-actions">
                         <button id="compact-outliner" class="icon-button" type="button" title="Compact outliner" aria-label="Compact outliner"></button>
-                        <button id="add-button" class="icon-button" type="button" title="Quick-add a 3D Spline Landform Layer" aria-label="Add 3D Spline Layer"></button>
+                        <button id="add-button" class="icon-button" type="button" title="Quick-add a Layer" aria-label="Add Layer"></button>
                     </div>
                 </div>
 
@@ -107,11 +110,11 @@
                     <div class="panel-content" id="OutlinerContent"></div>
                 </div>
 
-                <!-- Embedded Add Layer & 3D Spline Quick Library -->
+                <!-- Embedded Add Layer & 3D Spline / Basic Rock Node Quick Library -->
                 <div class="library" id="quick-library">
                     <div class="panel-heading">
-                        <span>Add Layer &amp; Splines</span>
-                        <span class="count">7</span>
+                        <span id="quick-lib-title">Add Layer &amp; Splines</span>
+                        <span class="count" id="quick-lib-count">7</span>
                     </div>
                     <div class="quick-lib-scroll" id="quick-add-list"></div>
                 </div>
@@ -159,8 +162,8 @@
                     </div>
                 </div>
 
-                <!-- Seamless 2D | 3D | Split | Pure-SDF Fracture Lab Stage -->
-                <div class="terrain-stage-grid mode-fracture" id="StageGrid">
+                <!-- Seamless 2D | 3D | Split | Pure-SDF Rock Formation 1.0 & 2.0 Stage -->
+                <div class="terrain-stage-grid mode-rock2" id="StageGrid">
                     <!-- 2D Infinite World Mask Pane -->
                     <div class="stage-pane stage-pane-2d" id="Pane2D">
                         <canvas id="Canvas2D" aria-label="Infinite 2D World Mask &amp; Terrain Bounds Editor"></canvas>
@@ -243,6 +246,39 @@
                             <span>Drag: orbit 360°</span><i>·</i><span>Shift+Drag / MMB: pan</span><i>·</i><span>Wheel: zoom</span><i>·</i><span>Sliders: live 60 FPS Pure-SDF rock formation</span>
                         </div>
                     </div>
+
+                    <!-- RockFormation 2.0 Pure-SDF Composable Plain-Rock Layer Stack Pane -->
+                    <div class="stage-pane stage-pane-rock2" id="PaneRock2">
+                        <canvas id="CanvasRock2" aria-label="RockFormation 2.0 Pure-SDF Layer Stack 3D Viewport"></canvas>
+
+                        <div class="viewport-caption">
+                            <span class="live-pill"><i></i><span>ROCKFORMATION 2.0</span></span>
+                            <span id="hud-rock2-stack">01 · Plain Big Boulder</span>
+                            <small id="hud-rock2-pure" class="tabular">Layer Stack · Plain SDF</small>
+                        </div>
+
+                        <div class="fracture-floating-bar" role="toolbar" aria-label="RockFormation 2.0 Render &amp; Form Lenses">
+                            <button id="rock2-mode-ray-btn" class="fracture-pill-btn active" type="button" title="Real-time 60 FPS GPU Pure-SDF Layer Stack Raymarcher">60 FPS GPU SDF</button>
+                            <button id="rock2-mode-qef-btn" class="fracture-pill-btn" type="button" title="4^3 Sparse-Brick QEF Dual-Contoured Manifold Mesh">QEF Dual-Contour Mesh</button>
+                            <button id="rock2-wire-btn" class="fracture-pill-btn" type="button" title="Overlay QEF sharp-crease wireframe" style="display:none">Wireframe</button>
+                            <select id="rock2-lens-select" class="fracture-lens-select" aria-label="RockFormation 2.0 form lens">
+                                <option value="0" selected>Lens · Plain Stone Studio</option>
+                                <option value="1">Lens · Uniform Clay Maquette</option>
+                                <option value="2">Lens · Volumetric 3D SDF AO</option>
+                                <option value="3">Lens · Surface Normals</option>
+                            </select>
+                        </div>
+
+                        <div class="viewport-right-hud" id="Rock2Hud">
+                            <span class="hud-pill">Layers<b id="hud-rock2-layers">1</b></span>
+                            <span class="hud-pill">Blocks<b id="hud-rock2-blocks">1</b></span>
+                            <span class="hud-pill">QEF Tris<b id="hud-rock2-tris">—</b></span>
+                        </div>
+
+                        <div class="viewport-help">
+                            <span>Drag: orbit 360°</span><i>·</i><span>Shift+Drag / MMB: pan</span><i>·</i><span>Wheel: zoom</span><i>·</i><span>Stack &amp; combine plain basic rock SDF layers</span>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Lower 52px Quick Transport Bar -->
@@ -306,7 +342,8 @@
                 </div>
 
                 <div class="inspector-tabs" id="inspector-tabs" role="tablist" aria-label="Inspector categories">
-                    <button data-itab="fracture" class="active" type="button">Rock Formation</button>
+                    <button data-itab="rock2" class="active" type="button">RockFormation 2.0</button>
+                    <button data-itab="fracture" type="button">Rock Formation</button>
                     <button data-itab="layers" type="button">Layers &amp; Falloff</button>
                     <button data-itab="spline" type="button">Spline &amp; Gizmo</button>
                     <button data-itab="slab" type="button">Thin-Slab</button>

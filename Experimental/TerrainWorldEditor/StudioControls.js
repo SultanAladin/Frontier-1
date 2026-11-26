@@ -43,7 +43,8 @@ export const GlyphPaths = {
     Sparkles:  '<path d="M11 3.5l1.7 4.6 4.6 1.7-4.6 1.7L11 16.1l-1.7-4.6-4.6-1.7 4.6-1.7z"/><path d="M18.5 14.5v5M16 17h5"/>',
     Download:  '<path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>',
     Activity:  '<path d="M3 12h4l3-8 4 16 3-8h4"/>',
-    Arch:      '<path d="M4 20V12a8 8 0 0 1 16 0v8h-4v-7a4 4 0 0 0-8 0v7z"/>'
+    Arch:      '<path d="M4 20V12a8 8 0 0 1 16 0v8h-4v-7a4 4 0 0 0-8 0v7z"/>',
+    Copy:      '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>'
 };
 
 export function ConstructGlyph(Name, ClassName = 'glyph')
