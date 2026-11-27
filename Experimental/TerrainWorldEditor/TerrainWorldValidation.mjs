@@ -1302,10 +1302,10 @@ Suite('27. Controllable Split System & Base Rock Form Generator reshape proporti
 });
 
 // 28. RockFormation 2.0: 11 Atomic Single Base Rocks + Composable Per-Layer Spline/Array/Splatter/Scatter Generators + Single Viewport CSS
-Suite('28. RockFormation 2.0: 11 atomic single base rocks, per-layer Spline/Array/Splatter/Scatter generators, CSG stack, QEF mesh & viewport CSS', () =>
+Suite('28. RockFormation 2.0: 13 atomic single base rocks, per-layer Spline/Array/Splatter/Scatter generators, CSG stack, QEF mesh & viewport CSS', () =>
 {
-    // 0. Assert 11 plain base rock nodes and CSS pane exclusivity (no split viewport!)
-    assert.equal(ROCK2_NODE_CATALOG.length, 11, 'RockFormation 2.0 must expose 11 atomic plain base rock nodes');
+    // 0. Assert 13 plain base rock nodes and CSS pane exclusivity (no split viewport!)
+    assert.equal(ROCK2_NODE_CATALOG.length, 13, 'RockFormation 2.0 must expose 13 atomic plain base rock & crystal/linear nodes');
     assert.equal(ROCK2_NODE_CATALOG.some(N => N.type.includes('arch') || N.name.toLowerCase().includes('arch')), false,
         'RockFormation 2.0 base rock catalog must contain zero hardcoded arch base nodes');
 
@@ -2528,5 +2528,110 @@ Suite('35. 3D Volumetric Erase Brush, +/− Sculpt Polarity, Proximity Crumb Cap
         'TerrainWorldEditor.css must style +/− polarity toggle bar and crimson Erase brush');
 });
 
-console.log(`\nAll ${Passed}/35 Open-World SDF Terrain & Pure-SDF Rock Formation 1.0 + 2.0 Studio validation suites passed!`);
+Suite('36. Pure-SDF Crystals (crystal_prism), Upgraded Basalt Colonnades (colonnade_wall) & Linear Dikes/Hogbacks/Fins (linear_dike + parallel_fins + crystal_spray)', () =>
+{
+    const sampleGridSig = (doc, minX = -3.0, maxX = 3.0, minY = 0.2, maxY = 5.0, minZ = -3.0, maxZ = 3.0) =>
+    {
+        const comp = compileRock2Stack(doc);
+        const out = [];
+        for (let ix = 0; ix < 7; ix++)
+        {
+            const wx = minX + (maxX - minX) * (ix / 6);
+            for (let iy = 0; iy < 7; iy++)
+            {
+                const wy = minY + (maxY - minY) * (iy / 6);
+                for (let iz = 0; iz < 7; iz++)
+                {
+                    const wz = minZ + (maxZ - minZ) * (iz / 6);
+                    out.push(evalRock2StackSdf(comp, wx, wy, wz));
+                }
+            }
+        }
+        return out;
+    };
+    const maxDelta = (a, b) =>
+    {
+        let m = 0;
+        for (let i = 0; i < a.length; i++) m = Math.max(m, Math.abs(a[i] - b[i]));
+        return m;
+    };
+
+    // A. Validate all 6 Crystal Habits (`crystal_prism`) + Zero Dead Controls
+    for (const Habit of ['quartz_hex', 'double_terminated', 'chisel_selenite', 'fluorite_octa', 'tourmaline_trigonal', 'obelisk_shard'])
+    {
+        const CLyr = createRock2Layer('crystal_prism', { crystalHabit: Habit, width: 1.5, height: 5.0, length: 1.5 });
+        const CComp = compileRock2Stack({ layers: [CLyr] });
+        assert.ok(evalRock2StackSdf(CComp, 0.0, 2.2, 0.0) < -0.25, `Crystal habit "${Habit}" core must be solid (< -0.25)`);
+        assert.ok(evalRock2StackSdf(CComp, 0.0, 5.4, 0.0) > 0.08, `Crystal habit "${Habit}" above apex must be air (> 0.08)`);
+    }
+
+    const BaseCrystalSig = sampleGridSig({ layers: [createRock2Layer('crystal_prism', {})] }, -1.2, 1.2, 0.05, 5.2, -1.2, 1.2);
+    for (const [Key, AltVal] of [
+        ['prismSides', 4],
+        ['terminationStyle', 'chisel_wedge'],
+        ['apexHeightRatio', 0.68],
+        ['bottomPoint', 0.92],
+        ['faceAsymmetry', 0.52],
+        ['edgeBevel', 0.26],
+        ['shaftTaper', 0.45],
+        ['leanX', 0.38],
+        ['satelliteTwin', 0.85]
+    ])
+    {
+        const AltSig = sampleGridSig({ layers: [createRock2Layer('crystal_prism', { [Key]: AltVal })] }, -1.2, 1.2, 0.05, 5.2, -1.2, 1.2);
+        assert.ok(maxDelta(BaseCrystalSig, AltSig) > 0.015, `Crystal control "${Key}" must actively reshape the 3D Crystal SDF`);
+    }
+
+    // B. Validate Upgraded Basalt Column (`ball_socket`, `socketDish`, `pinchBands`, `stepped_fracture`)
+    const BaseBasaltSig = sampleGridSig({ layers: [createRock2Layer('basalt_column', { width: 1.8, height: 4.6, length: 1.8 })] }, -1.2, 1.2, 0.2, 4.8, -1.2, 1.2);
+    for (const [Key, AltVal] of [
+        ['basaltStyle', 'stepped_fracture'],
+        ['socketDish', -0.40],
+        ['pinchBands', 0.26]
+    ])
+    {
+        const AltSig = sampleGridSig({ layers: [createRock2Layer('basalt_column', { width: 1.8, height: 4.6, length: 1.8, [Key]: AltVal })] }, -1.2, 1.2, 0.2, 4.8, -1.2, 1.2);
+        assert.ok(maxDelta(BaseBasaltSig, AltSig) > 0.02, `Basalt control "${Key}" must actively reshape the 3D Basalt Column SDF`);
+    }
+
+    // C. Validate all 6 Linear Rock Formations (`linear_dike`) + Zero Dead Controls
+    for (const LStyle of ['volcanic_dike', 'hogback_flatiron', 'sandstone_fin', 'knife_arete', 'crenellated_wall', 'strike_rib'])
+    {
+        const LLyr = createRock2Layer('linear_dike', { linearStyle: LStyle, width: 8.4, height: 4.2, length: 1.6 });
+        const LComp = compileRock2Stack({ layers: [LLyr] });
+        assert.ok(LComp.bounds.maxX - LComp.bounds.minX > (LComp.bounds.maxZ - LComp.bounds.minZ) * 1.55,
+            `Linear formation "${LStyle}" must have elongated tabular strike aspect`);
+        assert.ok(evalRock2StackSdf(LComp, 0.0, 0.8, 0.0) < -0.10, `Linear formation "${LStyle}" interior must be solid`);
+    }
+
+    const BaseLinearSig = sampleGridSig({ layers: [createRock2Layer('linear_dike', {})] }, -4.5, 4.5, 0.2, 4.4, -1.6, 1.6);
+    for (const [Key, AltVal] of [
+        ['dipTiltDeg', 42],
+        ['crestSharpness', 0.10],
+        ['spineSegments', 1],
+        ['crestUndulation', 0.62],
+        ['wallTaper', 0.72],
+        ['strikeBow', -0.48],
+        ['basalUndercut', 0.50],
+        ['roundness', 0.68]
+    ])
+    {
+        const AltSig = sampleGridSig({ layers: [createRock2Layer('linear_dike', { [Key]: AltVal })] }, -4.5, 4.5, 0.2, 4.4, -1.6, 1.6);
+        assert.ok(maxDelta(BaseLinearSig, AltSig) > 0.02, `Linear Dike control "${Key}" must actively reshape the 3D Linear SDF`);
+    }
+
+    // D. Validate all 3 new Showcase Starter Stacks (#16 Crystal Cluster, #17 Basalt Colonnade, #18 Linear Dike & Parallel Fins) + QEF Mesh (`0` Mesh->SDF)
+    for (const StarterId of ['stack-crystal-cluster', 'stack-basalt-colonnade', 'stack-linear-dike-fins'])
+    {
+        assert.ok(ROCK2_STARTER_STACKS.some(s => s.id === StarterId), `Starter Stack "${StarterId}" must exist`);
+        const Doc = createDefaultRock2Document(StarterId);
+        const Comp = compileRock2Stack(Doc);
+        assert.ok(Comp.primitives.length >= 6, `${StarterId} must compile multi-instance Pure-SDF primitives (${Comp.primitives.length})`);
+        const Baked = bakeRock2StackQefMesh(Comp, { resolution: 48 });
+        assert.equal(Baked.sdfStats.meshToSdfCount, 0, `${StarterId} QEF Dual-Contour bake must have ZERO Mesh->SDF conversions`);
+        assert.ok(Baked.sdfStats.triangles > 500, `${StarterId} must bake clean manifold QEF geometry (${Baked.sdfStats.triangles} tris)`);
+    }
+});
+
+console.log(`\nAll ${Passed}/36 Open-World SDF Terrain & Pure-SDF Rock Formation 1.0 + 2.0 Studio validation suites passed!`);
 

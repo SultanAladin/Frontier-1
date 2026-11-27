@@ -72,10 +72,15 @@ export const ROCK2_STONE_TONES = {
     basalt:     { label: 'Dark Basalt Slate',   hex: '#454a52', rgb: [0.27, 0.29, 0.32] },
     granite:    { label: 'Pale Sierra Granite', hex: '#aea69c', rgb: [0.68, 0.65, 0.61] },
     sandstone:  { label: 'Warm Desert Buff',    hex: '#b88f6b', rgb: [0.72, 0.56, 0.42] },
-    bryceCoral: { label: 'Bryce Claron Coral',  hex: '#bd7257', rgb: [0.74, 0.45, 0.34] },
-    cobble:     { label: 'River Cobble Blue',   hex: '#757d85', rgb: [0.46, 0.49, 0.52] },
-    limestone:  { label: 'Karst Cream Stone',   hex: '#bab5a6', rgb: [0.73, 0.71, 0.65] },
-    redSlate:   { label: 'Red Canyon Slate',    hex: '#9e5e4d', rgb: [0.62, 0.37, 0.30] }
+    bryceCoral:   { label: 'Bryce Claron Coral',     hex: '#bd7257', rgb: [0.74, 0.45, 0.34] },
+    cobble:       { label: 'River Cobble Blue',      hex: '#757d85', rgb: [0.46, 0.49, 0.52] },
+    limestone:    { label: 'Karst Cream Stone',      hex: '#bab5a6', rgb: [0.73, 0.71, 0.65] },
+    redSlate:     { label: 'Red Canyon Slate',       hex: '#9e5e4d', rgb: [0.62, 0.37, 0.30] },
+    amethyst:     { label: 'Amethyst Violet Crystal',hex: '#8b5cf6', rgb: [0.55, 0.36, 0.88] },
+    quartzIce:    { label: 'Glacial Clear Quartz',   hex: '#c7e2f0', rgb: [0.78, 0.88, 0.94] },
+    emeraldBeryl: { label: 'Emerald Beryl Crystal',  hex: '#3ca878', rgb: [0.24, 0.66, 0.47] },
+    citrine:      { label: 'Citrine Amber Crystal',  hex: '#d99b38', rgb: [0.85, 0.61, 0.22] },
+    obsidian:     { label: 'Volcanic Obsidian Glass',hex: '#2f333b', rgb: [0.19, 0.20, 0.23] }
 };
 
 export const ROCK2_STONE_TONE_OPTIONS = Object.entries(ROCK2_STONE_TONES).map(([k, v]) => [v.label, k]);
@@ -294,28 +299,40 @@ export const ROCK2_NODE_CATALOG = [
         shortBadge: 'BASALT',
         glyph: 'Boxes',
         accent: '#9aa8bd',
-        desc: 'Single plain 4/5/6/7/8-sided polygonal basalt prism — pair with Hexagonal Array or Spline for colonnades',
+        desc: 'Polygonal 4/5/6/7/8-sided basalt prism with ball-and-socket caps, cooling bands, stepped cross-joints & colonnade curvature',
         defaults: {
             stoneTone: 'basalt',
             seed: 5512,
             posX: 0.0, posY: 0.0, posZ: 0.0,
             yawDeg: 0, pitchDeg: 0, rollDeg: 0,
             width: 1.15, height: 4.6, length: 1.15,
+            basaltStyle: 'classic_hex',
             polygonSides: 6,
             irregularity: 0.08,
             edgeBevel: 0.09,
             capTilt: 0.10,
+            socketDish: 0.0,
+            pinchBands: 0.0,
             taper: 0.02,
             bendX: 0.0,
             twistDeg: 0
         },
         controlGroups: [
             {
-                title: 'Polygonal Basalt Prism',
+                title: 'Polygonal Basalt Prism & Jointing',
                 badge: 'BASE ROCK',
                 glyph: 'Boxes',
-                hint: 'Single plain polygonal basalt column — attach Array (Hexagonal Pack) to build stepped organ-pipe colonnades.',
+                hint: 'Pair with Array → Hexagonal Pack or Linear Colonnade Wall (A→B) to build Giant’s Causeway & Fingal’s Cave cliffs.',
                 controls: [
+                    {
+                        type: 'select', key: 'basaltStyle', label: 'Basalt Column Style',
+                        options: [
+                            ['Classic Causeway Hex Prism', 'classic_hex'],
+                            ['Ball-and-Socket Cupped Column', 'ball_socket'],
+                            ['Curved Entablature Fan Prism', 'entablature_splay'],
+                            ['Cross-Jointed Stepped Column', 'stepped_fracture']
+                        ]
+                    },
                     {
                         type: 'select', key: 'polygonSides', label: 'Prism Polygon Sides',
                         options: [
@@ -330,8 +347,10 @@ export const ROCK2_NODE_CATALOG = [
                     { key: 'irregularity', label: 'Side Face Irregularity', min: 0.0, max: 0.35, step: 0.01, decimals: 2, unit: 'w' },
                     { key: 'edgeBevel', label: 'Prism Edge Bevel', min: 0.01, max: 0.55, step: 0.01, decimals: 2, unit: 'w' },
                     { key: 'capTilt', label: 'Top Termination Tilt', min: 0.0, max: 0.55, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'socketDish', label: 'Cup Socket (−) / Dome (+)', min: -0.45, max: 0.45, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'pinchBands', label: 'Cooling Chisel Bands', min: 0.0, max: 0.32, step: 0.01, decimals: 2, unit: 'w' },
                     { key: 'taper', label: 'Shaft Taper', min: -0.30, max: 0.45, step: 0.02, decimals: 2, unit: 'w' },
-                    { key: 'bendX', label: 'Column Curvature', min: -0.45, max: 0.45, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'bendX', label: 'Column Curvature', min: -0.55, max: 0.55, step: 0.02, decimals: 2, unit: 'w' },
                     { key: 'twistDeg', label: 'Prism Twist', min: -60, max: 60, step: 1, decimals: 0, unit: '°' }
                 ]
             }
@@ -638,6 +657,123 @@ export const ROCK2_NODE_CATALOG = [
                 ]
             }
         ]
+    },
+    {
+        type: 'crystal_prism',
+        name: 'Crystal & Gem Prism',
+        shortBadge: 'CRYSTAL',
+        glyph: 'Crystal',
+        accent: '#c084fc',
+        desc: 'Razor-sharp Pure-SDF mineral crystal — Hexagonal Quartz, Double-Terminated Herkimer, Selenite Sword, Fluorite Octahedron & Tourmaline',
+        defaults: {
+            stoneTone: 'amethyst',
+            seed: 6410,
+            posX: 0.0, posY: 0.0, posZ: 0.0,
+            yawDeg: 0, pitchDeg: 0, rollDeg: 0,
+            width: 1.35, height: 5.2, length: 1.35,
+            crystalHabit: 'quartz_hex',
+            prismSides: 6,
+            terminationStyle: 'quartz_rz',
+            apexHeightRatio: 0.34,
+            bottomPoint: 0.0,
+            faceAsymmetry: 0.18,
+            edgeBevel: 0.02,
+            shaftTaper: 0.06,
+            leanX: 0.0,
+            satelliteTwin: 0.0
+        },
+        controlGroups: [
+            {
+                title: 'Crystallographic Habit & Miller Terminations',
+                badge: 'CRYSTAL SDF',
+                glyph: 'Crystal',
+                hint: 'Exact half-space crystal faces — pair with Array → 3D Radiating Crystal Spray for geode clusters & quartz bursts.',
+                controls: [
+                    {
+                        type: 'select', key: 'crystalHabit', label: 'Crystal Mineral Habit',
+                        options: [
+                            ['Hexagonal Quartz Point (α-Quartz)', 'quartz_hex'],
+                            ['Double-Terminated Herkimer Crystal', 'double_terminated'],
+                            ['Monoclinic Selenite / Gypsum Sword', 'chisel_selenite'],
+                            ['Octahedral Fluorite / Diamond Gem', 'fluorite_octa'],
+                            ['Trigonal Tourmaline / Beryl Prism', 'tourmaline_trigonal'],
+                            ['Skewed Obelisk Razor Shard', 'obelisk_shard']
+                        ]
+                    },
+                    { key: 'prismSides', label: 'Prism Miller Faces', min: 3, max: 12, step: 1, decimals: 0, unit: 'pl' },
+                    {
+                        type: 'select', key: 'terminationStyle', label: 'Apex Termination Geometry',
+                        options: [
+                            ['Quartz Alternating r/z Rhombohedra', 'quartz_rz'],
+                            ['Symmetric Equant Pyramid Point', 'pyramid'],
+                            ['2-Face Chisel / Selenite Blade', 'chisel_wedge'],
+                            ['Single-Slant Oblique Cleavage', 'oblique_single'],
+                            ['Flat Pedion Table + Bevel Crown', 'pedion_bevel']
+                        ]
+                    },
+                    { key: 'apexHeightRatio', label: 'Apex Pyramid Ratio', min: 0.08, max: 0.80, step: 0.02, decimals: 2, unit: '×H' },
+                    { key: 'bottomPoint', label: 'Bottom Point (Double-Term)', min: 0.0, max: 1.0, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'faceAsymmetry', label: 'Crystal Face Asymmetry', min: 0.0, max: 0.55, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'edgeBevel', label: 'Crystal Edge Sharpness', min: 0.005, max: 0.30, step: 0.005, decimals: 3, unit: 'w' },
+                    { key: 'shaftTaper', label: 'Prism Shaft Taper', min: -0.25, max: 0.55, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'leanX', label: 'Crystal Cant / Lean', min: -0.50, max: 0.50, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'satelliteTwin', label: 'Penetration Twin Spur', min: 0.0, max: 1.0, step: 0.02, decimals: 2, unit: 'w' }
+                ]
+            }
+        ]
+    },
+    {
+        type: 'linear_dike',
+        name: 'Linear Dike, Hogback & Fin',
+        shortBadge: 'LINEAR',
+        glyph: 'LinearDike',
+        accent: '#f59e0b',
+        desc: 'Elongated tabular geological rock wall — Volcanic Igneous Dike, Tilted Hogback/Flatiron, Moab Sandstone Fin & Knife-Edge Arête',
+        defaults: {
+            stoneTone: 'redSlate',
+            seed: 7820,
+            posX: 0.0, posY: 0.0, posZ: 0.0,
+            yawDeg: 0, pitchDeg: 0, rollDeg: 0,
+            width: 8.6, height: 4.4, length: 1.55,
+            linearStyle: 'volcanic_dike',
+            dipTiltDeg: 0,
+            crestSharpness: 0.62,
+            spineSegments: 3,
+            crestUndulation: 0.28,
+            wallTaper: 0.26,
+            strikeBow: 0.08,
+            basalUndercut: 0.0,
+            roundness: 0.14
+        },
+        controlGroups: [
+            {
+                title: 'Linear Dike, Hogback & Parallel Fin Profile',
+                badge: 'LINEAR SDF',
+                glyph: 'LinearDike',
+                hint: 'Elongated strike-aligned formation — pair with Array → Parallel Linear Fins / Strike Ribs for Moab fin fields & hogbacks.',
+                controls: [
+                    {
+                        type: 'select', key: 'linearStyle', label: 'Linear Formation Type',
+                        options: [
+                            ['Volcanic Igneous Dike Wall (Shiprock)', 'volcanic_dike'],
+                            ['Tilted Hogback / Flatiron Cuesta', 'hogback_flatiron'],
+                            ['Moab Parallel-Joint Sandstone Fin', 'sandstone_fin'],
+                            ['Razor Knife-Edge Arête Spine', 'knife_arete'],
+                            ['Crenellated Jointed Battlement Wall', 'crenellated_wall'],
+                            ['Low Protruding Bedrock Strike Rib', 'strike_rib']
+                        ]
+                    },
+                    { key: 'dipTiltDeg', label: 'Strata Dip / Flatiron Lean', min: -55, max: 55, step: 1, decimals: 0, unit: '°' },
+                    { key: 'crestSharpness', label: 'Crest Ridge Sharpness', min: 0.05, max: 0.95, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'spineSegments', label: 'Fused Strike Wall Blocks', min: 1, max: 5, step: 1, decimals: 0, unit: 'seg' },
+                    { key: 'crestUndulation', label: 'Crest Spine Serration', min: 0.0, max: 0.65, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'wallTaper', label: 'Wall Thickness Taper', min: -0.35, max: 0.78, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'strikeBow', label: 'Strike Curvature / Bow', min: -0.55, max: 0.55, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'basalUndercut', label: 'Basal Alcove Undercut', min: 0.0, max: 0.55, step: 0.02, decimals: 2, unit: 'w' },
+                    { key: 'roundness', label: 'Edge Weathering / Polish', min: 0.02, max: 0.75, step: 0.01, decimals: 2, unit: 'w' }
+                ]
+            }
+        ]
     }
 ];
 
@@ -819,13 +955,17 @@ export const ROCK2_ROCK_POOL_OPTIONS = [
     ['Mixed Boulders, Cobbles, Slabs & Clasts', 'mixed_boulders'],
     ['Mixed Canyon Outcrop (Cliff + Boulder + Slab + Spire)', 'mixed_outcrop'],
     ['Mixed Badlands (Hoodoo + Pedestal + Spire + Cliff)', 'mixed_badlands'],
+    ['Mixed Crystals & Basalt Prisms', 'mixed_crystals'],
+    ['Mixed Linear Dikes, Fins & Slabs', 'mixed_linear'],
     ['Exact Base Rock Only (No Shape Mutation)', 'uniform_base']
 ];
 
 const ROCK_POOLS = {
     mixed_boulders: ['big_boulder', 'smooth_rock', 'small_rock', 'rock_slab'],
     mixed_outcrop:  ['cliff_block', 'big_boulder', 'rock_slab', 'spire_pinnacle'],
-    mixed_badlands: ['hoodoo_column', 'pedestal_rock', 'spire_pinnacle', 'cliff_block']
+    mixed_badlands: ['hoodoo_column', 'pedestal_rock', 'spire_pinnacle', 'cliff_block'],
+    mixed_crystals: ['crystal_prism', 'crystal_prism', 'basalt_column', 'spire_pinnacle'],
+    mixed_linear:   ['linear_dike', 'linear_dike', 'rock_slab', 'cliff_block']
 };
 
 /**
@@ -994,12 +1134,18 @@ export const ROCK2_GENERATOR_DEFAULTS = {
         heightVariation: 0.22,
         yawJitterDeg: 180,
         tiltJitterDeg: 12,
-        // Hex / Radial specific
+        // Hex / Radial / Colonnade / Parallel Fins / Crystal Spray specific
         hexRings: 2,
         cellSpacing: 1.02,
         terraceSteps: 5,
         terraceDrop: 0.55,
         radialLeanDeg: 3,
+        colonnadeRanks: 3,
+        sprayCount: 15,
+        splayAngleDeg: 54,
+        sprayCoreRadius: 0.65,
+        finCorridorWidth: 2.35,
+        finLengthVar: 0.28,
         radialCount: 8,
         ringRadius: 3.8,
         arcAngleDeg: 360,
@@ -1888,6 +2034,194 @@ export const ROCK2_STARTER_STACKS = [
                 ]
             })
         ]
+    },
+    {
+        id: 'stack-crystal-cluster',
+        name: '16 · Radiating Amethyst & Quartz Crystal Cluster',
+        badge: 'CRYSTAL SPRAY',
+        buildLayers: () => [
+            createRock2Layer('big_boulder', {
+                name: 'Dark Obsidian & Basalt Geode Matrix Base',
+                combineMode: 'union',
+                stoneTone: 'obsidian',
+                seed: 6102,
+                width: 4.8, height: 1.35, length: 4.5,
+                boulderStyle: 'angular', facetCount: 14, roundness: 0.14, angularity: 0.30, flatBottom: 1.0, flatTop: 0.35
+            }),
+            createRock2Layer('crystal_prism', {
+                name: 'Radiating Hexagonal Amethyst Quartz Cluster',
+                combineMode: 'union',
+                stoneTone: 'amethyst',
+                seed: 6410,
+                posY: 0.55,
+                width: 1.15, height: 4.8, length: 1.15,
+                crystalHabit: 'quartz_hex',
+                prismSides: 6,
+                terminationStyle: 'quartz_rz',
+                apexHeightRatio: 0.36,
+                faceAsymmetry: 0.22,
+                edgeBevel: 0.015,
+                shaftTaper: 0.06,
+                generator: createRock2Generator('array', {
+                    seed: 6422,
+                    arrayMode: 'crystal_spray',
+                    sprayCount: 16,
+                    splayAngleDeg: 58,
+                    sprayCoreRadius: 0.85,
+                    scaleMin: 0.42,
+                    scaleMax: 1.18,
+                    heightVariation: 0.32,
+                    yawJitterDeg: 180,
+                    tiltJitterDeg: 8,
+                    shapeVariety: 0.65,
+                    aspectVariation: 0.18,
+                    intraBlend: 0.04,
+                    uniqueSeeds: 1
+                })
+            }),
+            createRock2Layer('crystal_prism', {
+                name: 'Secondary Clear Quartz Selenite Needles',
+                combineMode: 'union',
+                stoneTone: 'quartzIce',
+                seed: 6599,
+                posY: 0.45,
+                width: 0.62, height: 3.4, length: 0.62,
+                crystalHabit: 'chisel_selenite',
+                prismSides: 6,
+                terminationStyle: 'chisel_wedge',
+                apexHeightRatio: 0.44,
+                edgeBevel: 0.01,
+                generator: createRock2Generator('array', {
+                    seed: 6611,
+                    arrayMode: 'crystal_spray',
+                    sprayCount: 9,
+                    splayAngleDeg: 72,
+                    sprayCoreRadius: 1.35,
+                    scaleMin: 0.50,
+                    scaleMax: 1.05,
+                    shapeVariety: 0.55,
+                    uniqueSeeds: 1
+                })
+            })
+        ]
+    },
+    {
+        id: 'stack-basalt-colonnade',
+        name: '17 · Giant’s Causeway Stepped Basalt Colonnade',
+        badge: 'BASALT WALL',
+        buildLayers: () => [
+            createRock2Layer('basalt_column', {
+                name: 'Linear Organ-Pipe Basalt Cliff Wall (A → B)',
+                combineMode: 'union',
+                stoneTone: 'basalt',
+                seed: 5518,
+                width: 1.18, height: 6.2, length: 1.18,
+                basaltStyle: 'ball_socket',
+                polygonSides: 0,
+                irregularity: 0.07,
+                edgeBevel: 0.06,
+                capTilt: 0.06,
+                socketDish: -0.22,
+                pinchBands: 0.05,
+                generator: createRock2Generator('array', {
+                    seed: 5540,
+                    arrayMode: 'colonnade_wall',
+                    startX: -5.4, startY: 0.0, startZ: -1.4,
+                    endX:    5.4, endY:   0.0, endZ:  -0.6,
+                    countX: 11,
+                    colonnadeRanks: 3,
+                    cellSpacing: 1.04,
+                    terraceSteps: 6,
+                    terraceDrop: 0.58,
+                    radialLeanDeg: 3.5,
+                    heightVariation: 0.16,
+                    scaleVariation: 0.06,
+                    yawJitterDeg: 18,
+                    tiltJitterDeg: 1.5,
+                    shapeVariety: 0.60,
+                    uniqueSeeds: 1
+                })
+            }),
+            createRock2Layer('basalt_column', {
+                name: 'Foreground Hexagonal Stepping-Stone Terrace',
+                combineMode: 'union',
+                stoneTone: 'obsidian',
+                seed: 5620,
+                posZ: 1.65,
+                width: 1.16, height: 2.4, length: 1.16,
+                basaltStyle: 'ball_socket',
+                polygonSides: 6,
+                irregularity: 0.06,
+                edgeBevel: 0.07,
+                socketDish: -0.28,
+                generator: createRock2Generator('array', {
+                    seed: 5688,
+                    arrayMode: 'hex',
+                    hexRings: 2,
+                    cellSpacing: 1.04,
+                    terraceSteps: 5,
+                    terraceDrop: 0.64,
+                    radialLeanDeg: 1.5,
+                    heightVariation: 0.14,
+                    scaleVariation: 0.04,
+                    yawJitterDeg: 12,
+                    tiltJitterDeg: 1.0,
+                    uniqueSeeds: 1
+                })
+            })
+        ]
+    },
+    {
+        id: 'stack-linear-dike-fins',
+        name: '18 · Linear Volcanic Dike, Hogbacks & Parallel Fins',
+        badge: 'LINEAR DIKE',
+        buildLayers: () => [
+            createRock2Layer('linear_dike', {
+                name: 'Central Shiprock Volcanic Igneous Dike Spine',
+                combineMode: 'union',
+                stoneTone: 'redSlate',
+                seed: 7820,
+                width: 11.2, height: 5.8, length: 1.50,
+                linearStyle: 'volcanic_dike',
+                dipTiltDeg: 6,
+                crestSharpness: 0.72,
+                spineSegments: 4,
+                crestUndulation: 0.36,
+                wallTaper: 0.34,
+                strikeBow: 0.10,
+                roundness: 0.11
+            }),
+            createRock2Layer('linear_dike', {
+                name: 'Parallel Tilted Hogback & Sandstone Fin Corridor',
+                combineMode: 'smooth_union',
+                blendRadius: 0.22,
+                stoneTone: 'sandstone',
+                seed: 7904,
+                width: 7.4, height: 3.4, length: 1.25,
+                linearStyle: 'hogback_flatiron',
+                dipTiltDeg: 28,
+                crestSharpness: 0.66,
+                spineSegments: 3,
+                crestUndulation: 0.24,
+                wallTaper: 0.28,
+                roundness: 0.15,
+                generator: createRock2Generator('array', {
+                    seed: 7931,
+                    arrayMode: 'parallel_fins',
+                    countZ: 4,
+                    countX: 1,
+                    finCorridorWidth: 2.85,
+                    finLengthVar: 0.32,
+                    rowStagger: 0.30,
+                    heightVariation: 0.26,
+                    scaleVariation: 0.14,
+                    yawJitterDeg: 4,
+                    tiltJitterDeg: 2,
+                    shapeVariety: 0.72,
+                    uniqueSeeds: 1
+                })
+            })
+        ]
     }
 ];
 
@@ -2656,6 +2990,158 @@ function evaluateRock2RawGeneratorInstances(generator, baseRockParams, baseType 
                 });
             }
         }
+        else if (mode === 'colonnade_wall')
+        {
+            // Linear Organ-Pipe Basalt / Palisade Wall along A -> B with hex-interlocked depth ranks & stepped cliff terraces
+            const ax = g.startX ?? -5.2, ay = g.startY ?? 0.0, az = g.startZ ?? 0.0;
+            const bx = g.endX   ??  5.2, by = g.endY   ?? 0.0, bz = g.endZ   ?? 0.0;
+            const dx = bx - ax, dy = by - ay, dz = bz - az;
+            const lineLen = Math.hypot(dx, dz) || 1.0;
+            const tx = dx / lineLen, tz = dz / lineLen;
+            const nx = -tz, nz = tx;
+            const lineYawDeg = Math.atan2(dx, dz) / DEG2RAD;
+
+            const cols = clamp(Math.round(g.countX ?? 10), 2, 24);
+            const ranks = clamp(Math.round(g.colonnadeRanks ?? 3), 1, 5);
+            const cellSp = Math.max(0.28, (g.cellSpacing ?? 1.04) * Math.max(0.35, baseRockParams?.width ?? 1.15) * 0.88);
+            const steps = clamp(Math.round(g.terraceSteps ?? 6), 1, 14);
+            const drop = clamp(g.terraceDrop ?? 0.58, 0.0, 0.90);
+            const lean = g.radialLeanDeg ?? 3.0;
+            const posJit = g.posJitter ?? 0.02;
+            const sVar = clamp(g.scaleVariation ?? 0.06, 0.0, 0.55);
+
+            let idx = 0;
+            for (let rk = 0; rk < ranks; rk++)
+            {
+                const rankFrac = ranks > 1 ? (rk / (ranks - 1)) : 0.0;
+                const rowShiftU = (rk % 2) * (0.5 / Math.max(1, cols - 1));
+                const depthOff = (rk - (ranks - 1) * 0.5) * cellSp * 0.866;
+
+                for (let ci = 0; ci < cols; ci++)
+                {
+                    if (instances.length >= 64) break;
+                    const u = clamp((cols > 1 ? ci / (cols - 1) : 0.5) + rowShiftU, 0.0, 1.0);
+                    const ridgeWave = 1.0 - 0.14 * Math.abs(u * 2.0 - 1.0);
+                    let hFrac = ridgeWave * (1.0 - drop * rankFrac);
+                    if (steps > 1) hFrac = Math.max(0.16, Math.round(hFrac * steps) / steps);
+                    hFrac = Math.max(0.15, hFrac * (1.0 + rng.signed() * hVar));
+
+                    const s = Math.max(0.20, 1.0 + rng.signed() * sVar);
+                    const rType = chooseInstanceRockType(baseType, poolMode, rng, idx);
+
+                    instances.push({
+                        pos: [
+                            ax + dx * u + nx * depthOff + rng.signed() * posJit,
+                            ay + dy * u,
+                            az + dz * u + nz * depthOff + rng.signed() * posJit
+                        ],
+                        yawDeg: lineYawDeg + rng.signed() * yawJit,
+                        pitchDeg: rankFrac * lean + rng.signed() * tiltJit,
+                        rollDeg: (u - 0.5) * lean * 0.65 + rng.signed() * tiltJit,
+                        scaleX: s,
+                        scaleY: hFrac,
+                        scaleZ: s,
+                        seedOffset: unique ? (++idx) * 7919 : 0,
+                        shapeVariety: shapeVariety * 0.55,
+                        rockType: rType
+                    });
+                }
+            }
+        }
+        else if (mode === 'parallel_fins')
+        {
+            // Parallel Joint Set / Moab Sandstone Fin Field / Parallel Hogback Strike Ribs
+            const rowsZ = clamp(Math.round(g.countZ ?? 4), 2, 10);
+            const segsX = clamp(Math.round(g.countX ?? 1), 1, 6);
+            const corridorZ = Math.max(0.5, g.finCorridorWidth ?? 2.65);
+            const segStepX = Math.max(0.6, (baseRockParams?.width ?? 6.5) * 0.88);
+            const lenVar = clamp(g.finLengthVar ?? 0.30, 0.0, 0.75);
+            const stag = clamp(g.rowStagger ?? 0.30, 0.0, 0.85);
+            const posJit = g.posJitter ?? 0.14;
+            const sVar = clamp(g.scaleVariation ?? 0.16, 0.0, 0.65);
+
+            let idx = 0;
+            for (let rzIdx = 0; rzIdx < rowsZ; rzIdx++)
+            {
+                const zBase = (rzIdx - (rowsZ - 1) * 0.5) * corridorZ;
+                const rowShiftX = ((rzIdx % 2) - 0.5) * stag * segStepX * 0.65;
+                const flankEnv = rowsZ > 2 ? (1.0 - 0.28 * Math.abs((rzIdx / (rowsZ - 1)) * 2.0 - 1.0)) : 1.0;
+
+                for (let sxIdx = 0; sxIdx < segsX; sxIdx++)
+                {
+                    if (instances.length >= 64) break;
+                    const xBase = (sxIdx - (segsX - 1) * 0.5) * segStepX + rowShiftX;
+                    const lenScale = Math.max(0.28, flankEnv * (1.0 + rng.signed() * lenVar));
+                    const thickScale = Math.max(0.24, (1.0 + rng.signed() * sVar));
+                    const hScale = Math.max(0.22, flankEnv * (1.0 + rng.signed() * hVar));
+                    const rType = chooseInstanceRockType(baseType, poolMode, rng, idx);
+
+                    instances.push({
+                        pos: [
+                            xBase + rng.signed() * posJit,
+                            0.0,
+                            zBase + rng.signed() * posJit * 0.45
+                        ],
+                        yawDeg: rng.signed() * Math.min(yawJit, 14),
+                        pitchDeg: rng.signed() * tiltJit,
+                        rollDeg: rng.signed() * tiltJit,
+                        scaleX: lenScale,
+                        scaleY: hScale,
+                        scaleZ: thickScale,
+                        seedOffset: unique ? (++idx) * 7919 : 0,
+                        shapeVariety,
+                        rockType: rType
+                    });
+                }
+            }
+        }
+        else if (mode === 'crystal_spray')
+        {
+            // 3D Radiating Crystal Cluster / Mineral Geode Burst / Basalt Rosette Fan (Golden-angle phyllotaxis!)
+            const n = clamp(Math.round(g.sprayCount ?? 15), 3, 42);
+            const maxSplay = clamp(g.splayAngleDeg ?? 58, 0, 88);
+            const coreRad = Math.max(0.0, g.sprayCoreRadius ?? 0.75);
+            const sMin = Math.max(0.18, g.scaleMin ?? 0.42);
+            const sMax = Math.max(sMin, g.scaleMax ?? 1.18);
+            const goldenAngle = 2.399963229728653;
+
+            for (let i = 0; i < n; i++)
+            {
+                const u = n > 1 ? (i / (n - 1)) : 0.0;
+                const az = i * goldenAngle + rng.signed() * 0.16;
+                const polarDeg = Math.pow(u, 0.78) * maxSplay + (i === 0 ? rng.range(0, 4) : rng.signed() * tiltJit);
+                const polarRad = clamp(polarDeg, 0, 89) * DEG2RAD;
+
+                const dirX = Math.sin(polarRad) * Math.cos(az);
+                const dirZ = Math.sin(polarRad) * Math.sin(az);
+                const radDist = coreRad * Math.pow(u, 0.65);
+
+                const kingBias = lerp(sMax, sMin, Math.pow(u, 0.72));
+                const wS = Math.max(0.18, kingBias * (1.0 + rng.signed() * aspectVar * 0.65));
+                const hS = Math.max(0.22, kingBias * (1.08 - 0.24 * u) * (1.0 + rng.signed() * hVar));
+                const rType = chooseInstanceRockType(baseType, poolMode, rng, i);
+
+                const outAzDeg = Math.atan2(dirX, dirZ) / DEG2RAD;
+                const spinJitter = rng.signed() * yawJit;
+
+                instances.push({
+                    pos: [
+                        dirX * radDist,
+                        Math.max(0.0, (1.0 - u) * coreRad * 0.18 - u * 0.08),
+                        dirZ * radDist
+                    ],
+                    yawDeg: outAzDeg + spinJitter * 0.25,
+                    pitchDeg: Math.cos(az) * polarDeg,
+                    rollDeg: -Math.sin(az) * polarDeg,
+                    scaleX: wS,
+                    scaleY: hS,
+                    scaleZ: wS * (1.0 + rng.signed() * aspectVar * 0.35),
+                    seedOffset: unique ? (i + 1) * 7919 : 0,
+                    shapeVariety,
+                    rockType: rType
+                });
+            }
+        }
 
         return { intraBlend: clamp(g.intraBlend ?? 0.0, 0.0, 2.5), instances };
     }
@@ -3175,9 +3661,26 @@ function buildMutatedInstanceParams(rockType, layerParams, inst)
     }
     else if (rockType === 'basalt_column')
     {
-        if (v > 0.30) out.polygonSides = [5, 6, 6, 7][mrng.int(0, 4)];
+        if (v > 0.30 && Number(out.polygonSides ?? 6) === 0) out.polygonSides = [5, 6, 6, 7][mrng.int(0, 4)];
+        else if (v > 0.55) out.polygonSides = [5, 6, 6, 7][mrng.int(0, 4)];
         out.irregularity = clamp((out.irregularity ?? 0.08) + mrng.signed() * 0.08 * v, 0.02, 0.26);
         out.capTilt      = clamp((out.capTilt ?? 0.10) + mrng.signed() * 0.12 * v, 0.0, 0.38);
+        if (Math.abs(out.socketDish ?? 0.0) > 0.02)
+        {
+            out.socketDish = clamp((out.socketDish ?? 0.0) + mrng.signed() * 0.14 * v, -0.45, 0.45);
+        }
+    }
+    else if (rockType === 'crystal_prism')
+    {
+        out.apexHeightRatio = clamp((out.apexHeightRatio ?? 0.34) + mrng.signed() * 0.12 * v, 0.12, 0.68);
+        out.faceAsymmetry   = clamp((out.faceAsymmetry ?? 0.18) + mrng.signed() * 0.18 * v, 0.02, 0.48);
+        out.shaftTaper      = clamp((out.shaftTaper ?? 0.06) + mrng.signed() * 0.08 * v, -0.10, 0.35);
+    }
+    else if (rockType === 'linear_dike')
+    {
+        out.crestUndulation = clamp((out.crestUndulation ?? 0.28) + mrng.signed() * 0.18 * v, 0.04, 0.62);
+        out.strikeBow       = clamp((out.strikeBow ?? 0.08) + mrng.signed() * 0.16 * v, -0.40, 0.40);
+        out.wallTaper       = clamp((out.wallTaper ?? 0.26) + mrng.signed() * 0.14 * v, -0.15, 0.65);
     }
     else if (rockType === 'custom_sculpt_rock')
     {
@@ -3687,16 +4190,20 @@ function buildSingleCliffBlock(p, worldR, worldPivot, rng)
 
 function buildSingleBasaltColumn(p, worldR, worldPivot, rng)
 {
+    const style = p.basaltStyle || 'classic_hex';
     const fixedSides = Number(p.polygonSides ?? 6);
-    const sides = fixedSides > 0 ? fixedSides : (5 + rng.int(0, 3));
+    const sides = clamp(fixedSides > 0 ? Math.round(fixedSides) : [5, 6, 6, 7][rng.int(0, 4)], 3, 12);
     const rx = Math.max(0.10, p.width * 0.5);
     const rz = Math.max(0.10, p.length * 0.5);
-    const h = p.height;
+    const h = Math.max(0.25, p.height);
     const irreg = clamp(p.irregularity ?? 0.08, 0.0, 0.38);
     const bevelWeight = clamp(p.edgeBevel ?? 0.09, 0.01, 0.55);
     const capTilt = p.capTilt ?? 0.10;
+    const socketDish = p.socketDish ?? (style === 'ball_socket' ? -0.22 : 0.0);
+    const pinchBands = clamp(p.pinchBands ?? 0.0, 0.0, 0.35);
+    const bendVal = (p.bendX ?? 0.0) + (style === 'entablature_splay' ? 0.24 : 0.0);
 
-    const bound = Math.max(rx, rz) * 1.5;
+    const bound = Math.max(rx, rz, h) * 1.5;
     let poly = createBoxPoly(-bound, 0.0, -bound, bound, h + bound, bound, 0);
     const rot0 = 0.26 + rng.signed() * 0.08;
 
@@ -3712,7 +4219,8 @@ function buildSingleBasaltColumn(p, worldR, worldPivot, rng)
     const capN = vnorm([rng.signed() * capTilt, 1.0, rng.signed() * capTilt]);
     poly = clipPolyByHalfSpace(poly, capN, capN[1] * h, 0);
 
-    return compilePlainPrimitive({
+    const parts = [];
+    const mainPrim = compilePlainPrimitive({
         poly,
         R: worldR,
         pivot: worldPivot,
@@ -3721,9 +4229,431 @@ function buildSingleBasaltColumn(p, worldR, worldPivot, rng)
         baseY: 0.0,
         refH: h,
         taper: p.taper ?? 0.02,
-        bendX: p.bendX ?? 0.0,
+        ringFreq: pinchBands > 0.005 ? 4.2 : 0.0,
+        ringAmp: pinchBands,
+        ringPhase: rng.float() * 6.28,
+        bendX: bendVal,
         twistDeg: p.twistDeg ?? 0.0
     });
+    if (!mainPrim) return null;
+    parts.push(mainPrim);
+
+    // Cross-jointed lower step buttress for `stepped_fracture` basalt columns
+    if (style === 'stepped_fracture')
+    {
+        const stepH = h * (0.48 + rng.float() * 0.16);
+        let stepPoly = createBoxPoly(-bound, 0.0, -bound, bound, stepH + bound * 0.5, bound, 0);
+        const stepOffX = rx * 0.52, stepOffZ = rz * 0.30;
+        for (let s = 0; s < sides; s++)
+        {
+            const ang = rot0 + (s * Math.PI * 2) / sides;
+            const dx = Math.cos(ang), dz = Math.sin(ang);
+            const rad = Math.hypot(rx * dx, rz * dz) * 0.88;
+            const n = vnorm([dx, 0.0, dz]);
+            stepPoly = clipPolyByHalfSpace(stepPoly, n, nxDot(n, stepOffX, stepOffZ) + rad, 0);
+        }
+        stepPoly = clipPolyByHalfSpace(stepPoly, [0, 1, 0], stepH, 0);
+        const stepPrim = compilePlainPrimitive({
+            poly: stepPoly,
+            R: worldR,
+            pivot: worldPivot,
+            roundness: bevelWeight * 0.50,
+            sharpBase: true,
+            primOp: 0.03,
+            baseY: 0.0,
+            refH: h,
+            bendX: bendVal
+        });
+        if (stepPrim) parts.push(stepPrim);
+    }
+
+    // Ball-and-Socket jointing at top of column: `< 0` carves a concave crater cup; `> 0` adds a convex ball dome
+    if (Math.abs(socketDish) > 0.02)
+    {
+        const dishR = Math.min(rx, rz) * 0.78;
+        const dishDepth = dishR * Math.abs(socketDish) * 0.95;
+        const dishCenterY = socketDish < 0.0 ? (h + dishR * 0.42) : (h - dishR * 0.38);
+        const dBound = dishR * 1.45;
+        let dishPoly = createBoxPoly(-dBound, dishCenterY - dBound, -dBound, dBound, dishCenterY + dBound, dBound, 0);
+        for (let s = 0; s < 8; s++)
+        {
+            const a = (s * Math.PI * 2) / 8;
+            dishPoly = clipPolyByHalfSpace(dishPoly, [Math.cos(a), 0, Math.sin(a)], dishR, 0);
+        }
+        const dishPrim = compilePlainPrimitive({
+            poly: dishPoly,
+            R: worldR,
+            pivot: worldPivot,
+            roundness: 0.92,
+            sqWeight: 0.95,
+            sqRx: dishR,
+            sqRy: dishDepth + dishR * 0.42,
+            sqRz: dishR,
+            sqCy: dishCenterY,
+            sqExpH: 1.0,
+            sqExpV: 1.0,
+            primOp: socketDish < 0.0 ? (-2.0 - dishR * 0.14) : (dishR * 0.12),
+            baseY: 0.0,
+            refH: h,
+            taper: p.taper ?? 0.02,
+            bendX: bendVal,
+            twistDeg: p.twistDeg ?? 0.0
+        });
+        if (dishPrim) parts.push(dishPrim);
+    }
+
+    return parts.length === 1 ? parts[0] : parts;
+}
+
+function nxDot(n, ox, oz)
+{
+    return n[0] * ox + n[2] * oz;
+}
+
+function buildSingleCrystalPrism(p, worldR, worldPivot, rng)
+{
+    const habit = p.crystalHabit || 'quartz_hex';
+    let rx = Math.max(0.08, (p.width ?? 1.35) * 0.5);
+    let rz = Math.max(0.08, (p.length ?? 1.35) * 0.5);
+    const h = Math.max(0.25, p.height ?? 5.2);
+
+    let sides = clamp(Math.round(p.prismSides ?? 6), 3, 12);
+    let termStyle = p.terminationStyle || 'quartz_rz';
+    let apexRatio = clamp(p.apexHeightRatio ?? 0.34, 0.08, 0.82);
+    let botPoint = clamp(p.bottomPoint ?? 0.0, 0.0, 1.0);
+    const asym = clamp(p.faceAsymmetry ?? 0.18, 0.0, 0.55);
+    const edgeBevel = clamp(p.edgeBevel ?? 0.02, 0.005, 0.32);
+    const shaftTaper = clamp(p.shaftTaper ?? 0.06, -0.25, 0.55);
+    const leanX = clamp(p.leanX ?? 0.0, -0.50, 0.50);
+    const satTwin = clamp(p.satelliteTwin ?? 0.0, 0.0, 1.0);
+
+    if (habit === 'double_terminated')
+    {
+        botPoint = Math.max(botPoint, 0.85);
+        apexRatio = Math.max(apexRatio, 0.30);
+    }
+    else if (habit === 'chisel_selenite')
+    {
+        rx *= 1.28;
+        rz *= 0.54;
+        if (!p.terminationStyle || p.terminationStyle === 'quartz_rz') termStyle = 'chisel_wedge';
+    }
+    else if (habit === 'fluorite_octa')
+    {
+        sides = 4;
+        botPoint = Math.max(botPoint, 0.92);
+        apexRatio = clamp(Math.max(apexRatio, 0.46), 0.32, 0.52);
+        termStyle = 'pyramid';
+    }
+    else if (habit === 'tourmaline_trigonal')
+    {
+        sides = Math.max(3, p.prismSides === 6 ? 9 : sides);
+        if (!p.terminationStyle || p.terminationStyle === 'quartz_rz') termStyle = 'pedion_bevel';
+    }
+    else if (habit === 'obelisk_shard')
+    {
+        if (!p.terminationStyle || p.terminationStyle === 'quartz_rz') termStyle = 'oblique_single';
+    }
+
+    const bound = Math.max(rx, rz, h) * 1.8;
+    let poly = createBoxPoly(-bound, 0.0, -bound, bound, h + bound, bound, 0);
+    const rot0 = habit === 'fluorite_octa' ? (Math.PI * 0.25) : (rng.float() * Math.PI * 2);
+
+    // 1. Vertical Crystallographic Prism Miller Faces {10-10}
+    const faceAngles = [];
+    const faceRadii = [];
+    for (let s = 0; s < sides; s++)
+    {
+        const ang = rot0 + (s * Math.PI * 2) / sides;
+        const dx = Math.cos(ang), dz = Math.sin(ang);
+        // Tourmaline rounded-trigonal cross-section or natural crystal unequal face growth
+        const trigMod = habit === 'tourmaline_trigonal' ? (1.0 + 0.14 * Math.cos(3.0 * (ang - rot0))) : 1.0;
+        const altMod = (s % 2 === 0 ? 1.0 : (1.0 - asym * 0.22)) * (1.0 + rng.signed() * asym * 0.18);
+        const rad = Math.hypot(rx * dx, rz * dz) * trigMod * altMod;
+        faceAngles.push(ang);
+        faceRadii.push(rad);
+        if (habit !== 'fluorite_octa')
+        {
+            poly = clipPolyByHalfSpace(poly, [dx, 0.0, dz], rad, 0);
+        }
+    }
+
+    // 2. Top Crystallographic Termination Faces {10-11} / {01-11}
+    const shoulderY = h * (1.0 - apexRatio);
+    const apexSpanY = Math.max(0.06, h - shoulderY);
+
+    if (termStyle === 'chisel_wedge')
+    {
+        // Monoclinic 2-face razor chisel blade meeting along a sharp crest line at y = h
+        for (const sgn of [-1, 1])
+        {
+            const a = rot0 + (sgn > 0 ? Math.PI * 0.5 : -Math.PI * 0.5);
+            const dx = Math.cos(a), dz = Math.sin(a);
+            const rSide = Math.hypot(rx * dx, rz * dz);
+            const n = vnorm([apexSpanY * dx, rSide, apexSpanY * dz]);
+            const dPlane = n[1] * h * (1.0 - (sgn > 0 ? 0.0 : asym * 0.08));
+            poly = clipPolyByHalfSpace(poly, n, dPlane, 0);
+        }
+        // Subtle gable end bevels so the chisel edge has crisp mineral corners
+        for (const sgnEnd of [-1, 1])
+        {
+            const aEnd = rot0 + (sgnEnd > 0 ? 0.0 : Math.PI);
+            const dxE = Math.cos(aEnd), dzE = Math.sin(aEnd);
+            const rEnd = Math.hypot(rx * dxE, rz * dzE);
+            const nEnd = vnorm([apexSpanY * 0.45 * dxE, rEnd, apexSpanY * 0.45 * dzE]);
+            poly = clipPolyByHalfSpace(poly, nEnd, nEnd[1] * h * 1.06, 0);
+        }
+    }
+    else if (termStyle === 'oblique_single')
+    {
+        // Dramatic skewed single cleavage plane + secondary back bevel
+        const aMain = rot0 + 0.35;
+        const rMain = Math.max(rx, rz);
+        const nMain = vnorm([Math.cos(aMain) * apexSpanY, rMain * 1.05, Math.sin(aMain) * apexSpanY]);
+        poly = clipPolyByHalfSpace(poly, nMain, nMain[1] * h * 0.88, 0);
+        const aBack = aMain + Math.PI;
+        const nBack = vnorm([Math.cos(aBack) * apexSpanY * 0.55, rMain * 1.25, Math.sin(aBack) * apexSpanY * 0.55]);
+        poly = clipPolyByHalfSpace(poly, nBack, nBack[1] * h * 0.98, 0);
+    }
+    else
+    {
+        // Multi-face pyramidal crown: `pyramid`, `quartz_rz` (alternating major r / minor z faces), or `pedion_bevel`
+        for (let s = 0; s < sides; s++)
+        {
+            const ang = faceAngles[s];
+            const dx = Math.cos(ang), dz = Math.sin(ang);
+            const rFace = faceRadii[s];
+            // In real α-quartz, alternating r and z rhombohedral faces sit slightly closer/farther, enlarging 3 dominant faces!
+            const rzShift = (termStyle === 'quartz_rz')
+                ? ((s % 2 === 0 ? -0.14 : 0.16) * asym * rFace)
+                : (rng.signed() * 0.08 * asym * rFace);
+            // Plane passes through prism shoulder (rFace * (dx,0,dz) + shoulderY * Y) and apex (0, h, 0)
+            const n = vnorm([apexSpanY * dx, rFace, apexSpanY * dz]);
+            const dPlane = n[1] * h + rzShift;
+            poly = clipPolyByHalfSpace(poly, n, dPlane, 0);
+        }
+        if (termStyle === 'pedion_bevel')
+        {
+            // Flat hexagonal/trigonal pedion {0001} table slicing the pyramid tip cleanly
+            poly = clipPolyByHalfSpace(poly, [0.0, 1.0, 0.0], h * (1.0 - apexRatio * 0.42), 0);
+        }
+    }
+
+    // 3. Bottom Termination: `0.0` = planted base (`y >= 0`), `> 0` = double-terminated lower pyramid!
+    if (botPoint > 0.04)
+    {
+        const botShoulderY = h * clamp(apexRatio * botPoint * 0.92, 0.05, 0.48);
+        for (let s = 0; s < sides; s++)
+        {
+            const ang = faceAngles[s];
+            const dx = Math.cos(ang), dz = Math.sin(ang);
+            const rFace = faceRadii[s];
+            const n = vnorm([botShoulderY * dx, -rFace, botShoulderY * dz]);
+            // At y = 0, radius shrinks to (1 - botPoint) * rFace (0 = sharp point at y=0!)
+            const tipR = (1.0 - botPoint) * rFace;
+            const dPlane = botShoulderY * tipR / Math.hypot(botShoulderY, rFace);
+            poly = clipPolyByHalfSpace(poly, n, dPlane, 0);
+        }
+    }
+
+    const parts = [];
+    const mainCrystal = compilePlainPrimitive({
+        poly,
+        R: worldR,
+        pivot: worldPivot,
+        roundness: edgeBevel,
+        sharpBase: botPoint <= 0.04,
+        baseY: 0.0,
+        refH: h,
+        taper: shaftTaper,
+        bendX: leanX
+    });
+    if (!mainCrystal) return null;
+    parts.push(mainCrystal);
+
+    // 4. Optional Penetrating Satellite Crystal Twin Spur sprouting out of the lower shaft!
+    if (satTwin > 0.04)
+    {
+        const twinScale = 0.38 + 0.34 * satTwin;
+        const twinH = h * (0.42 + 0.26 * satTwin);
+        const twinRx = rx * twinScale, twinRz = rz * twinScale;
+        const twinTiltRad = (28 + 26 * satTwin) * DEG2RAD;
+        const twinAz = rot0 + Math.PI * 0.33;
+        const tR = mulMat3(
+            worldR,
+            buildRock2EulerMatrix3(twinAz / DEG2RAD, Math.cos(twinAz) * (twinTiltRad / DEG2RAD), -Math.sin(twinAz) * (twinTiltRad / DEG2RAD))
+        );
+        const tBaseLocal = [Math.cos(twinAz) * rx * 0.32, h * 0.08, Math.sin(twinAz) * rz * 0.32];
+        const tPivot = forwardRock2Point(worldR, worldPivot, tBaseLocal[0], tBaseLocal[1], tBaseLocal[2]);
+
+        let tPoly = createBoxPoly(-bound, 0.0, -bound, bound, twinH + bound * 0.5, bound, 0);
+        for (let s = 0; s < sides; s++)
+        {
+            const a = (s * Math.PI * 2) / sides;
+            const dx = Math.cos(a), dz = Math.sin(a);
+            const rT = Math.hypot(twinRx * dx, twinRz * dz);
+            tPoly = clipPolyByHalfSpace(tPoly, [dx, 0, dz], rT, 0);
+            const tSpan = twinH * apexRatio;
+            const nTop = vnorm([tSpan * dx, rT, tSpan * dz]);
+            tPoly = clipPolyByHalfSpace(tPoly, nTop, nTop[1] * twinH, 0);
+        }
+        const twinPrim = compilePlainPrimitive({
+            poly: tPoly,
+            R: tR,
+            pivot: tPivot,
+            roundness: edgeBevel,
+            sharpBase: true,
+            primOp: edgeBevel * 0.5,
+            baseY: 0.0,
+            refH: twinH,
+            taper: shaftTaper
+        });
+        if (twinPrim) parts.push(twinPrim);
+    }
+
+    return parts.length === 1 ? parts[0] : parts;
+}
+
+function buildSingleLinearDike(p, worldR, worldPivot, rng)
+{
+    const style = p.linearStyle || 'volcanic_dike';
+    const fullW = Math.max(0.5, p.width ?? 8.6);   // Strike length along local X
+    let h = Math.max(0.35, p.height ?? 4.4);        // Ridge height along local Y
+    let halfThick = Math.max(0.12, (p.length ?? 1.55) * 0.5); // Wall thickness along local Z
+
+    let dipTiltDeg = clamp(p.dipTiltDeg ?? 0.0, -55.0, 55.0);
+    let crestSharp = clamp(p.crestSharpness ?? 0.62, 0.05, 0.95);
+    const segCount = clamp(Math.round(p.spineSegments ?? 3), 1, 5);
+    const crestUndul = clamp(p.crestUndulation ?? 0.28, 0.0, 0.65);
+    let wallTaper = clamp(p.wallTaper ?? 0.26, -0.35, 0.78);
+    const strikeBow = clamp(p.strikeBow ?? 0.08, -0.55, 0.55);
+    const basalUndercut = clamp(p.basalUndercut ?? 0.0, 0.0, 0.55);
+    let roundness = clamp(p.roundness ?? 0.14, 0.02, 0.75);
+
+    if (style === 'hogback_flatiron')
+    {
+        if (Math.abs(dipTiltDeg) < 8.0) dipTiltDeg = 28.0;
+        halfThick *= 1.25;
+        crestSharp = Math.max(crestSharp, 0.58);
+    }
+    else if (style === 'sandstone_fin')
+    {
+        halfThick *= 0.78;
+        roundness = Math.max(roundness, 0.26);
+        crestSharp = Math.min(crestSharp, 0.48);
+    }
+    else if (style === 'knife_arete')
+    {
+        crestSharp = Math.max(crestSharp, 0.86);
+        wallTaper = Math.max(wallTaper, 0.48);
+        roundness = Math.min(roundness, 0.12);
+    }
+    else if (style === 'strike_rib')
+    {
+        h *= 0.46;
+        halfThick *= 1.18;
+    }
+
+    const dipRad = dipTiltDeg * DEG2RAD;
+    const dipShearZ = Math.tan(dipRad * 0.78);
+    const parts = [];
+    const halfSpanX = fullW * 0.5;
+    const segSpan = fullW / segCount;
+
+    for (let si = 0; si < segCount; si++)
+    {
+        const u0 = si / segCount;
+        const u1 = (si + 1) / segCount;
+        const uMid = (u0 + u1) * 0.5;
+        const uSigned = uMid * 2.0 - 1.0; // -1 .. +1 along linear strike
+
+        // Natural ridge envelope: tapers slightly toward strike ends unless single block, with serrated crest undulation
+        const endEnv = segCount > 1 ? (1.0 - 0.22 * uSigned * uSigned) : 1.0;
+        const serrate = style === 'crenellated_wall'
+            ? ((si % 2 === 0 ? 1.0 : (1.0 - 0.34 * (0.35 + crestUndul))))
+            : (1.0 + rng.signed() * crestUndul * 0.42);
+        const segH = Math.max(0.28, h * endEnv * serrate);
+
+        // Overlap adjacent strike segments by 18% so the fused dike forms one continuous geological wall with stepped joints!
+        const overlapX = segCount > 1 ? segSpan * 0.18 : 0.0;
+        const xMin = -halfSpanX + u0 * fullW - (si > 0 ? overlapX : 0.0);
+        const xMax = -halfSpanX + u1 * fullW + (si < segCount - 1 ? overlapX : 0.0);
+        const segHalfX = (xMax - xMin) * 0.5;
+        const segCx = (xMin + xMax) * 0.5;
+
+        // Plan-view strike bow offset in Z: parabolic arc along strike
+        const zBow = strikeBow * halfSpanX * 0.35 * (1.0 - uSigned * uSigned);
+        const zJitter = segCount > 1 ? rng.signed() * halfThick * 0.16 : 0.0;
+        const segCz = zBow + zJitter;
+        const segThick = halfThick * (1.0 + rng.signed() * 0.12);
+
+        const bound = Math.max(segHalfX, segH, segThick) * 1.85;
+        let poly = createBoxPoly(-bound, 0.0, -bound, bound, segH * 1.12, bound, 0);
+
+        // Strike end faces (+/-X): sloped prow & tail terminations at the outer ends of the linear dike
+        const leftSlopeY = si === 0 ? (0.28 + 0.22 * crestSharp) : (0.06 + Math.abs(rng.signed()) * 0.10);
+        const rightSlopeY = si === segCount - 1 ? (0.28 + 0.22 * crestSharp) : (0.06 + Math.abs(rng.signed()) * 0.10);
+        poly = clipPolyByHalfSpace(poly, vnorm([-1.0, leftSlopeY, rng.signed() * 0.12]), segHalfX, 0);
+        poly = clipPolyByHalfSpace(poly, vnorm([ 1.0, rightSlopeY, rng.signed() * 0.12]), segHalfX, 0);
+
+        // Front & Back Strike Walls (+/-Z): exact height-coupled slope so the wall rises cleanly to `segH`!
+        const topRidgeHalfZ = segThick * (1.0 - 0.88 * crestSharp);
+        const symSlopeY = Math.max(0.02, (segThick - topRidgeHalfZ) / segH);
+        const posZSlopeY = style === 'hogback_flatiron'
+            ? Math.max(0.08, (segThick * (1.35 + 0.55 * crestSharp)) / segH)
+            : symSlopeY;
+        const negZSlopeY = style === 'hogback_flatiron'
+            ? -0.04 * (segThick / Math.max(1.0, segH)) // Crisp steep scarp face on opposite side of the dip slope!
+            : symSlopeY;
+
+        poly = clipPolyByHalfSpace(poly, vnorm([rng.signed() * 0.04, posZSlopeY,  1.0]), segThick, 0);
+        poly = clipPolyByHalfSpace(poly, vnorm([rng.signed() * 0.04, negZSlopeY, -1.0]), segThick, 0);
+
+        // Crest ridge cap cut with deterministic alternating tooth serration controlled by `crestUndulation`
+        const serrateTilt = ((si % 2 === 0 ? 1 : -1) * 0.22 + rng.signed() * 0.14) * crestUndul;
+        const capN = vnorm([serrateTilt, 1.0, dipRad * 0.18]);
+        const capY = segH * (1.0 - 0.10 * (1.0 - crestSharp));
+        poly = clipPolyByHalfSpace(poly, capN, capN[1] * capY, 0);
+
+        // Subtle geological shoulder bevel facets so every dike segment catches directional sunlight crisply
+        for (const sgnX of [-1, 1])
+        {
+            for (const sgnZ of [-1, 1])
+            {
+                const cn = vnorm([sgnX * 0.52, 0.24, sgnZ * 0.82]);
+                const cDist = Math.abs(cn[0]) * segHalfX + Math.abs(cn[2]) * segThick + cn[1] * segH * 0.45;
+                poly = clipPolyByHalfSpace(poly, cn, cDist * rng.range(0.88, 0.98), 0);
+            }
+        }
+
+        const segPivot = forwardRock2Point(worldR, worldPivot, segCx, 0.0, segCz);
+        const bowYawDeg = -strikeBow * uSigned * 22.0;
+        const segR = Math.abs(bowYawDeg) > 0.05
+            ? mulMat3(worldR, buildRock2EulerMatrix3(bowYawDeg, 0, 0))
+            : worldR;
+
+        const segPrim = compilePlainPrimitive({
+            poly,
+            R: segR,
+            pivot: segPivot,
+            roundness,
+            sharpBase: true,
+            sqWeight: style === 'sandstone_fin' ? 0.34 : 0.08,
+            sqRx: segHalfX, sqRy: segH * 0.52, sqRz: segThick, sqCy: segH * 0.48,
+            sqExpH: 0.75, sqExpV: 0.68,
+            primOp: si === 0 ? -1.0 : (0.06 + roundness * 0.18),
+            baseY: 0.0,
+            refH: segH,
+            taper: wallTaper,
+            pinch: basalUndercut * 0.72,
+            pinchHeightNorm: 0.16,
+            bendZ: dipShearZ * 0.48
+        });
+        if (segPrim) parts.push(segPrim);
+    }
+
+    if (parts.length === 0) return null;
+    return parts.length === 1 ? parts[0] : parts;
 }
 
 function buildSingleSpirePinnacle(p, worldR, worldPivot, rng)
@@ -4524,6 +5454,8 @@ function buildAtomicBaseRockPrimitive(type, p, worldR, worldPivot)
         case 'pedestal_rock':      return buildSinglePedestalRock(p, worldR, worldPivot, rng);
         case 'floating_rock':      return buildSingleFloatingRock(p, worldR, worldPivot, rng);
         case 'rock_slab':          return buildSingleRockSlab(p, worldR, worldPivot, rng);
+        case 'crystal_prism':      return buildSingleCrystalPrism(p, worldR, worldPivot, rng);
+        case 'linear_dike':        return buildSingleLinearDike(p, worldR, worldPivot, rng);
         case 'custom_sculpt_rock': return buildSingleCustomSculptRock(p, worldR, worldPivot, rng);
         case 'big_boulder':
         default:                   return buildSingleBigBoulder(p, worldR, worldPivot, rng);

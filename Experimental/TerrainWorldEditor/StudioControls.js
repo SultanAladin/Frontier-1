@@ -49,7 +49,9 @@ export const GlyphPaths = {
     Pedestal:  '<path d="M5 7.5L8.5 4h7L19 7.5 16.5 11h-9z"/><path d="M10.2 11L9 18.5 7 21h10l-2-2.5L13.8 11"/>',
     FloatingIsland: '<path d="M3.5 8.5L7 6.5h10l3.5 2-2.5 4.2-3 2.8L12 20.5l-3-5-3-2.8z"/><path d="M4 8.5h16"/><path d="M8.5 22.2h7"/>',
     SplitFault: '<path d="M3 19L5.5 7 11.5 4.5 9.8 10.2l2.1 2.1L9.5 19z"/><path d="M14.5 5.5L20 8.5 21 19.5h-7.5l2.2-6.2-2.1-2.1z"/><path d="M13 2.5l-2.5 19" stroke-dasharray="2 2"/>',
-    Boolean:   '<circle cx="9.2" cy="11.2" r="5.8"/><circle cx="14.8" cy="12.8" r="5.8" stroke-dasharray="2.4 2"/>'
+    Boolean:   '<circle cx="9.2" cy="11.2" r="5.8"/><circle cx="14.8" cy="12.8" r="5.8" stroke-dasharray="2.4 2"/>',
+    Crystal:   '<path d="M12 2.5 18.2 7.2v9.6L12 21.5 5.8 16.8V7.2z"/><path d="M12 2.5v19M5.8 7.2 12 10.4l6.2-3.2M5.8 16.8 12 13.6l6.2 3.2"/>',
+    LinearDike:'<path d="M2.5 19.5 6.2 6.8 12.4 4.2l3.4 2.4 5.7 12.9z"/><path d="M12.4 4.2 9.4 19.5M15.8 6.6 13.8 19.5"/>'
 };
 
 export function ConstructGlyph(Name, ClassName = 'glyph')

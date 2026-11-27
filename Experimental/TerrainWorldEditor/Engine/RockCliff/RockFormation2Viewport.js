@@ -4635,7 +4635,7 @@ export class RockFormation2Viewport
         {
             const mode = (g.arrayMode === 'linear' || !g.arrayMode) ? 'line' : g.arrayMode;
 
-            if (mode === 'line')
+            if (mode === 'line' || mode === 'colonnade_wall')
             {
                 const ax = g.startX ?? -4.8, ay = g.startY ?? 0.0, az = g.startZ ?? 0.0;
                 const bx = g.endX ?? 4.8,    by = g.endY ?? 0.0,   bz = g.endZ ?? 0.0;

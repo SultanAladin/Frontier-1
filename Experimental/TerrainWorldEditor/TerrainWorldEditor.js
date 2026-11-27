@@ -5994,9 +5994,12 @@ class TerrainWorldStudioApp
                 'Array Layout',
                 [
                     ['Varied Rocks Along 3D Line (A → B)', 'line'],
+                    ['Linear Basalt Colonnade Wall (A → B)', 'colonnade_wall'],
+                    ['Parallel Linear Fins / Hogback Ribs', 'parallel_fins'],
+                    ['3D Radiating Crystal Spray / Rosette', 'crystal_spray'],
+                    ['Hexagonal Honeycomb Pack (Basalt)', 'hex'],
                     ['2D Staggered Rock Grid', 'grid2d'],
                     ['3D Stacked Rock Lattice', 'grid3d'],
-                    ['Hexagonal Honeycomb Pack (Basalt)', 'hex'],
                     ['Radial Circle / Arc', 'radial']
                 ],
                 AMode,
@@ -6089,6 +6092,46 @@ class TerrainWorldStudioApp
                 GenGroup.Body.appendChild(MakeSliderPillRow('Height Variation', 0.0, 0.70, 0.02, G.heightVariation ?? 0.22, 2, 'w', V => { G.heightVariation = V; OnLive(); }, OnCommit));
                 GenGroup.Body.appendChild(MakeSliderPillRow('Random Angle (±Yaw)', 0, 180, 2, G.yawJitterDeg ?? 180, 0, '°', V => { G.yawJitterDeg = V; OnLive(); }, OnCommit));
                 GenGroup.Body.appendChild(MakeSliderPillRow('Random Tilt', 0, 45, 1, G.tiltJitterDeg ?? 12, 0, '°', V => { G.tiltJitterDeg = V; OnLive(); }, OnCommit));
+            }
+            else if (AMode === 'colonnade_wall')
+            {
+                GenGroup.Body.appendChild(MakeSliderPillRow('Wall Columns (A → B)', 2, 22, 1, G.countX ?? 10, 0, '#', V => { G.countX = Math.round(V); OnLive(); }, OnCommit));
+                GenGroup.Body.appendChild(MakeSliderPillRow('Cliff Depth Ranks', 1, 5, 1, G.colonnadeRanks ?? 3, 0, 'rk', V => { G.colonnadeRanks = Math.round(V); OnLive(); }, OnCommit));
+                GenGroup.Body.appendChild(MakeSliderPillRow('Prism Tightness', 0.45, 2.2, 0.02, G.cellSpacing ?? 1.04, 2, '×', V => { G.cellSpacing = V; OnLive(); }, OnCommit));
+                GenGroup.Body.appendChild(MakeSliderPillRow('Terrace Height Steps', 1, 14, 1, G.terraceSteps ?? 6, 0, 'st', V => { G.terraceSteps = Math.round(V); OnLive(); }, OnCommit));
+                GenGroup.Body.appendChild(MakeSliderPillRow('Front Terrace Drop', 0.0, 0.88, 0.02, G.terraceDrop ?? 0.58, 2, 'w', V => { G.terraceDrop = V; OnLive(); }, OnCommit));
+                GenGroup.Body.appendChild(MakeSliderPillRow('Entablature Fan Lean', -22, 22, 0.5, G.radialLeanDeg ?? 3.0, 1, '°', V => { G.radialLeanDeg = V; OnLive(); }, OnCommit));
+                GenGroup.Body.appendChild(MakeSliderPillRow('Height Variation', 0.0, 0.65, 0.02, G.heightVariation ?? 0.16, 2, 'w', V => { G.heightVariation = V; OnLive(); }, OnCommit));
+                GenGroup.Body.appendChild(MakeSliderPillRow('Scale Variation', 0.0, 0.55, 0.02, G.scaleVariation ?? 0.06, 2, 'w', V => { G.scaleVariation = V; OnLive(); }, OnCommit));
+                GenGroup.Body.appendChild(MakeSliderPillRow('Random Angle (±Yaw)', 0, 180, 2, G.yawJitterDeg ?? 18, 0, '°', V => { G.yawJitterDeg = V; OnLive(); }, OnCommit));
+                GenGroup.Body.appendChild(MakeSliderPillRow('Random Tilt', 0, 25, 0.5, G.tiltJitterDeg ?? 1.5, 1, '°', V => { G.tiltJitterDeg = V; OnLive(); }, OnCommit));
+                GenGroup.Body.appendChild(MakeSliderPillRow('Start A · X', -16.0, 16.0, 0.1, G.startX ?? -5.2, 1, 'm', V => { G.startX = V; OnLive(); }, OnCommit));
+                GenGroup.Body.appendChild(MakeSliderPillRow('Start A · Z', -16.0, 16.0, 0.1, G.startZ ?? 0.0, 1, 'm', V => { G.startZ = V; OnLive(); }, OnCommit));
+                GenGroup.Body.appendChild(MakeSliderPillRow('End B · X', -16.0, 16.0, 0.1, G.endX ?? 5.2, 1, 'm', V => { G.endX = V; OnLive(); }, OnCommit));
+                GenGroup.Body.appendChild(MakeSliderPillRow('End B · Z', -16.0, 16.0, 0.1, G.endZ ?? 0.0, 1, 'm', V => { G.endZ = V; OnLive(); }, OnCommit));
+            }
+            else if (AMode === 'parallel_fins')
+            {
+                GenGroup.Body.appendChild(MakeSliderPillRow('Parallel Fin Rows', 2, 10, 1, G.countZ ?? 4, 0, 'rw', V => { G.countZ = Math.round(V); OnLive(); }, OnCommit));
+                GenGroup.Body.appendChild(MakeSliderPillRow('Strike Segments / Row', 1, 5, 1, G.countX ?? 1, 0, '#', V => { G.countX = Math.round(V); OnLive(); }, OnCommit));
+                GenGroup.Body.appendChild(MakeSliderPillRow('Joint Corridor Spacing', 0.6, 8.0, 0.05, G.finCorridorWidth ?? 2.65, 2, 'm', V => { G.finCorridorWidth = V; OnLive(); }, OnCommit));
+                GenGroup.Body.appendChild(MakeSliderPillRow('Strike Length Variation', 0.0, 0.75, 0.02, G.finLengthVar ?? 0.30, 2, 'w', V => { G.finLengthVar = V; OnLive(); }, OnCommit));
+                GenGroup.Body.appendChild(MakeSliderPillRow('Strike Row Stagger', 0.0, 0.85, 0.02, G.rowStagger ?? 0.30, 2, 'w', V => { G.rowStagger = V; OnLive(); }, OnCommit));
+                GenGroup.Body.appendChild(MakeSliderPillRow('Height Variation', 0.0, 0.70, 0.02, G.heightVariation ?? 0.24, 2, 'w', V => { G.heightVariation = V; OnLive(); }, OnCommit));
+                GenGroup.Body.appendChild(MakeSliderPillRow('Thickness Variation', 0.0, 0.65, 0.02, G.scaleVariation ?? 0.14, 2, 'w', V => { G.scaleVariation = V; OnLive(); }, OnCommit));
+                GenGroup.Body.appendChild(MakeSliderPillRow('Position Jitter', 0.0, 1.4, 0.02, G.posJitter ?? 0.14, 2, 'm', V => { G.posJitter = V; OnLive(); }, OnCommit));
+                GenGroup.Body.appendChild(MakeSliderPillRow('Strike Yaw Jitter', 0, 25, 1, G.yawJitterDeg ?? 4, 0, '°', V => { G.yawJitterDeg = V; OnLive(); }, OnCommit));
+            }
+            else if (AMode === 'crystal_spray')
+            {
+                GenGroup.Body.appendChild(MakeSliderPillRow('Crystal / Prism Count', 3, 40, 1, G.sprayCount ?? 15, 0, '#', V => { G.sprayCount = Math.round(V); OnLive(); }, OnCommit));
+                GenGroup.Body.appendChild(MakeSliderPillRow('3D Rosette Splay Angle', 0, 88, 1, G.splayAngleDeg ?? 58, 0, '°', V => { G.splayAngleDeg = V; OnLive(); }, OnCommit));
+                GenGroup.Body.appendChild(MakeSliderPillRow('Cluster Base Radius', 0.0, 4.0, 0.05, G.sprayCoreRadius ?? 0.85, 2, 'm', V => { G.sprayCoreRadius = V; OnLive(); }, OnCommit));
+                GenGroup.Body.appendChild(MakeSliderPillRow('Outer Crystal Min Scale', 0.18, 1.8, 0.04, G.scaleMin ?? 0.42, 2, '×', V => { G.scaleMin = V; OnLive(); }, OnCommit));
+                GenGroup.Body.appendChild(MakeSliderPillRow('Central King Max Scale', 0.30, 2.4, 0.04, G.scaleMax ?? 1.18, 2, '×', V => { G.scaleMax = V; OnLive(); }, OnCommit));
+                GenGroup.Body.appendChild(MakeSliderPillRow('Height Variation', 0.0, 0.70, 0.02, G.heightVariation ?? 0.28, 2, 'w', V => { G.heightVariation = V; OnLive(); }, OnCommit));
+                GenGroup.Body.appendChild(MakeSliderPillRow('Axial Spin Randomness', 0, 180, 2, G.yawJitterDeg ?? 180, 0, '°', V => { G.yawJitterDeg = V; OnLive(); }, OnCommit));
+                GenGroup.Body.appendChild(MakeSliderPillRow('Splay Angle Jitter', 0, 25, 1, G.tiltJitterDeg ?? 8, 0, '°', V => { G.tiltJitterDeg = V; OnLive(); }, OnCommit));
             }
 
             GenGroup.Body.appendChild(MakeSliderPillRow('Intra-Layer Fuse', 0.0, 1.8, 0.02, G.intraBlend ?? 0.0, 2, 'm', V => { G.intraBlend = V; OnLive(); }, OnCommit));
