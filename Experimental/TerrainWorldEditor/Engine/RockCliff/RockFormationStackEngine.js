@@ -685,7 +685,8 @@ export const ROCK2_SCULPT_BRUSH_MODES = [
     ['Flatten / Planar Facet', 'flatten'],
     ['Smooth / Polish', 'smooth'],
     ['Inflate / Bulge', 'inflate'],
-    ['Crease / Fissure Groove', 'crease']
+    ['Crease / Fissure Groove', 'crease'],
+    ['Erase SDF / Delete Floating', 'erase']
 ];
 
 export const ROCK2_SCULPT_OP_CODE = {
@@ -694,13 +695,17 @@ export const ROCK2_SCULPT_OP_CODE = {
     flatten: 2,
     smooth: 3,
     inflate: 4,
-    crease: 5
+    crease: 5,
+    erase: 6,
+    deflate: 7,
+    ridge: 8
 };
 
 export const DEFAULT_ROCK2_SCULPT_LAYER_PARAMS = {
     targetScope: 'stack_below', // 'stack_below' | 'single_layer'
     targetLayerId: '',
-    brushOp: 'add',             // 'add' | 'carve' | 'flatten' | 'smooth' | 'inflate' | 'crease'
+    brushOp: 'add',             // 'add' | 'carve' | 'erase' | 'flatten' | 'smooth' | 'inflate' | 'crease'
+    brushPolarity: 'add',       // 'add' (+) | 'sub' (-)
     brushRadius: 0.78,
     brushStrength: 0.58,
     brushHardness: 0.50,
@@ -709,6 +714,25 @@ export const DEFAULT_ROCK2_SCULPT_LAYER_PARAMS = {
     stoneTone: 'inherit',       // 'inherit' or key in ROCK2_STONE_TONES
     dabs: []                    // [{ x, y, z, nx, ny, nz, tx, tz, r, s, h, op, tone, strokeId }]
 };
+
+/**
+ * Resolves the effective Pure-SDF sculpt operation given the selected `brushOp`,
+ * explicit `+ / -` polarity (`'add' | 'sub'`), and live keyboard modifiers (`Shift` / `Ctrl`).
+ */
+export function resolveRock2EffectiveSculptOp(brushOp = 'add', brushPolarity = 'add', shiftDown = false, invertDown = false)
+{
+    if (shiftDown) return 'smooth';
+    let isSub = brushPolarity === 'sub';
+    if (invertDown) isSub = !isSub;
+
+    if (brushOp === 'erase') return invertDown ? 'add' : 'erase';
+    if (brushOp === 'carve') return invertDown ? 'add' : 'carve';
+    if (brushOp === 'smooth') return 'smooth';
+    if (brushOp === 'add') return isSub ? 'carve' : 'add';
+    if (brushOp === 'inflate') return isSub ? 'deflate' : 'inflate';
+    if (brushOp === 'crease') return invertDown ? 'ridge' : 'crease';
+    return brushOp;
+}
 
 export const ROCK2_MODIFIER_CATALOG = [
     {
@@ -5175,8 +5199,8 @@ export function appendRock2SculptDab(sculptLayer, dabInput)
     if (!Array.isArray(sculptLayer.params.dabs)) sculptLayer.params.dabs = [];
 
     const p = sculptLayer.params;
-    const op = dabInput.op || p.brushOp || 'add';
-    const r = clamp(dabInput.r ?? p.brushRadius ?? 0.78, 0.08, 6.0);
+    const op = dabInput.op || dabInput.opOverride || resolveRock2EffectiveSculptOp(p.brushOp || 'add', p.brushPolarity || 'add', false, false);
+    const r = clamp(dabInput.r ?? p.brushRadius ?? 0.78, 0.08, 8.0);
     const s = clamp(dabInput.s ?? p.brushStrength ?? 0.58, 0.02, 1.0);
     const h = clamp(dabInput.h ?? p.brushHardness ?? 0.50, 0.0, 1.0);
     const tone = dabInput.tone ?? p.stoneTone ?? 'inherit';
@@ -5222,9 +5246,9 @@ export function appendRock2SculptDab(sculptLayer, dabInput)
         added++;
     }
 
-    if (p.dabs.length > 512)
+    if (p.dabs.length > 1024)
     {
-        p.dabs.splice(0, p.dabs.length - 512);
+        p.dabs.splice(0, p.dabs.length - 1024);
     }
     return added;
 }
@@ -5267,12 +5291,12 @@ export function compileRock2SculptModifier(lyr, srcBounds)
     let maxDisp = 0.0;
 
     const dabs = [];
-    const startIdx = Math.max(0, rawDabs.length - 512);
+    const startIdx = Math.max(0, rawDabs.length - 1024);
     for (let i = startIdx; i < rawDabs.length; i++)
     {
         const raw = rawDabs[i];
         if (!raw || !Number.isFinite(raw.x) || !Number.isFinite(raw.y) || !Number.isFinite(raw.z)) continue;
-        const r = clamp(raw.r ?? 0.78, 0.08, 6.0);
+        const r = clamp(raw.r ?? 0.78, 0.08, 8.0);
         const s = clamp(raw.s ?? 0.58, 0.02, 1.0);
         const h = clamp(raw.h ?? 0.50, 0.0, 1.0);
         const opCode = ROCK2_SCULPT_OP_CODE[raw.op] ?? 0;
@@ -5292,7 +5316,7 @@ export function compileRock2SculptModifier(lyr, srcBounds)
             colR: col[0], colG: col[1], colB: col[2], useTone
         });
 
-        if (opCode === 0 || opCode === 4)
+        if (opCode === 0 || opCode === 4 || opCode === 8)
         {
             const pad = r * 1.45;
             if (raw.x - pad < outMinX) outMinX = raw.x - pad;
@@ -5373,17 +5397,17 @@ export function evalRock2SculptModifier(mod, evalUpstreamFn, wx, wy, wz, outColo
         }
         else if (op === 1)
         {
-            // Carve / Chisel Gouge (-): subtracts oriented stone dish / cavity
-            const lift = 0.18 * r * (1.0 - 0.55 * s);
-            const lb = dist - (r + lift);
+            // Carve / Chisel Gouge (-): deep zero-rind scoop sunk slightly into the rock so thin walls never leave outer crusts
+            const sinkIn = -0.06 * r * s;
+            const lb = dist - (r + Math.abs(sinkIn));
             if (lb > -dAcc + blendK) continue;
 
-            const qx = vx - db.nx * lift;
-            const qy = vy - db.ny * lift;
-            const qz = vz - db.nz * lift;
+            const qx = vx - db.nx * sinkIn;
+            const qy = vy - db.ny * sinkIn;
+            const qz = vz - db.nz * sinkIn;
             const vn = qx * db.nx + qy * db.ny + qz * db.nz;
             const tang2 = Math.max(0.0, qx * qx + qy * qy + qz * qz - vn * vn);
-            const tau = clamp(0.36 + 0.56 * s, 0.36, 0.92);
+            const tau = clamp(0.74 + 0.26 * s, 0.74, 1.0);
             const ry = r * tau;
             const fEllip = Math.sqrt(tang2 / (r * r) + (vn * vn) / (ry * ry));
             const dDab = (fEllip - 1.0) * ry;
@@ -5400,6 +5424,15 @@ export function evalRock2SculptModifier(mod, evalUpstreamFn, wx, wy, wz, outColo
                 col.g = lerp(col.g, tg, cutW * (db.useTone ? 0.85 : 0.55));
                 col.b = lerp(col.b, tb, cutW * (db.useTone ? 0.85 : 0.55));
             }
+        }
+        else if (op === 6)
+        {
+            // Erase SDF (Volumetric 3D Sphere Eraser): completely deletes solid & floating SDFs inside sphere of radius rEff
+            const rEff = r * (0.72 + 0.36 * s);
+            const feather = r * 0.08 * (1.0 - h);
+            const dErase = dist - rEff;
+            if (dErase > -dAcc + feather) continue;
+            dAcc = smaxPoly(dAcc, -dErase, feather);
         }
         else
         {
@@ -5433,12 +5466,17 @@ export function evalRock2SculptModifier(mod, evalUpstreamFn, wx, wy, wz, outColo
             }
             else if (op === 4)
             {
-                // Inflate / Bulge: expands rock volume outward along existing SDF
+                // Inflate / Bulge (+): expands rock volume outward along existing SDF
                 dAcc -= (0.34 * r * s) * w;
             }
-            else if (op === 5)
+            else if (op === 7)
             {
-                // Crease / Chisel Groove: sharp V-fissure oriented along 3D stroke tangent
+                // Deflate / Shrink (-): erodes & melts thin rock shells / slivers inward
+                dAcc += (0.44 * r * s) * w;
+            }
+            else if (op === 5 || op === 8)
+            {
+                // Crease (- Groove, op=5) / Chisel Ridge (+ Vein, op=8)
                 let bx = db.ny * db.tz - db.nz * 0.0;
                 let by = db.nz * db.tx - db.nx * db.tz;
                 let bz = db.nx * 0.0 - db.ny * db.tx;
@@ -5448,7 +5486,8 @@ export function evalRock2SculptModifier(mod, evalUpstreamFn, wx, wy, wz, outColo
                 const grooveDepth = 0.36 * r * s * w;
                 const vSlope = 0.75 + 1.35 * h;
                 const vCut = Math.max(0.0, grooveDepth - crossCoord * vSlope);
-                dAcc += vCut * Math.exp(-Math.max(0.0, dAcc) * 2.5 / r);
+                const sign = op === 8 ? -1.0 : 1.0;
+                dAcc += sign * vCut * Math.exp(-Math.max(0.0, Math.abs(dAcc)) * 2.5 / r);
             }
 
             if (col && db.useTone && w > 1e-3)
@@ -5475,23 +5514,27 @@ export function evalRock2AnyModifier(mod, evalUpstreamFn, wx, wy, wz, outColor =
 
 /**
  * Sphere-traces `(ro, rd)` against the full Pure-SDF stack for live 3D Brush Sculpting
- * and returns `{ hitPoint: [x, y, z], normal: [nx, ny, nz], distance }`!
+ * and returns `{ hitPoint: [x, y, z], normal: [nx, ny, nz], distance, isProximityHit }`!
+ * When `options.proximityRadius > 0` (used by `Erase` and `-` Carve/Deflate brushes), any floating
+ * SDF fragment passing inside the 3D brush cylinder around `(ro, rd)` is captured automatically!
  */
-export function pickRock2SculptHitAtRay(compiledStack, ro, rd)
+export function pickRock2SculptHitAtRay(compiledStack, ro, rd, options = {})
 {
     if (!compiledStack || !compiledStack.compiledLayers || compiledStack.compiledLayers.length === 0)
     {
         return null;
     }
 
+    const proxR = Math.max(0.0, Number(options.proximityRadius) || 0.0);
     const b = compiledStack.bounds;
     const invDx = 1.0 / (Math.abs(rd[0]) > 1e-8 ? rd[0] : 1e-8);
     const invDy = 1.0 / (Math.abs(rd[1]) > 1e-8 ? rd[1] : 1e-8);
     const invDz = 1.0 / (Math.abs(rd[2]) > 1e-8 ? rd[2] : 1e-8);
 
-    const tx1 = (b.minX - ro[0]) * invDx, tx2 = (b.maxX - ro[0]) * invDx;
-    const ty1 = (b.minY - ro[1]) * invDy, ty2 = (b.maxY - ro[1]) * invDy;
-    const tz1 = (b.minZ - ro[2]) * invDz, tz2 = (b.maxZ - ro[2]) * invDz;
+    const pad = proxR > 0 ? proxR : 0.0;
+    const tx1 = (b.minX - pad - ro[0]) * invDx, tx2 = (b.maxX + pad - ro[0]) * invDx;
+    const ty1 = (b.minY - pad - ro[1]) * invDy, ty2 = (b.maxY + pad - ro[1]) * invDy;
+    const tz1 = (b.minZ - pad - ro[2]) * invDz, tz2 = (b.maxZ + pad - ro[2]) * invDz;
 
     const tEnter = Math.max(0.05, Math.min(tx1, tx2), Math.min(ty1, ty2), Math.min(tz1, tz2));
     const tExit  = Math.min(160.0, Math.max(tx1, tx2), Math.max(ty1, ty2), Math.max(tz1, tz2));
@@ -5499,31 +5542,332 @@ export function pickRock2SculptHitAtRay(compiledStack, ro, rd)
 
     let t = tEnter;
     let hit = false;
-    for (let step = 0; step < 92 && t <= tExit; step++)
+    let bestD = 1e9;
+    let bestT = tEnter;
+    const maxSteps = proxR > 0 ? 156 : 92;
+
+    for (let step = 0; step < maxSteps && t <= tExit; step++)
     {
         const d = evalRock2StackSdf(compiledStack, ro[0] + rd[0] * t, ro[1] + rd[1] * t, ro[2] + rd[2] * t);
+        if (d < bestD)
+        {
+            bestD = d;
+            bestT = t;
+        }
         if (d < 0.015)
         {
             hit = true;
             break;
         }
-        t += Math.max(0.014, d * 0.82);
+        if (proxR > 0 && d < proxR * 1.6)
+        {
+            // Fine step near brush cylinder so thin floating SDF slivers/crumbs are never stepped over
+            t += Math.min(Math.max(0.045, proxR * 0.22), Math.max(0.025, d * 0.65));
+        }
+        else
+        {
+            t += Math.max(0.014, d * 0.82);
+        }
     }
-    if (!hit) return null;
 
-    const hx = ro[0] + rd[0] * t;
-    const hy = ro[1] + rd[1] * t;
-    const hz = ro[2] + rd[2] * t;
-    const eps = 0.025;
-    const gx = evalRock2StackSdf(compiledStack, hx + eps, hy, hz) - evalRock2StackSdf(compiledStack, hx - eps, hy, hz);
-    const gy = evalRock2StackSdf(compiledStack, hx, hy + eps, hz) - evalRock2StackSdf(compiledStack, hx, hy - eps, hz);
-    const gz = evalRock2StackSdf(compiledStack, hx, hy, hz + eps) - evalRock2StackSdf(compiledStack, hx, hy, hz - eps);
-    const nVec = vnorm([gx, gy, gz]);
+    if (hit)
+    {
+        const hx = ro[0] + rd[0] * t;
+        const hy = ro[1] + rd[1] * t;
+        const hz = ro[2] + rd[2] * t;
+        const eps = 0.025;
+        const gx = evalRock2StackSdf(compiledStack, hx + eps, hy, hz) - evalRock2StackSdf(compiledStack, hx - eps, hy, hz);
+        const gy = evalRock2StackSdf(compiledStack, hx, hy + eps, hz) - evalRock2StackSdf(compiledStack, hx, hy - eps, hz);
+        const gz = evalRock2StackSdf(compiledStack, hx, hy, hz + eps) - evalRock2StackSdf(compiledStack, hx, hy, hz - eps);
+        const nVec = vnorm([gx, gy, gz]);
+
+        return {
+            hitPoint: [hx, hy, hz],
+            normal: nVec,
+            distance: t,
+            isProximityHit: false
+        };
+    }
+
+    // Brush-Cylinder Floating-SDF Capture: snap onto floating SDF crumbs inside `proxR` of the cursor ray!
+    if (proxR > 0 && bestD < proxR * 0.94)
+    {
+        const rx = ro[0] + rd[0] * bestT;
+        const ry = ro[1] + rd[1] * bestT;
+        const rz = ro[2] + rd[2] * bestT;
+        const eps = 0.035;
+        const gx = evalRock2StackSdf(compiledStack, rx + eps, ry, rz) - evalRock2StackSdf(compiledStack, rx - eps, ry, rz);
+        const gy = evalRock2StackSdf(compiledStack, rx, ry + eps, rz) - evalRock2StackSdf(compiledStack, rx, ry - eps, rz);
+        const gz = evalRock2StackSdf(compiledStack, rx, ry, rz + eps) - evalRock2StackSdf(compiledStack, rx, ry, rz - eps);
+        const grad = vnorm([gx, gy, gz]);
+
+        // Pull from the ray point along -grad onto the nearest floating SDF surface/crumb!
+        const pull = Math.max(0.0, bestD);
+        const cx = rx - grad[0] * pull;
+        const cy = ry - grad[1] * pull;
+        const cz = rz - grad[2] * pull;
+        const dAtCrumb = evalRock2StackSdf(compiledStack, cx, cy, cz);
+        if (dAtCrumb < Math.max(0.22, proxR * 0.42))
+        {
+            return {
+                hitPoint: [cx, cy, cz],
+                normal: [-rd[0], -rd[1], -rd[2]],
+                distance: bestT,
+                isProximityHit: true
+            };
+        }
+    }
+
+    return null;
+}
+
+/**
+ * 100% Pure-SDF Connected-Component Floating Island Cleaner (`0` Mesh -> SDF!).
+ * Scans the compiled 3D SDF volume, finds all disconnected floating SDF crumbs / slivers / islands
+ * detached from the grounded rock (or main rock body), and appends exact Pure-SDF `'erase'` spheres
+ * onto a `sculpt_layer` so they vanish cleanly in both GPU Raymarch and QEF Dual-Contour Mesh!
+ */
+export function removeFloatingRock2SdfIslands(doc, compiledStack = null, options = {})
+{
+    if (!doc || !Array.isArray(doc.layers) || doc.layers.length === 0)
+    {
+        return { removedIslands: 0, addedDabs: 0, sculptLayerId: null };
+    }
+
+    const comp = compiledStack || compileRock2Stack(doc);
+    if (!comp || !comp.compiledLayers || comp.compiledLayers.length === 0)
+    {
+        return { removedIslands: 0, addedDabs: 0, sculptLayerId: null };
+    }
+
+    const b = comp.bounds;
+    const res = clamp(Math.round(options.resolution ?? 68), 36, 96);
+    const sx = (b.maxX - b.minX) / res;
+    const sy = (b.maxY - b.minY) / res;
+    const sz = (b.maxZ - b.minZ) / res;
+    const voxelDiag = Math.hypot(sx, sy, sz);
+    // Generous sub-voxel capture threshold so paper-thin crescent slivers in 112^3 raymarch are also caught!
+    const isoThresh = voxelDiag * 0.48;
+
+    const total = res * res * res;
+    const solid = new Uint8Array(total);
+    const visited = new Uint8Array(total);
+
+    let ptr = 0;
+    for (let iz = 0; iz < res; iz++)
+    {
+        const wz = b.minZ + (iz + 0.5) * sz;
+        for (let iy = 0; iy < res; iy++)
+        {
+            const wy = b.minY + (iy + 0.5) * sy;
+            for (let ix = 0; ix < res; ix++)
+            {
+                const wx = b.minX + (ix + 0.5) * sx;
+                if (evalRock2StackSdf(comp, wx, wy, wz) <= isoThresh)
+                {
+                    solid[ptr] = 1;
+                }
+                ptr++;
+            }
+        }
+    }
+
+    const components = [];
+    const queue = new Int32Array(total);
+    const strideY = res;
+    const strideZ = res * res;
+
+    for (let seedIdx = 0; seedIdx < total; seedIdx++)
+    {
+        if (!solid[seedIdx] || visited[seedIdx]) continue;
+        visited[seedIdx] = 1;
+        let qHead = 0, qTail = 0;
+        queue[qTail++] = seedIdx;
+
+        let minIx = res, maxIx = 0;
+        let minIy = res, maxIy = 0;
+        let minIz = res, maxIz = 0;
+        const cells = [];
+
+        while (qHead < qTail)
+        {
+            const cur = queue[qHead++];
+            cells.push(cur);
+            const iz = (cur / strideZ) | 0;
+            const rem = cur - iz * strideZ;
+            const iy = (rem / strideY) | 0;
+            const ix = rem - iy * strideY;
+
+            if (ix < minIx) minIx = ix; if (ix > maxIx) maxIx = ix;
+            if (iy < minIy) minIy = iy; if (iy > maxIy) maxIy = iy;
+            if (iz < minIz) minIz = iz; if (iz > maxIz) maxIz = iz;
+
+            // 26-connected neighborhood so diagonal rock bridges stay unified
+            for (let dz = -1; dz <= 1; dz++)
+            {
+                const nz = iz + dz;
+                if (nz < 0 || nz >= res) continue;
+                for (let dy = -1; dy <= 1; dy++)
+                {
+                    const ny = iy + dy;
+                    if (ny < 0 || ny >= res) continue;
+                    for (let dx = -1; dx <= 1; dx++)
+                    {
+                        if (dx === 0 && dy === 0 && dz === 0) continue;
+                        const nx = ix + dx;
+                        if (nx < 0 || nx >= res) continue;
+                        const nIdx = nz * strideZ + ny * strideY + nx;
+                        if (solid[nIdx] && !visited[nIdx])
+                        {
+                            visited[nIdx] = 1;
+                            queue[qTail++] = nIdx;
+                        }
+                    }
+                }
+            }
+        }
+
+        const minYWorld = b.minY + minIy * sy;
+        components.push({
+            count: cells.length,
+            cells,
+            minIx, maxIx, minIy, maxIy, minIz, maxIz,
+            minYWorld
+        });
+    }
+
+    if (components.length === 0)
+    {
+        return { removedIslands: 0, addedDabs: 0, sculptLayerId: null };
+    }
+
+    components.sort((aComp, bComp) => bComp.count - aComp.count);
+    const largest = components[0];
+    const groundYLimit = 0.28;
+    const anyGroundedLarge = components.some(c => c.minYWorld <= groundYLimit && c.count >= Math.max(16, largest.count * 0.08));
+
+    const floatingDebris = [];
+    for (let ci = 0; ci < components.length; ci++)
+    {
+        const c = components[ci];
+        const isGrounded = c.minYWorld <= groundYLimit;
+        if (anyGroundedLarge)
+        {
+            // Keep grounded rocks of meaningful volume; delete any ungrounded floating SDFs & tiny crumbs!
+            const keep = isGrounded && c.count >= Math.max(14, largest.count * 0.015);
+            if (!keep) floatingDebris.push(c);
+        }
+        else
+        {
+            // Elevated Floating Island scene: keep largest body, delete all smaller detached floating crumbs/shards!
+            if (ci > 0) floatingDebris.push(c);
+        }
+    }
+
+    if (floatingDebris.length === 0)
+    {
+        return { removedIslands: 0, addedDabs: 0, sculptLayerId: null };
+    }
+
+    // Find or create top-level `sculpt_layer`
+    let sculptLayer = null;
+    for (let i = doc.layers.length - 1; i >= 0; i--)
+    {
+        const l = doc.layers[i];
+        if (l.type === 'sculpt_layer' && l.enabled && (l.params?.targetScope || 'stack_below') === 'stack_below')
+        {
+            sculptLayer = l;
+            break;
+        }
+    }
+    if (!sculptLayer)
+    {
+        sculptLayer = createRock2Layer('sculpt_layer', { name: '3D Sculpt & Cleanup Layer' });
+        doc.layers.push(sculptLayer);
+    }
+
+    const existingDabs = sculptLayer.params?.dabs || [];
+    let maxStroke = 0;
+    for (let i = 0; i < existingDabs.length; i++)
+    {
+        if ((existingDabs[i].strokeId ?? 0) > maxStroke) maxStroke = existingDabs[i].strokeId;
+    }
+    const cleanStrokeId = maxStroke + 1;
+
+    let addedDabs = 0;
+    for (let di = 0; di < floatingDebris.length; di++)
+    {
+        const compDeb = floatingDebris[di];
+        const cMinX = b.minX + compDeb.minIx * sx, cMaxX = b.minX + (compDeb.maxIx + 1) * sx;
+        const cMinY = b.minY + compDeb.minIy * sy, cMaxY = b.minY + (compDeb.maxIy + 1) * sy;
+        const cMinZ = b.minZ + compDeb.minIz * sz, cMaxZ = b.minZ + (compDeb.maxIz + 1) * sz;
+        const halfDiag = 0.5 * Math.hypot(cMaxX - cMinX, cMaxY - cMinY, cMaxZ - cMinZ);
+
+        if (halfDiag <= 1.35)
+        {
+            addedDabs += appendRock2SculptDab(sculptLayer, {
+                x: 0.5 * (cMinX + cMaxX),
+                y: 0.5 * (cMinY + cMaxY),
+                z: 0.5 * (cMinZ + cMaxZ),
+                nx: 0, ny: 1, nz: 0,
+                r: clamp(halfDiag + voxelDiag * 0.95, 0.16, 4.5),
+                s: 1.0,
+                h: 0.95,
+                op: 'erase',
+                symmetryMode: 'none',
+                strokeId: cleanStrokeId
+            });
+        }
+        else
+        {
+            // Cover elongated floating sliver arcs with tight local spheres so nearby grounded rock is untouched
+            const coverR = clamp(voxelDiag * 2.6, 0.35, 1.35);
+            const killR2 = (coverR * 0.72) * (coverR * 0.72);
+            const covered = new Uint8Array(compDeb.cells.length);
+            for (let k = 0; k < compDeb.cells.length; k++)
+            {
+                if (covered[k]) continue;
+                const cell = compDeb.cells[k];
+                const iz = (cell / strideZ) | 0;
+                const rem = cell - iz * strideZ;
+                const iy = (rem / strideY) | 0;
+                const ix = rem - iy * strideY;
+                const cx = b.minX + (ix + 0.5) * sx;
+                const cy = b.minY + (iy + 0.5) * sy;
+                const cz = b.minZ + (iz + 0.5) * sz;
+
+                addedDabs += appendRock2SculptDab(sculptLayer, {
+                    x: cx, y: cy, z: cz,
+                    nx: 0, ny: 1, nz: 0,
+                    r: coverR + voxelDiag * 0.65,
+                    s: 1.0,
+                    h: 0.95,
+                    op: 'erase',
+                    symmetryMode: 'none',
+                    strokeId: cleanStrokeId
+                });
+
+                for (let j = k; j < compDeb.cells.length; j++)
+                {
+                    if (covered[j]) continue;
+                    const c2 = compDeb.cells[j];
+                    const jz = (c2 / strideZ) | 0;
+                    const jrem = c2 - jz * strideZ;
+                    const jy = (jrem / strideY) | 0;
+                    const jx = jrem - jy * strideY;
+                    const dx = (b.minX + (jx + 0.5) * sx) - cx;
+                    const dy = (b.minY + (jy + 0.5) * sy) - cy;
+                    const dz = (b.minZ + (jz + 0.5) * sz) - cz;
+                    if (dx * dx + dy * dy + dz * dz <= killR2) covered[j] = 1;
+                }
+            }
+        }
+    }
 
     return {
-        hitPoint: [hx, hy, hz],
-        normal: nVec,
-        distance: t
+        removedIslands: floatingDebris.length,
+        addedDabs,
+        sculptLayerId: sculptLayer.id
     };
 }
 

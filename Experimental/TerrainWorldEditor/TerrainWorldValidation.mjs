@@ -47,9 +47,11 @@ import {
     isRock2BooleanLayer,
     isRock2BooleanCombineMode,
     setRock2LayerBooleanMode,
+    resolveRock2EffectiveSculptOp,
     appendRock2SculptDab,
     undoLastRock2SculptStroke,
     clearRock2SculptLayer,
+    removeFloatingRock2SdfIslands,
     pickRock2SculptHitAtRay,
     computeRock2FaultBasis,
     rock2FaultNormalToStrikeDip,
@@ -2266,10 +2268,10 @@ Suite('33. Phase D · Modifier D1: Kinematic Split & Fault Plane (T^-1(p) Slip, 
 });
 
 // 34. Interactive 3D Pure-SDF Brush Sculpting (`sculpt_layer`) + First-Class Boolean Objects (Semi-Transparent Red Ghosts)
-Suite('34. First-Class Boolean Objects (Subtract / Chamfer-Subtract / Intersect + Red Ghost Ray-Pick) & 6-Mode 3D Pure-SDF Brush Sculpting', () =>
+Suite('34. First-Class Boolean Objects (Subtract / Chamfer-Subtract / Intersect + Red Ghost Ray-Pick) & 7-Mode 3D Pure-SDF Brush Sculpting', () =>
 {
     assert.ok(ROCK2_BOOLEAN_MODES.length >= 3, 'ROCK2_BOOLEAN_MODES must expose Subtract, Chamfer-Subtract & Intersect');
-    assert.equal(ROCK2_SCULPT_BRUSH_MODES.length, 6, 'ROCK2_SCULPT_BRUSH_MODES must expose all 6 Pure-SDF sculpt brushes');
+    assert.equal(ROCK2_SCULPT_BRUSH_MODES.length, 7, 'ROCK2_SCULPT_BRUSH_MODES must expose all 7 Pure-SDF sculpt & erase brushes');
     assert.ok(ROCK2_MODIFIER_CATALOG.some(m => m.type === 'sculpt_layer'), 'sculpt_layer must be registered in ROCK2_MODIFIER_CATALOG');
 
     // A. First-Class Boolean Toggle + Chamfer-Subtract (`op=5`) + Intersect (`op=4`) + Boolean Ghost 3D Ray-Picking
@@ -2413,4 +2415,118 @@ Suite('34. First-Class Boolean Objects (Subtract / Chamfer-Subtract / Intersect 
     assert.ok(CssText.includes('.boolean-card') && CssText.includes('.rock2-sculpt-brush-grid'), 'TerrainWorldEditor.css must style crimson Boolean cards and 3D Sculpt brush grid');
 });
 
-console.log(`\nAll ${Passed}/34 Open-World SDF Terrain & Pure-SDF Rock Formation 1.0 + 2.0 Studio validation suites passed!`);
+Suite('35. 3D Volumetric Erase Brush, +/− Sculpt Polarity, Proximity Crumb Capture & 1-Click Floating SDF Cleanup', () =>
+{
+    // A. `+ / −` Polarity resolution (`resolveRock2EffectiveSculptOp`) + `opOverride` support in `appendRock2SculptDab`
+    assert.equal(resolveRock2EffectiveSculptOp('add', 'add', false, false), 'add');
+    assert.equal(resolveRock2EffectiveSculptOp('add', 'sub', false, false), 'carve', '− Sub polarity must flip Clay Add into deep zero-rind Carve');
+    assert.equal(resolveRock2EffectiveSculptOp('inflate', 'sub', false, false), 'deflate', '− Sub polarity must flip Inflate into inward Deflate');
+    assert.equal(resolveRock2EffectiveSculptOp('crease', 'sub', false, false), 'crease', '− Sub polarity keeps Crease cutting inward');
+    assert.equal(resolveRock2EffectiveSculptOp('crease', 'sub', false, true), 'ridge', 'Ctrl-invert flips Crease into outward Ridge');
+    assert.equal(resolveRock2EffectiveSculptOp('erase', 'add', false, false), 'erase', 'Erase brush stays Erase regardless of +/− polarity');
+    assert.equal(resolveRock2EffectiveSculptOp('erase', 'add', false, true), 'add', 'Ctrl-invert on Erase temporarily switches to Clay Add');
+    assert.equal(resolveRock2EffectiveSculptOp('carve', 'sub', true, false), 'smooth', 'Shift always temporarily activates Smooth');
+
+    const OverrideLayer = createRock2Layer('sculpt_layer', { params: { brushOp: 'add', brushPolarity: 'add' } });
+    appendRock2SculptDab(OverrideLayer, { x: 0, y: 2, z: 0, opOverride: 'carve', strokeId: 1 });
+    assert.equal(OverrideLayer.params.dabs[0].op, 'carve', 'appendRock2SculptDab must honor opOverride during Ctrl-invert strokes');
+
+    // B. Build a stack with a grounded boulder + a small disconnected floating SDF fragment high in mid-air
+    const GroundedRock = createRock2Layer('big_boulder', {
+        width: 3.4, height: 2.8, length: 3.2, posX: 0.0, posY: 0.0, posZ: 0.0, flatBottom: 0.35
+    });
+    const FloatingCrumb = createRock2Layer('smooth_rock', {
+        width: 0.62, height: 0.44, length: 0.58, posX: 1.85, posY: 4.35, posZ: 0.0, flatBottom: 0.0, combineMode: 'union'
+    });
+    const CrumbStack = compileRock2Stack({ layers: [GroundedRock, FloatingCrumb] });
+    const CrumbCenterY = 4.55;
+    const dCrumbBefore = evalRock2StackSdf(CrumbStack, 1.85, CrumbCenterY, 0.0);
+    assert.ok(dCrumbBefore < -0.05, `Floating SDF crumb must initially be solid (< 0), got ${dCrumbBefore.toFixed(3)}`);
+
+    // C. 3D Brush-Cylinder Proximity Ray Capture (`pickRock2SculptHitAtRay` with `proximityRadius`)
+    // Fire a horizontal ray along +Z that passes 0.52m to the side of the small floating crumb (missing it completely with a 0-radius pinhole ray!)
+    const MissRayOrigin = [2.42, CrumbCenterY, -8.0];
+    const MissRayDir = [0.0, 0.0, 1.0];
+    const PinholeHit = pickRock2SculptHitAtRay(CrumbStack, MissRayOrigin, MissRayDir, { proximityRadius: 0 });
+    assert.equal(PinholeHit, null, '0-radius pinhole ray passing 0.52m beside floating crumb must miss');
+
+    const ProxHit = pickRock2SculptHitAtRay(CrumbStack, MissRayOrigin, MissRayDir, { proximityRadius: 0.95 });
+    assert.ok(ProxHit !== null, '3D Erase/Carve proximity ray (radius 0.95m) must capture nearby floating SDF crumb');
+    assert.equal(ProxHit.isProximityHit, true, 'Captured off-axis floating crumb must set isProximityHit = true');
+    assert.ok(Math.hypot(ProxHit.hitPoint[0] - 1.85, ProxHit.hitPoint[1] - CrumbCenterY, ProxHit.hitPoint[2]) < 0.55,
+        `Captured surface point must snap onto the floating SDF crumb: (${ProxHit.hitPoint.map(v => v.toFixed(2)).join(',')})`);
+
+    // D. 3D Volumetric `erase` brush (`op = 6`) completely deletes the floating SDF fragment in mid-air!
+    const EraseLayer = createRock2Layer('sculpt_layer', {
+        params: { brushOp: 'erase', brushRadius: 0.95, brushStrength: 0.85, brushHardness: 0.65 }
+    });
+    appendRock2SculptDab(EraseLayer, {
+        x: ProxHit.hitPoint[0], y: ProxHit.hitPoint[1], z: ProxHit.hitPoint[2],
+        nx: ProxHit.normal[0], ny: ProxHit.normal[1], nz: ProxHit.normal[2],
+        strokeId: 77
+    });
+    const ErasedStack = compileRock2Stack({ layers: [GroundedRock, FloatingCrumb, EraseLayer] });
+    const dCrumbAfterErase = evalRock2StackSdf(ErasedStack, 1.85, CrumbCenterY, 0.0);
+    assert.ok(dCrumbAfterErase > 0.20, `3D Erase brush must completely delete floating SDF crumb (d=${dCrumbAfterErase.toFixed(3)} > 0.20)`);
+    assert.ok(evalRock2StackSdf(ErasedStack, 0.0, 1.2, 0.0) < -0.5, 'Grounded main rock must remain untouched');
+
+    // E. Zero-rind `carve` (`op = 1`) through a thin rock fin leaves ZERO outer floating crust!
+    const ThinFin = createRock2Layer('layered_slab', {
+        width: 2.6, height: 2.4, length: 0.42, posX: 0.0, posY: 0.0, posZ: 0.0
+    });
+    const FinBefore = compileRock2Stack({ layers: [ThinFin] });
+    const FinHit = pickRock2SculptHitAtRay(FinBefore, [0.0, 1.2, 5.0], [0.0, 0.0, -1.0], { proximityRadius: 0.9 });
+    assert.ok(FinHit !== null, 'Ray must hit thin slab front face');
+    const DeepCarve = createRock2Layer('sculpt_layer', {
+        params: { brushOp: 'carve', brushPolarity: 'sub', brushRadius: 0.95, brushStrength: 0.90, brushHardness: 0.55 }
+    });
+    appendRock2SculptDab(DeepCarve, {
+        x: FinHit.hitPoint[0], y: FinHit.hitPoint[1], z: FinHit.hitPoint[2],
+        nx: FinHit.normal[0], ny: FinHit.normal[1], nz: FinHit.normal[2],
+        strokeId: 88
+    });
+    const FinAfter = compileRock2Stack({ layers: [ThinFin, DeepCarve] });
+    for (let zSample = -0.35; zSample <= 0.35; zSample += 0.07)
+    {
+        const dFin = evalRock2StackSdf(FinAfter, 0.0, 1.2, zSample);
+        assert.ok(dFin > 0.05, `Zero-rind Carve through thin fin must leave NO floating crust at z=${zSample.toFixed(2)} (d=${dFin.toFixed(3)})`);
+    }
+
+    // F. 1-Click `removeFloatingRock2SdfIslands` automatically detects & erases multiple mid-air SDF islands while preserving grounded rock
+    const MultiFloaterDoc = {
+        layers: [
+            cloneRock2Layer(GroundedRock),
+            cloneRock2Layer(FloatingCrumb),
+            createRock2Layer('angular_talus', {
+                width: 0.55, height: 0.48, length: 0.52, posX: -2.10, posY: 3.90, posZ: 1.15, flatBottom: 0.0, combineMode: 'union'
+            })
+        ]
+    };
+    const DirtyComp = compileRock2Stack(MultiFloaterDoc);
+    assert.ok(evalRock2StackSdf(DirtyComp, 1.85, CrumbCenterY, 0.0) < 0.0, 'First floating island initially solid');
+    assert.ok(evalRock2StackSdf(DirtyComp, -2.10, 4.10, 1.15) < 0.0, 'Second floating island initially solid');
+
+    const CleanRes = removeFloatingRock2SdfIslands(MultiFloaterDoc, DirtyComp);
+    assert.ok(CleanRes.removedIslands >= 2, `Expected >= 2 floating SDF islands removed, got ${CleanRes.removedIslands}`);
+    assert.ok(CleanRes.addedDabs >= 2, 'Pure-SDF cleanup must record undoable erase dabs');
+
+    const CleanComp = compileRock2Stack(MultiFloaterDoc);
+    assert.ok(evalRock2StackSdf(CleanComp, 0.0, 1.2, 0.0) < -0.5, 'Grounded main boulder must be preserved after Clean Floaters');
+    assert.ok(evalRock2StackSdf(CleanComp, 1.85, CrumbCenterY, 0.0) > 0.15, 'First floating SDF island must be completely deleted');
+    assert.ok(evalRock2StackSdf(CleanComp, -2.10, 4.10, 1.15) > 0.15, 'Second floating SDF island must be completely deleted');
+
+    const CleanQef = bakeRock2StackQefMesh(CleanComp, { resolution: 48 });
+    assert.equal(CleanQef.sdfStats.meshToSdfCount, 0, 'Cleaned Pure-SDF stack QEF bake must have ZERO Mesh->SDF conversions');
+    assert.ok(CleanQef.sdfStats.triangles > 300, 'Cleaned grounded boulder must bake to a clean manifold QEF mesh');
+
+    // Verify HTML & CSS wiring for Erase (`X`), `+ / −` Polarity, and `Clean Floaters`
+    const HtmlText = readFileSync(new URL('./index.html', import.meta.url), 'utf8');
+    const CssText = readFileSync(new URL('./TerrainWorldEditor.css', import.meta.url), 'utf8');
+    assert.ok(HtmlText.includes('id="rock2-tool-erase"') && HtmlText.includes('id="rock2-clean-floaters-btn"'),
+        'index.html must expose Erase (X) gizmo tool and Clean Floaters viewport pill');
+    assert.ok(CssText.includes('.rock2-sculpt-polarity-bar') && CssText.includes('.erase-brush'),
+        'TerrainWorldEditor.css must style +/− polarity toggle bar and crimson Erase brush');
+});
+
+console.log(`\nAll ${Passed}/35 Open-World SDF Terrain & Pure-SDF Rock Formation 1.0 + 2.0 Studio validation suites passed!`);
+

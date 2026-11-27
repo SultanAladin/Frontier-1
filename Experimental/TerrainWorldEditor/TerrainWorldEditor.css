@@ -1111,6 +1111,62 @@ body.ws-rock2 .quick-lib-scroll {
 .rock2-sculpt-brush-btn.active small {
     color: #a7f3d0;
 }
+.rock2-sculpt-brush-btn.erase-brush {
+    border-color: rgba(251, 113, 133, 0.42);
+    background: rgba(225, 29, 72, 0.09);
+}
+.rock2-sculpt-brush-btn.erase-brush:hover {
+    border-color: rgba(251, 113, 133, 0.78);
+    background: rgba(225, 29, 72, 0.18);
+}
+.rock2-sculpt-brush-btn.erase-brush.active {
+    border-color: #fb7185;
+    background: rgba(225, 29, 72, 0.30);
+    color: #fff1f2;
+}
+.rock2-sculpt-brush-btn.erase-brush.active small {
+    color: #fecdd3;
+}
+.rock2-gizmo-tool-btn.erase-tool-btn.active {
+    background: rgba(225, 29, 72, 0.28);
+    border-color: rgba(251, 113, 133, 0.85);
+    color: #ffe4e6;
+}
+.fracture-pill-btn.clean-floaters-pill:hover {
+    border-color: rgba(251, 113, 133, 0.65);
+    color: #ffe4e6;
+}
+.rock2-sculpt-polarity-bar {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    margin-bottom: 8px;
+}
+.rock2-polarity-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.04);
+    color: #d1d5db;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.12s ease;
+}
+.rock2-polarity-btn.pol-add.active {
+    border-color: #34d399;
+    background: rgba(16, 185, 129, 0.24);
+    color: #ecfdf5;
+}
+.rock2-polarity-btn.pol-sub.active {
+    border-color: #fb7185;
+    background: rgba(225, 29, 72, 0.28);
+    color: #fff1f2;
+}
 
 
 

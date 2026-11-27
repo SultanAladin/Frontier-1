@@ -13,6 +13,7 @@ import {
     evalRock2StackSdf,
     pickRock2LayerAtRay,
     pickRock2SculptHitAtRay,
+    resolveRock2EffectiveSculptOp,
     packRock2StackGpuBuffers,
     buildRock2EulerMatrix3,
     mulRock2Mat3,
@@ -612,7 +613,7 @@ void main() {
     int dStart = int(meta.x + 0.5);
     int dCount = int(meta.y + 0.5);
 
-    for (int k = 0; k < 512; k++) {
+    for (int k = 0; k < 1024; k++) {
         if (k >= dCount) break;
         int row = dStart + k;
         vec4 d0 = texelFetch(uSculptDabTex, ivec2(0, row), 0); // (cx, cy, cz, r)
@@ -645,12 +646,12 @@ void main() {
                 colAcc = mix(colAcc, d3.rgb, wCol * 0.88);
             }
         } else if (op == 1) {
-            float lift = 0.18 * r * (1.0 - 0.55 * s);
-            if (dist - (r + lift) > -dAcc + blendK) continue;
-            vec3 q = v - d1.xyz * lift;
+            float sinkIn = -0.06 * r * s;
+            if (dist - (r + abs(sinkIn)) > -dAcc + blendK) continue;
+            vec3 q = v - d1.xyz * sinkIn;
             float vn = dot(q, d1.xyz);
             float tang2 = max(0.0, dot(q, q) - vn * vn);
-            float tau = clamp(0.36 + 0.56 * s, 0.36, 0.92);
+            float tau = clamp(0.74 + 0.26 * s, 0.74, 1.0);
             float ry = r * tau;
             float dDab = (sqrt(tang2 / (r * r) + (vn * vn) / (ry * ry)) - 1.0) * ry;
             float prev = dAcc;
@@ -660,6 +661,12 @@ void main() {
                 vec3 tCol = useTone ? d3.rgb : clamp(colAcc * vec3(0.86, 0.85, 0.84) + vec3(0.03), 0.0, 1.0);
                 colAcc = mix(colAcc, tCol, cutW * (useTone ? 0.85 : 0.55));
             }
+        } else if (op == 6) {
+            float rEff = r * (0.72 + 0.36 * s);
+            float feather = r * 0.08 * (1.0 - h);
+            float dErase = dist - rEff;
+            if (dErase > -dAcc + feather) continue;
+            dAcc = smaxPoly(dAcc, -dErase, feather);
         } else {
             if (dist >= r) continue;
             float fall = 1.0 - smoothstep(h * 0.58, 1.0, dist / r);
@@ -683,14 +690,17 @@ void main() {
                 dAcc = mix(dAcc, dAvg, clamp(s * 0.92, 0.05, 0.95) * w);
             } else if (op == 4) {
                 dAcc -= (0.34 * r * s) * w;
-            } else if (op == 5) {
+            } else if (op == 7) {
+                dAcc += (0.44 * r * s) * w;
+            } else if (op == 5 || op == 8) {
                 vec3 bVec = cross(d1.xyz, vec3(d2.x, 0.0, d2.y));
                 float bLen = max(1e-4, length(bVec));
                 bVec /= bLen;
                 float crossCoord = abs(dot(v, bVec));
                 float grooveDepth = 0.36 * r * s * w;
                 float vCut = max(0.0, grooveDepth - crossCoord * (0.75 + 1.35 * h));
-                dAcc += vCut * exp(-max(0.0, dAcc) * 2.5 / r);
+                float sgn = (op == 8) ? -1.0 : 1.0;
+                dAcc += sgn * vCut * exp(-max(0.0, abs(dAcc)) * 2.5 / r);
             }
             if (useTone && w > 1e-3) {
                 colAcc = mix(colAcc, d3.rgb, w * s * 0.75);
@@ -1204,6 +1214,7 @@ export class RockFormation2Viewport
         this.gizmoToolMode = 'path'; // 'path' | 'translate' | 'rotate' | 'scale' | 'sculpt'
         this.sculptBrushPreview = {
             brushOp: 'add',
+            brushPolarity: 'add',
             brushRadius: 0.78,
             brushStrength: 0.58,
             brushHardness: 0.42,
@@ -1811,11 +1822,28 @@ export class RockFormation2Viewport
     {
         if (!params) return;
         if (params.brushOp !== undefined) this.sculptBrushPreview.brushOp = params.brushOp;
-        if (params.brushRadius !== undefined) this.sculptBrushPreview.brushRadius = clamp(Number(params.brushRadius) || 0.78, 0.08, 4.5);
+        if (params.brushPolarity !== undefined) this.sculptBrushPreview.brushPolarity = params.brushPolarity;
+        if (params.brushRadius !== undefined) this.sculptBrushPreview.brushRadius = clamp(Number(params.brushRadius) || 0.78, 0.08, 6.0);
         if (params.brushStrength !== undefined) this.sculptBrushPreview.brushStrength = clamp(Number(params.brushStrength) || 0.58, 0.02, 1.0);
         if (params.brushHardness !== undefined) this.sculptBrushPreview.brushHardness = clamp(Number(params.brushHardness) ?? 0.42, 0.0, 1.0);
         if (params.strokeSpacing !== undefined) this.sculptBrushPreview.strokeSpacing = clamp(Number(params.strokeSpacing) || 0.28, 0.08, 0.85);
         if (params.symmetryMode !== undefined) this.sculptBrushPreview.symmetryMode = params.symmetryMode;
+    }
+
+    _getEffectiveSculptOp(shiftDown = false, invertDown = false)
+    {
+        const bp = this.sculptBrushPreview;
+        return resolveRock2EffectiveSculptOp(bp.brushOp || 'add', bp.brushPolarity || 'add', shiftDown, invertDown);
+    }
+
+    _getSculptProximityRadius(effOp)
+    {
+        // Erase, Carve, and Deflate (-) capture floating SDF fragments anywhere inside the 3D brush cylinder!
+        if (effOp === 'erase' || effOp === 'carve' || effOp === 'deflate')
+        {
+            return clamp(this.sculptBrushPreview.brushRadius ?? 0.78, 0.12, 6.0);
+        }
+        return 0.0;
     }
 
     _getLayerTransform(layer)
@@ -2069,21 +2097,19 @@ export class RockFormation2Viewport
             // 3D Pure-SDF Brush Sculpting Stroke Start (`gizmoToolMode === 'sculpt'`)
             if (e.button === 0 && !e.altKey && this.gizmoToolMode === 'sculpt' && this.compiledStack)
             {
+                const opOverride = this._getEffectiveSculptOp(!!e.shiftKey, !!(e.ctrlKey || e.metaKey));
+                const proxR = this._getSculptProximityRadius(opOverride);
                 const { ro, rd } = this._screenRay(e.clientX, e.clientY);
-                const hit = pickRock2SculptHitAtRay(this.compiledStack, ro, rd);
+                const hit = pickRock2SculptHitAtRay(this.compiledStack, ro, rd, { proximityRadius: proxR });
                 if (hit)
                 {
                     this._sculptHover = hit;
-                    const baseOp = this.sculptBrushPreview.brushOp || 'add';
-                    const opOverride = e.shiftKey
-                        ? 'smooth'
-                        : ((e.ctrlKey || e.metaKey) ? (baseOp === 'carve' ? 'add' : 'carve') : baseOp);
-
                     const strokeCtx = this.callbacks.onSculptStrokeStart?.() || {};
                     const strokeId = strokeCtx.strokeId ?? Math.floor(Math.random() * 1e9);
                     this._sculptDrag = {
                         strokeId,
                         opOverride,
+                        lastT: hit.distance,
                         lastPt: [hit.hitPoint[0], hit.hitPoint[1], hit.hitPoint[2]]
                     };
                     this.callbacks.onSculptDab?.({
@@ -2091,6 +2117,7 @@ export class RockFormation2Viewport
                         nx: hit.normal[0],  ny: hit.normal[1],  nz: hit.normal[2],
                         tx: 1.0, tz: 0.0,
                         strokeId,
+                        op: opOverride,
                         opOverride
                     });
                     this.canvas.setPointerCapture?.(e.pointerId);
@@ -2284,8 +2311,27 @@ export class RockFormation2Viewport
 
             if (this._sculptDrag && this.compiledStack)
             {
+                const curOp = this._sculptDrag.opOverride;
+                const proxR = this._getSculptProximityRadius(curOp);
                 const { ro, rd } = this._screenRay(e.clientX, e.clientY);
-                const hit = pickRock2SculptHitAtRay(this.compiledStack, ro, rd);
+                let hit = pickRock2SculptHitAtRay(this.compiledStack, ro, rd, { proximityRadius: proxR });
+                if (hit)
+                {
+                    this._sculptDrag.lastT = hit.distance;
+                }
+                else if (curOp === 'erase' && Number.isFinite(this._sculptDrag.lastT))
+                {
+                    // Keep the 3D Erase cursor smoothly visible across empty air while sweeping between floating SDF crumbs!
+                    const tSweep = this._sculptDrag.lastT;
+                    this._sculptHover = {
+                        hitPoint: [ro[0] + rd[0] * tSweep, ro[1] + rd[1] * tSweep, ro[2] + rd[2] * tSweep],
+                        normal: [-rd[0], -rd[1], -rd[2]],
+                        distance: tSweep,
+                        isProximityHit: true
+                    };
+                    return;
+                }
+
                 this._sculptHover = hit;
                 if (hit)
                 {
@@ -2294,8 +2340,10 @@ export class RockFormation2Viewport
                     const dy3 = hit.hitPoint[1] - lp[1];
                     const dz3 = hit.hitPoint[2] - lp[2];
                     const dist3 = Math.hypot(dx3, dy3, dz3);
-                    const minSpacing = Math.max(0.035, (this.sculptBrushPreview.brushRadius || 0.78) * (this.sculptBrushPreview.strokeSpacing || 0.28));
-                    if (dist3 >= minSpacing)
+                    const minSpacing = curOp === 'erase'
+                        ? Math.max(0.03, (this.sculptBrushPreview.brushRadius || 0.78) * 0.22)
+                        : Math.max(0.035, (this.sculptBrushPreview.brushRadius || 0.78) * (this.sculptBrushPreview.strokeSpacing || 0.28));
+                    if (dist3 >= minSpacing || hit.isProximityHit)
                     {
                         const tLen = Math.hypot(dx3, dz3);
                         const tx = tLen > 1e-4 ? (dx3 / tLen) : 1.0;
@@ -2306,7 +2354,8 @@ export class RockFormation2Viewport
                             nx: hit.normal[0],  ny: hit.normal[1],  nz: hit.normal[2],
                             tx, tz,
                             strokeId: this._sculptDrag.strokeId,
-                            opOverride: this._sculptDrag.opOverride
+                            op: curOp,
+                            opOverride: curOp
                         });
                     }
                 }
@@ -2744,8 +2793,10 @@ export class RockFormation2Viewport
             {
                 if (this.gizmoToolMode === 'sculpt' && this.compiledStack)
                 {
+                    const effOp = this._getEffectiveSculptOp(!!e.shiftKey, !!(e.ctrlKey || e.metaKey));
+                    const proxR = this._getSculptProximityRadius(effOp);
                     const { ro, rd } = this._screenRay(e.clientX, e.clientY);
-                    this._sculptHover = pickRock2SculptHitAtRay(this.compiledStack, ro, rd);
+                    this._sculptHover = pickRock2SculptHitAtRay(this.compiledStack, ro, rd, { proximityRadius: proxR });
                     this._hoveredHandle = null;
                     this._hoveredCurveInsert = null;
                     this.canvas.style.cursor = this._sculptHover ? 'crosshair' : '';
@@ -4076,20 +4127,22 @@ export class RockFormation2Viewport
         if (!hov) return;
 
         const bp = this.sculptBrushPreview;
-        const baseOp = bp.brushOp || 'add';
         const effOp = this._sculptDrag?.opOverride
-            || (this._sculptModDown.shift ? 'smooth' : (this._sculptModDown.ctrl ? (baseOp === 'carve' ? 'add' : 'carve') : baseOp));
+            || this._getEffectiveSculptOp(this._sculptModDown.shift, this._sculptModDown.ctrl);
 
         const opPalette = {
-            add:     { stroke: '#4ade80', fill: 'rgba(74, 222, 128, 0.13)', label: 'CLAY ADD' },
-            carve:   { stroke: '#fb7185', fill: 'rgba(251, 113, 133, 0.14)', label: 'CARVE CHISEL' },
+            add:     { stroke: '#4ade80', fill: 'rgba(74, 222, 128, 0.13)',  label: '+ CLAY ADD' },
+            carve:   { stroke: '#fb7185', fill: 'rgba(251, 113, 133, 0.15)', label: '− CARVE CHISEL' },
+            erase:   { stroke: '#ff3355', fill: 'rgba(255, 51, 85, 0.20)',   label: '✕ ERASE SDF (DELETE)' },
             flatten: { stroke: '#fbbf24', fill: 'rgba(251, 191, 36, 0.13)',  label: 'FLATTEN FACET' },
             smooth:  { stroke: '#38bdf8', fill: 'rgba(56, 189, 248, 0.13)',  label: 'SMOOTH RELAX' },
-            inflate: { stroke: '#c084fc', fill: 'rgba(192, 132, 252, 0.13)', label: 'INFLATE BULGE' },
-            crease:  { stroke: '#f97316', fill: 'rgba(249, 115, 22, 0.14)',  label: 'CREASE FISSURE' }
+            inflate: { stroke: '#c084fc', fill: 'rgba(192, 132, 252, 0.13)', label: '+ INFLATE BULGE' },
+            deflate: { stroke: '#f472b6', fill: 'rgba(244, 114, 182, 0.15)', label: '− DEFLATE SHRINK' },
+            crease:  { stroke: '#f97316', fill: 'rgba(249, 115, 22, 0.14)',  label: '− CREASE FISSURE' },
+            ridge:   { stroke: '#34d399', fill: 'rgba(52, 211, 153, 0.14)',  label: '+ CHISEL RIDGE' }
         };
         const style = opPalette[effOp] || opPalette.add;
-        const rad = clamp(bp.brushRadius ?? 0.78, 0.08, 4.5);
+        const rad = clamp(bp.brushRadius ?? 0.78, 0.08, 6.0);
         const hard = clamp(bp.brushHardness ?? 0.42, 0.0, 1.0);
         const sym = bp.symmetryMode || 'none';
 

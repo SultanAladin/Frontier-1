@@ -74,9 +74,11 @@ import {
     isRock2BooleanLayer,
     isRock2BooleanCombineMode,
     setRock2LayerBooleanMode,
+    resolveRock2EffectiveSculptOp,
     appendRock2SculptDab,
     undoLastRock2SculptStroke,
     clearRock2SculptLayer,
+    removeFloatingRock2SdfIslands,
     getRock2NodeSpec,
     buildRock2SplinePresetKnots,
     normalizeSplineKnots,
@@ -1589,7 +1591,7 @@ class TerrainWorldStudioApp
                 E.preventDefault();
                 document.getElementById('maximize-btn')?.click();
             }
-            else if (this.workspaceMode === 'rock2' && !E.ctrlKey && !E.metaKey && !E.altKey && (K === 'q' || K === 'w' || K === 'e' || K === 'r' || K === 'b' || K === 'g' || K === 'i' || E.key === '[' || E.key === ']' || E.key === 'Escape'))
+            else if (this.workspaceMode === 'rock2' && !E.ctrlKey && !E.metaKey && !E.altKey && (K === 'q' || K === 'w' || K === 'e' || K === 'r' || K === 'b' || K === 'x' || K === 'g' || K === 'i' || E.key === '-' || E.key === '_' || E.key === '=' || E.key === '+' || E.key === '[' || E.key === ']' || E.key === 'Escape'))
             {
                 if (E.key === '[' || E.key === ']')
                 {
@@ -1599,10 +1601,23 @@ class TerrainWorldStudioApp
                         if (SL && SL.params)
                         {
                             const Factor = E.key === ']' ? 1.16 : (1.0 / 1.16);
-                            SL.params.brushRadius = Number(Clamp((SL.params.brushRadius ?? 0.78) * Factor, 0.08, 4.5).toFixed(2));
+                            SL.params.brushRadius = Number(Clamp((SL.params.brushRadius ?? 0.78) * Factor, 0.08, 6.0).toFixed(2));
                             this.rock2View?.setSculptBrushPreview(SL.params);
                             this.rebuildInspector();
                         }
+                    }
+                    return;
+                }
+                if (E.key === '-' || E.key === '_' || E.key === '=' || E.key === '+')
+                {
+                    const SL = this._getActiveRock2SculptLayerForPaint();
+                    if (SL && SL.params)
+                    {
+                        SL.params.brushPolarity = (E.key === '-' || E.key === '_') ? 'sub' : 'add';
+                        if (SL.params.brushOp === 'erase' && SL.params.brushPolarity === 'add') SL.params.brushOp = 'add';
+                        this.rock2View?.setSculptBrushPreview(SL.params);
+                        this._syncRock2ToolbarButtons();
+                        this.rebuildInspector();
                     }
                     return;
                 }
@@ -1632,6 +1647,11 @@ class TerrainWorldStudioApp
                 if (K === 'b')
                 {
                     this._activateRock2SculptTool();
+                    return;
+                }
+                if (K === 'x')
+                {
+                    this._activateRock2SculptTool('erase');
                     return;
                 }
                 if (K === 'g')
@@ -3913,6 +3933,11 @@ class TerrainWorldStudioApp
             if (this.workspaceMode === 'rock2') this.rebuildInspector();
         });
 
+        document.getElementById('rock2-clean-floaters-btn')?.addEventListener('click', () =>
+        {
+            this._cleanRock2FloatingSdfs();
+        });
+
         WireBtn?.addEventListener('click', () =>
         {
             if (!this.rock2View) return;
@@ -3960,6 +3985,11 @@ class TerrainWorldStudioApp
         document.getElementById('rock2-tool-sculpt')?.addEventListener('click', () =>
         {
             this._activateRock2SculptTool();
+        });
+
+        document.getElementById('rock2-tool-erase')?.addEventListener('click', () =>
+        {
+            this._activateRock2SculptTool('erase');
         });
 
         document.getElementById('rock2-tool-reset')?.addEventListener('click', () =>
@@ -4107,12 +4137,15 @@ class TerrainWorldStudioApp
 
         const CurTool = this.rock2View?.gizmoToolMode || 'path';
         const IsSculptTool = CurTool === 'sculpt';
+        const ActiveSL = this._getActiveRock2SculptLayerForPaint();
+        const IsEraseOp = IsSculptTool && (ActiveSL?.params?.brushOp === 'erase');
         const EffTool = (!IsSculptTool && SelInst >= 0 && CurTool === 'path') ? 'translate' : CurTool;
         document.getElementById('rock2-tool-path')?.classList.toggle('active', ShowGiz && !IsSculptTool && SelInst < 0 && EffTool === 'path');
         document.getElementById('rock2-tool-move')?.classList.toggle('active', ShowGiz && !IsSculptTool && EffTool === 'translate');
         document.getElementById('rock2-tool-rotate')?.classList.toggle('active', ShowGiz && !IsSculptTool && EffTool === 'rotate');
         ScaleBtn?.classList.toggle('active', ShowGiz && !IsMod && !IsSculptTool && EffTool === 'scale');
-        document.getElementById('rock2-tool-sculpt')?.classList.toggle('active', IsSculptTool);
+        document.getElementById('rock2-tool-sculpt')?.classList.toggle('active', IsSculptTool && !IsEraseOp);
+        document.getElementById('rock2-tool-erase')?.classList.toggle('active', IsEraseOp);
     }
 
     _getActiveRock2SculptLayerForPaint()
@@ -4155,17 +4188,23 @@ class TerrainWorldStudioApp
         return SculptLayer;
     }
 
-    _activateRock2SculptTool()
+    _activateRock2SculptTool(forceBrushOp = null)
     {
         if (!this.rock2View) return;
-        if (this.rock2View.gizmoToolMode === 'sculpt')
+        const CurSL = this._getActiveRock2SculptLayerForPaint();
+        const AlreadyInRequestedMode = this.rock2View.gizmoToolMode === 'sculpt'
+            && (!forceBrushOp || CurSL?.params?.brushOp === forceBrushOp)
+            && !(forceBrushOp === null && CurSL?.params?.brushOp === 'erase');
+
+        if (AlreadyInRequestedMode)
         {
             this.rock2View.setGizmoToolMode('path');
             this._syncRock2ToolbarButtons();
             this.rebuildInspector();
             return;
         }
-        let SL = this._getActiveRock2SculptLayerForPaint();
+
+        let SL = CurSL;
         if (!SL)
         {
             this._pushRock2UndoSnapshot();
@@ -4179,10 +4218,60 @@ class TerrainWorldStudioApp
             this.rock2View.selectedInstanceIndex = -1;
             this.rock2View.setActiveLayer(SL);
         }
+
+        if (forceBrushOp)
+        {
+            SL.params.brushOp = forceBrushOp;
+        }
+        else if (SL.params.brushOp === 'erase')
+        {
+            SL.params.brushOp = SL.params.brushPolarity === 'sub' ? 'carve' : 'add';
+        }
+
         this.rock2View.showGizmos = true;
         this.rock2View.setSculptBrushPreview(SL.params);
         this.rock2View.setGizmoToolMode('sculpt');
         this._syncRock2ToolbarButtons();
+        this.refreshChrome();
+        this.rebuildInspector();
+    }
+
+    _cleanRock2FloatingSdfs()
+    {
+        if (!this.rock2?.stack || !this.rock2?.compiled) return;
+        this._pushRock2UndoSnapshot();
+        const Res = removeFloatingRock2SdfIslands(this.rock2.stack, this.rock2.compiled);
+        if (Res.removedIslands > 0)
+        {
+            this._rebuildRock2StackNow(false);
+            if (this.rock2View?.renderMode === 'qef-mesh') this._bakeRock2QefMeshNow();
+            const StatusEl = document.getElementById('status-main');
+            if (StatusEl)
+            {
+                StatusEl.textContent = `Cleaned ${Res.removedIslands} floating SDF fragment${Res.removedIslands > 1 ? 's' : ''} (${Res.addedDabs} Pure-SDF erase dabs)`;
+            }
+            const TopBtn = document.getElementById('rock2-clean-floaters-btn');
+            if (TopBtn)
+            {
+                TopBtn.textContent = `Cleaned ${Res.removedIslands}!`;
+                setTimeout(() => { if (TopBtn) TopBtn.textContent = 'Clean Floaters'; }, 1800);
+            }
+            this._lastFloaterCleanMessage = `Removed ${Res.removedIslands} floating SDF island${Res.removedIslands > 1 ? 's' : ''}`;
+        }
+        else
+        {
+            // Pop unused undo snapshot when nothing was floating
+            this.rock2.undo?.pop();
+            const StatusEl = document.getElementById('status-main');
+            if (StatusEl) StatusEl.textContent = 'No disconnected floating SDF fragments detected.';
+            const TopBtn = document.getElementById('rock2-clean-floaters-btn');
+            if (TopBtn)
+            {
+                TopBtn.textContent = '0 Floaters';
+                setTimeout(() => { if (TopBtn) TopBtn.textContent = 'Clean Floaters'; }, 1400);
+            }
+            this._lastFloaterCleanMessage = '0 floating SDF islands found';
+        }
         this.refreshChrome();
         this.rebuildInspector();
     }
@@ -5107,20 +5196,22 @@ class TerrainWorldStudioApp
     _buildRock2SculptLayerInspector(Content, Stack, Layer, LayerIdx, Def, SavedOpen, OnLive, OnCommit)
     {
         const P = Layer.params;
+        if (!P.brushPolarity) P.brushPolarity = 'add';
         const Dabs = Array.isArray(P.dabs) ? P.dabs : (P.dabs = []);
         const StrokeSet = new Set(Dabs.map((D, I) => D.strokeId ?? I));
         const IsPainting = this.rock2View?.gizmoToolMode === 'sculpt';
+        const EffOpNow = resolveRock2EffectiveSculptOp(P.brushOp || 'add', P.brushPolarity || 'add', false, false);
 
         const Trio = MakeEl('div', 'kpi-trio', [
             MakeEl('div', 'kpi-card highlight', [
                 MakeEl('span', 'kpi-label', '3D Sculpt Brush'),
-                MakeEl('strong', 'kpi-val', IsPainting ? 'ACTIVE (B)' : 'READY (B)'),
-                MakeEl('span', 'kpi-sub', (P.brushOp || 'add').toUpperCase())
+                MakeEl('strong', 'kpi-val', IsPainting ? (EffOpNow === 'erase' ? 'ERASE (X)' : 'ACTIVE (B)') : 'READY (B / X)'),
+                MakeEl('span', 'kpi-sub', `${P.brushPolarity === 'sub' ? '− SUB · ' : '+ ADD · '}${EffOpNow.toUpperCase()}`)
             ]),
             MakeEl('div', 'kpi-card', [
                 MakeEl('span', 'kpi-label', 'Recorded Dabs'),
                 MakeEl('strong', 'kpi-val', `${Dabs.length}`),
-                MakeEl('span', 'kpi-sub', `${StrokeSet.size} strokes · max 512`)
+                MakeEl('span', 'kpi-sub', `${StrokeSet.size} strokes · max 1024`)
             ]),
             MakeEl('div', 'kpi-card', [
                 MakeEl('span', 'kpi-label', 'SDF Pipeline'),
@@ -5130,35 +5221,83 @@ class TerrainWorldStudioApp
         ]);
         Content.appendChild(Trio);
 
-        // 1. 3D Viewport Brush Mode & Palette
-        const BrushTitle = '3D Pure-SDF Sculpt Brushes';
+        // 1. 3D Viewport Brush Mode, + / − Polarity & Erase Palette
+        const BrushTitle = '3D Pure-SDF Sculpt & Erase Brushes';
         const BrushGrp = MakePropertyGroup(
             BrushTitle,
             'Brush',
-            IsPainting ? 'PAINTING IN 3D' : 'CLICK ROCK TO SCULPT',
+            IsPainting ? (EffOpNow === 'erase' ? 'ERASING IN 3D' : 'PAINTING IN 3D') : 'CLICK ROCK TO SCULPT',
             SavedOpen(BrushTitle, true),
-            'Drag directly on any rock surface in the 3D viewport! Hold Shift to Smooth, Ctrl to invert Add ↔ Carve, [ / ] to resize radius.'
+            'Drag on any rock or sweep across floating SDF fragments! Press X for Volumetric Erase, - / + for Sub/Add polarity, Shift to Smooth, [ / ] for radius.'
         );
 
         const ActivateRow = MakeEl('div', 'studio-btn-row');
-        const PaintBtn = MakeEl('button', 'button' + (IsPainting ? ' export-button' : ''), IsPainting ? '✓ 3D Sculpt Brush Active (Press B / Esc to Exit)' : '🖌 Activate 3D Sculpt Brush in Viewport (B)');
+        const PaintBtn = MakeEl('button', 'button' + (IsPainting && EffOpNow !== 'erase' ? ' export-button' : ''), IsPainting && EffOpNow !== 'erase' ? '✓ Sculpt Active (B / Esc)' : '🖌 Sculpt Brush (B)');
         PaintBtn.type = 'button';
         PaintBtn.addEventListener('click', () => this._activateRock2SculptTool());
-        ActivateRow.appendChild(PaintBtn);
+
+        const EraseQuickBtn = MakeEl('button', 'button' + (IsPainting && EffOpNow === 'erase' ? ' export-button' : ''), IsPainting && EffOpNow === 'erase' ? '✕ Erase SDF Active (X)' : '✕ 3D Erase Brush (X)');
+        EraseQuickBtn.type = 'button';
+        EraseQuickBtn.addEventListener('click', () => this._activateRock2SculptTool('erase'));
+        ActivateRow.append(PaintBtn, EraseQuickBtn);
         BrushGrp.Body.appendChild(ActivateRow);
 
+        // + Add / − Subtract-Carve Polarity Toggle Bar
+        const PolBar = MakeEl('div', 'rock2-sculpt-polarity-bar');
+        const BtnPolAdd = MakeEl('button', 'rock2-polarity-btn pol-add' + (P.brushPolarity !== 'sub' && P.brushOp !== 'erase' && P.brushOp !== 'carve' ? ' active' : ''), '+ Add / Build (+)');
+        BtnPolAdd.type = 'button';
+        BtnPolAdd.title = 'Outward additive sculpting (+ key)';
+        BtnPolAdd.addEventListener('click', () =>
+        {
+            P.brushPolarity = 'add';
+            if (P.brushOp === 'carve' || P.brushOp === 'erase') P.brushOp = 'add';
+            if (this.rock2View)
+            {
+                this.rock2View.showGizmos = true;
+                this.rock2View.setSculptBrushPreview(P);
+                this.rock2View.setGizmoToolMode('sculpt');
+            }
+            this._syncRock2ToolbarButtons();
+            this.refreshChrome();
+            this.rebuildInspector();
+        });
+
+        const BtnPolSub = MakeEl('button', 'rock2-polarity-btn pol-sub' + ((P.brushPolarity === 'sub' || P.brushOp === 'carve' || P.brushOp === 'erase') ? ' active' : ''), '− Sub / Carve (−)');
+        BtnPolSub.type = 'button';
+        BtnPolSub.title = 'Inward subtractive carving & shrink (− key)';
+        BtnPolSub.addEventListener('click', () =>
+        {
+            P.brushPolarity = 'sub';
+            if (P.brushOp === 'add') P.brushOp = 'carve';
+            if (this.rock2View)
+            {
+                this.rock2View.showGizmos = true;
+                this.rock2View.setSculptBrushPreview(P);
+                this.rock2View.setGizmoToolMode('sculpt');
+            }
+            this._syncRock2ToolbarButtons();
+            this.refreshChrome();
+            this.rebuildInspector();
+        });
+        PolBar.append(BtnPolAdd, BtnPolSub);
+        BrushGrp.Body.appendChild(PolBar);
+
         const BrushItems = [
-            { id: 'add',     title: 'Clay Add',     sub: 'Build mass' },
-            { id: 'carve',   title: 'Carve',        sub: 'Chisel hollow' },
+            { id: 'add',     title: P.brushPolarity === 'sub' ? 'Clay (−)' : 'Clay (+)', sub: P.brushPolarity === 'sub' ? 'Deep scoop' : 'Build mass' },
+            { id: 'carve',   title: 'Carve (−)',    sub: 'Zero-rind cut' },
+            { id: 'erase',   title: 'Erase SDF',    sub: 'Delete (X)', isErase: true },
             { id: 'flatten', title: 'Flatten',      sub: 'Scrape facet' },
             { id: 'smooth',  title: 'Smooth',       sub: 'Relax (Shift)' },
-            { id: 'inflate', title: 'Inflate',      sub: 'Outward bulge' },
-            { id: 'crease',  title: 'Crease',       sub: 'Sharp fissure' }
+            { id: 'inflate', title: P.brushPolarity === 'sub' ? 'Deflate (−)' : 'Inflate (+)', sub: P.brushPolarity === 'sub' ? 'Inward shrink' : 'Outward bulge' },
+            { id: 'crease',  title: 'Crease (−)',   sub: 'Ctrl = Ridge (+)' }
         ];
         const BrushGrid = MakeEl('div', 'rock2-sculpt-brush-grid');
         for (const BItem of BrushItems)
         {
-            const BBtn = MakeEl('button', 'rock2-sculpt-brush-btn' + ((P.brushOp || 'add') === BItem.id ? ' active' : ''), [
+            const Cls = 'rock2-sculpt-brush-btn'
+                + (BItem.isErase ? ' erase-brush' : '')
+                + ((P.brushOp || 'add') === BItem.id ? ' active' : '');
+            const BBtn = MakeEl('button', Cls, [
                 MakeEl('span', '', BItem.title),
                 MakeEl('small', '', BItem.sub)
             ]);
@@ -5166,6 +5305,7 @@ class TerrainWorldStudioApp
             BBtn.addEventListener('click', () =>
             {
                 P.brushOp = BItem.id;
+                if (BItem.id === 'carve') P.brushPolarity = 'sub';
                 if (this.rock2View)
                 {
                     this.rock2View.showGizmos = true;
@@ -5180,12 +5320,21 @@ class TerrainWorldStudioApp
         }
         BrushGrp.Body.appendChild(BrushGrid);
 
+        // 1-Click Floating SDF Fragment Cleaner right below the brush palette!
+        const CleanRow = MakeEl('div', 'studio-btn-row');
+        const CleanFloatBtn = MakeEl('button', 'button', this._lastFloaterCleanMessage ? `🧹 Delete Floating SDFs (${this._lastFloaterCleanMessage})` : '🧹 Delete Disconnected Floating SDFs');
+        CleanFloatBtn.type = 'button';
+        CleanFloatBtn.title = '26-connected Pure-SDF island scan: automatically deletes mid-air floating SDF crumbs & slivers while preserving grounded rocks.';
+        CleanFloatBtn.addEventListener('click', () => this._cleanRock2FloatingSdfs());
+        CleanRow.appendChild(CleanFloatBtn);
+        BrushGrp.Body.appendChild(CleanRow);
+
         const SyncPreview = () =>
         {
             if (this.rock2View) this.rock2View.setSculptBrushPreview(P);
         };
 
-        BrushGrp.Body.appendChild(MakeSliderPillRow('Brush Radius ([ / ])', 0.08, 4.50, 0.02, P.brushRadius ?? 0.78, 2, 'm', V => { P.brushRadius = V; SyncPreview(); }, OnCommit));
+        BrushGrp.Body.appendChild(MakeSliderPillRow('Brush Radius ([ / ])', 0.08, 6.00, 0.02, P.brushRadius ?? 0.78, 2, 'm', V => { P.brushRadius = V; SyncPreview(); }, OnCommit));
         BrushGrp.Body.appendChild(MakeSliderPillRow('Brush Strength', 0.04, 1.00, 0.02, P.brushStrength ?? 0.58, 2, 'w', V => { P.brushStrength = V; SyncPreview(); }, OnCommit));
         BrushGrp.Body.appendChild(MakeSliderPillRow('Edge Hardness', 0.0, 1.00, 0.02, P.brushHardness ?? 0.42, 2, 'w', V => { P.brushHardness = V; SyncPreview(); }, OnCommit));
         BrushGrp.Body.appendChild(MakeSliderPillRow('Stroke Spacing', 0.08, 0.80, 0.02, P.strokeSpacing ?? 0.28, 2, '×R', V => { P.strokeSpacing = V; SyncPreview(); }, OnCommit));
