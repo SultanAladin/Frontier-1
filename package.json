@@ -1,0 +1,14 @@
+{
+  "name": "frontier-surfel-gi-autospace-lobbies",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Surface-Complete 3D WebGPU Surfel Global Illumination & Emissive Shadows across AutoSpace Lobby 1, 2, 3",
+  "scripts": {
+    "serve": "python3 Serve.py 8080",
+    "validate": "node Tools/ValidateSurfelGiProject.mjs"
+  },
+  "devDependencies": {
+    "wgsl_reflect": "^1.6.0"
+  }
+}

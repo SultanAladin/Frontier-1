@@ -1,0 +1,11 @@
+.arena/
+.cache/
+.local/
+node_modules/
+.venv/
+__pycache__/
+dist/
+build/
+coverage/
+*.log
+.DS_Store

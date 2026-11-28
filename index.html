@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101316">
+  <title>AutoSpace · Surfel GI</title>
+  <link rel="stylesheet" href="./Styles/Interface.css">
+</head>
+<body>
+  <main class="workspace" id="workspace">
+    <canvas id="view" aria-label="Interactive real-time 3D AutoSpace lobby"></canvas>
+    <div class="shade" aria-hidden="true"></div>
+    <header class="topbar">
+      <a class="brand" href="#" aria-label="AutoSpace home"><span class="brandIcon"><i class="fa-solid fa-cube"></i></span><span><b>AUTOSPACE</b><small>REAL-TIME LIGHT LAB</small></span></a>
+      <div class="liveBadge"><span></span> WEBGPU <b id="gpuStatus">STARTING</b></div>
+      <button class="iconButton" id="fullscreenButton" aria-label="Toggle fullscreen"><i class="fa-solid fa-expand"></i></button>
+    </header>
+    <aside class="leftPanel glassPanel">
+      <div class="eyebrow">ENVIRONMENT <span>01 / 03</span></div>
+      <h1 id="worldTitle">Cyclorama</h1>
+      <p class="subhead" id="worldSubtitle">Automotive portrait space</p>
+      <div class="worldChoices" role="group" aria-label="Select lobby">
+        <button class="worldButton active"><span>01</span><b>Cyclorama</b><i class="fa-solid fa-arrow-up-right-from-square"></i></button>
+        <button class="worldButton"><span>02</span><b>Forest Volume</b><i class="fa-solid fa-arrow-up-right-from-square"></i></button>
+        <button class="worldButton"><span>03</span><b>Pit Garage</b><i class="fa-solid fa-arrow-up-right-from-square"></i></button>
+      </div>
+      <div class="rule"></div>
+      <div class="sectionTitle">CAMERA PRESETS <button id="resetCamera" title="Reset camera"><i class="fa-solid fa-rotate-left"></i></button></div>
+      <div class="presetList" id="presetList"></div>
+      <div class="controlHint"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>MOVE</span><i></i><span>DRAG TO ORBIT</span></div>
+    </aside>
+    <aside class="rightPanel glassPanel">
+      <div class="panelHeading"><div><div class="eyebrow">RENDER CONTROLS</div><h2>Lighting</h2></div><button class="iconButton small" id="controlsToggle" aria-label="Collapse controls"><i class="fa-solid fa-sliders"></i></button></div>
+      <div class="controlBody" id="controlBody">
+        <label class="rangeLabel" for="lightPower"><span>Light intensity</span><output id="lightPowerOut">1.00×</output></label><input id="lightPower" type="range" min="0" max="2" step="0.01" value="1">
+        <label class="rangeLabel" for="bouncePower"><span>Indirect bounce</span><output id="bouncePowerOut">0.72</output></label><input id="bouncePower" type="range" min="0" max="1.5" step="0.01" value="0.72">
+        <label class="rangeLabel" for="exposure"><span>Exposure</span><output id="exposureOut">1.00</output></label><input id="exposure" type="range" min="0.4" max="2.4" step="0.01" value="1">
+        <div class="toggleRow"><span>Temporal smoothing</span><button class="toggle active" id="temporalToggle" role="switch" aria-checked="true"><i></i></button></div>
+        <div class="toggleRow"><span>Emissive shadows</span><button class="toggle active" id="shadowToggle" role="switch" aria-checked="true"><i></i></button></div>
+        <div class="rule"></div>
+        <div class="sectionTitle">VIEW MODE</div>
+        <div class="viewModes" id="viewModes">
+          <button class="modeButton selected"><i class="fa-solid fa-sun"></i>Final beauty</button>
+          <button class="modeButton"><i class="fa-solid fa-circle-nodes"></i>Surfel discs & radiosity</button>
+          <button class="modeButton"><i class="fa-solid fa-circle-nodes"></i>Indirect surfel GI</button>
+          <button class="modeButton"><i class="fa-solid fa-lightbulb"></i>Emissive shadows & penumbra</button>
+          <button class="modeButton"><i class="fa-solid fa-sun"></i>Direct + area specular</button>
+          <button class="modeButton"><i class="fa-solid fa-cube"></i>Surface normals / wire</button>
+        </div>
+      </div>
+    </aside>
+    <footer class="statusbar glassPanel">
+      <div class="stat"><span class="statIcon"><i class="fa-solid fa-car-side"></i></span><div><b id="vehicleCount">03</b><small>VEHICLES</small></div></div>
+      <div class="stat"><span class="statIcon"><i class="fa-solid fa-circle-nodes"></i></span><div><b id="surfelCount">—</b><small>SURFELS</small></div></div>
+      <div class="stat"><span class="statIcon"><i class="fa-solid fa-bolt"></i></span><div><b id="lightCount">05</b><small>LIGHTS</small></div></div>
+      <div class="stat"><span class="statIcon"><i class="fa-solid fa-stopwatch"></i></span><div><b id="renderMs">—</b><small>FRAME TIME</small></div></div>
+      <div class="statusEnd"><span class="pulseDot"></span><span id="renderMessage">Building lobby geometry</span><small>BVH4 · MULTI-BOUNCE</small></div>
+    </footer>
+    <div class="toast" id="toast" role="status"></div>
+    <div class="loading" id="loading"><div class="loaderMark"><i class="fa-solid fa-cube"></i></div><b>Preparing the light field</b><span>Loading vehicle geometry and photometry…</span><div class="loadingTrack"><i></i></div></div>
+  </main>
+  <script type="module" src="./Source/Application.js"></script>
+</body>
+</html>
